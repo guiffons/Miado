@@ -1,0 +1,6 @@
+{
+  "name": "Miado - Streaming de Música & Rede Social",
+  "description": "Plataforma de streaming de música pura e rede social independente com capas em alta definição, zero anúncios e arquitetura responsiva.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

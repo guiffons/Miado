@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required, immutable) - Account ID
+    //   - email: string (required, max 254 chars) - User email
+    //   - name: string (required, 1..80 chars) - Display name
+    //   - handle: string (optional, max 60 chars) - User handle
+    //   - bio: string (optional, max 300 chars) - User biography
+    //   - catId: string (required, max 40 chars) - Selected cat avatar ID
+    //   - createdAt: string (required, immutable, max 40 chars) - ISO timestamp
+    //   - updatedAt: string (optional, max 40 chars) - ISO timestamp
+    //
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.size() >= 3 && email.size() <= 254 && email.matches('^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function isValidUserAccount(data) {
+      let allowedKeys = ['uid', 'email', 'name', 'handle', 'bio', 'catId', 'avatarUrl', 'favoriteArtists', 'likedTracks', 'playlists', 'recentHistory', 'createdAt', 'updatedAt'];
+      return data.keys().hasAll(['uid', 'email', 'name', 'catId', 'createdAt'])
+        && data.keys().hasOnly(allowedKeys)
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && isValidEmail(data.email)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && (!('handle' in data) || (data.handle is string && data.handle.size() <= 60))
+        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 300))
+        && (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 2000000))
+        && data.catId is string && data.catId.size() >= 1 && data.catId.size() <= 40
+        && (!('favoriteArtists' in data) || (data.favoriteArtists is list && data.favoriteArtists.size() <= 50))
+        && (!('likedTracks' in data) || (data.likedTracks is list && data.likedTracks.size() <= 500))
+        && (!('playlists' in data) || (data.playlists is list && data.playlists.size() <= 100))
+        && (!('recentHistory' in data) || (data.recentHistory is list && data.recentHistory.size() <= 100))
+        && data.createdAt is string && data.createdAt.size() <= 40
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 40));
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserAccount(request.resource.data)
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if isOwner(userId)
+        && isValidUserAccount(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(userId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

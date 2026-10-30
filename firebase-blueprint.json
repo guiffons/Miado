@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "User account and music profile stored in Miado database",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique account identifier"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "handle": {
+          "type": "string",
+          "description": "User handle"
+        },
+        "bio": {
+          "type": "string",
+          "description": "Profile biography"
+        },
+        "catId": {
+          "type": "string",
+          "description": "Selected cat avatar ID"
+        },
+        "favoriteArtists": {
+          "type": "array",
+          "description": "User favorite artists for recommendations"
+        },
+        "likedTracks": {
+          "type": "array",
+          "description": "User liked tracks persisted across sessions"
+        },
+        "playlists": {
+          "type": "array",
+          "description": "User created and collaborative playlists"
+        },
+        "recentHistory": {
+          "type": "array",
+          "description": "Recently played tracks history"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["uid", "email", "name", "catId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserAccount"
+      },
+      "description": "Stores user profile, liked tracks, playlists, and music history"
+    }
+  }
+}
