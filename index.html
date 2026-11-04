@@ -1211,65 +1211,98 @@
       position: relative;
     }
     .track-icon-btn {
-      width: 36px;
-      height: 36px;
-      border-radius: var(--radius-full);
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-sm);
       color: var(--text-secondary);
       position: relative;
       border: 1px solid transparent;
+      background: transparent;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: color 0.16s ease, background-color 0.16s ease, transform 0.14s ease;
     }
     .track-icon-btn:hover {
       color: var(--text-primary);
-      background-color: var(--bg-surface-hover);
-      border-color: var(--glass-border);
+      background-color: rgba(255, 255, 255, 0.08);
+      transform: scale(1.08);
+    }
+    .track-icon-btn:active {
+      transform: scale(0.94);
     }
     .track-icon-btn.liked {
       color: #a855f7;
       background-color: rgba(168, 85, 247, 0.16);
-      border-color: rgba(168, 85, 247, 0.36);
+      border-color: rgba(168, 85, 247, 0.32);
+    }
+    .track-icon-btn.liked:hover {
+      color: #c084fc;
+      background-color: rgba(168, 85, 247, 0.25);
     }
     @keyframes heartPopPulse {
       0% { transform: scale(1); }
-      45% { transform: scale(1.32); }
+      45% { transform: scale(1.28); }
       100% { transform: scale(1); }
     }
     .track-icon-btn.liked-pop {
       animation: heartPopPulse 0.28s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
-    /* Tooltips Descritivos Liquid Glass para .track-actions-col (Curtir, Adicionar à Playlist, Compartilhar) */
-    .tracklist-table .track-actions-col .track-icon-btn[data-tooltip]::after,
-    .player-footer .track-icon-btn[data-tooltip]::after,
-    .fs-action-row .track-icon-btn[data-tooltip]::after {
-      content: attr(data-tooltip);
-      position: absolute;
-      bottom: calc(100% + 8px);
-      right: 0;
-      background-color: #130f22;
-      backdrop-filter: var(--glass-blur);
-      -webkit-backdrop-filter: var(--glass-blur);
-      border: 1px solid rgba(168, 85, 247, 0.55);
-      border-top: 1px solid rgba(255, 255, 255, 0.35);
-      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.85), inset 0 1px 1px rgba(255, 255, 255, 0.18);
-      color: #ffffff;
-      font-family: var(--font-sans);
-      font-size: 0.72rem;
-      font-weight: 700;
-      padding: 6px 11px;
-      border-radius: 8px;
-      white-space: nowrap;
-      pointer-events: none;
-      opacity: 0;
-      transform: translateY(4px) scale(0.96);
-      transition: opacity 0.16s ease, transform 0.16s ease;
-      z-index: 120;
+    /* Menu de Contexto Estilo Spotify (Botão Direito em Faixas e Álbuns) */
+    .spotify-context-menu {
+      position: fixed;
+      z-index: 99999;
+      background-color: #120e20;
+      backdrop-filter: blur(32px) saturate(220%);
+      -webkit-backdrop-filter: blur(32px) saturate(220%);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      border-top: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 12px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(168, 85, 247, 0.15);
+      padding: 6px;
+      min-width: 210px;
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      animation: ctxFadeIn 0.14s ease-out;
     }
-    .tracklist-table .track-actions-col .track-icon-btn[data-tooltip]:hover::after,
-    .tracklist-table .track-actions-col .track-icon-btn[data-tooltip]:focus-visible::after,
-    .player-footer .track-icon-btn[data-tooltip]:hover::after,
-    .fs-action-row .track-icon-btn[data-tooltip]:hover::after {
-      opacity: 1;
-      transform: translateY(0) scale(1);
+    .spotify-context-menu.active {
+      display: flex;
+    }
+    @keyframes ctxFadeIn {
+      from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .ctx-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      font-size: 0.83rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      border-radius: 8px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+      transition: background-color 0.14s ease, color 0.14s ease;
+    }
+    .ctx-menu-item:hover {
+      background-color: rgba(168, 85, 247, 0.22);
+      color: #ffffff;
+    }
+    .ctx-menu-item svg {
+      flex-shrink: 0;
+      color: var(--accent-hover);
+    }
+    .ctx-menu-divider {
+      height: 1px;
+      background-color: rgba(255, 255, 255, 0.08);
+      margin: 4px 6px;
     }
 
     .album-footer-meta {
@@ -3090,6 +3123,36 @@
     </div>
   </div>
 
+  <!-- MENU DE CONTEXTO ESTILO SPOTIFY (BOTÃO DIREITO EM QUALQUER FAIXA / ÁLBUM) -->
+  <div id="spotify-context-menu" class="spotify-context-menu">
+    <button class="ctx-menu-item" id="ctx-item-add-queue">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+      Adicionar à fila
+    </button>
+    <button class="ctx-menu-item" id="ctx-item-play-next">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5"/></svg>
+      Tocar a seguir
+    </button>
+    <div class="ctx-menu-divider"></div>
+    <button class="ctx-menu-item" id="ctx-item-toggle-like">
+      <svg id="ctx-like-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+      <span id="ctx-like-text">Curtir faixa</span>
+    </button>
+    <button class="ctx-menu-item" id="ctx-item-add-playlist">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Adicionar à playlist...
+    </button>
+    <button class="ctx-menu-item" id="ctx-item-go-artist">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Ir para o artista
+    </button>
+    <div class="ctx-menu-divider"></div>
+    <button class="ctx-menu-item" id="ctx-item-share">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      Compartilhar
+    </button>
+  </div>
+
   <!-- ==========================================================================
        INTEGRAÇÃO FIREBASE FIRESTORE PERMANENTE (PERSISTÊNCIA MULTIDISPOSITIVOS)
        Banco: ai-studio-miadostreamingde-0c57b5d9-b4bf-4817-81f3-2d65f4bd82b7
@@ -3224,16 +3287,34 @@
 
       window.handleImgError = function(imgEl, title, artist) {
         if (!imgEl) return;
-        const safeTitle = String(title || "Miado").trim();
-        const safeArtist = String(artist || "").trim();
-        if (!imgEl.dataset.retriedCover && safeTitle && safeArtist && safeArtist !== "Playlist") {
+        const safeTitle = String(title || imgEl.getAttribute("alt") || imgEl.dataset.title || "Miado").trim();
+        const safeArtist = String(artist || imgEl.dataset.artist || "").trim();
+        if (!imgEl.dataset.retriedCover && safeTitle && safeArtist && safeArtist !== "Playlist" && safeArtist !== "Artista") {
           imgEl.dataset.retriedCover = "1";
+          imgEl.onerror = function() {
+            this.onerror = null;
+            this.src = createSolidAlbumSvg(safeTitle, safeArtist);
+          };
           imgEl.src = `/api/cover?title=${encodeURIComponent(safeTitle)}&artist=${encodeURIComponent(safeArtist)}`;
           return;
         }
         imgEl.onerror = null;
         imgEl.src = createSolidAlbumSvg(safeTitle, safeArtist);
       };
+
+      // Verificação e substituição global automática para qualquer imagem com falha
+      window.addEventListener("error", function(e) {
+        const target = e.target;
+        if (target && target.tagName === "IMG") {
+          if (target.dataset && target.dataset.errorHandled === "done") return;
+          target.dataset.errorHandled = "done";
+          if ((target.classList && target.classList.contains("user-pill-avatar")) || target.id === "top-user-avatar" || target.id === "prof-hero-avatar") {
+            window.handleCatAvatarError(target);
+          } else {
+            window.handleImgError(target, target.getAttribute("alt") || target.dataset.title || "Miado", target.dataset.artist || "");
+          }
+        }
+      }, true);
 
       window.handleCatAvatarError = function(imgEl) {
         if (!imgEl) return;
@@ -3375,6 +3456,11 @@
           } else {
             return rawUrl;
           }
+        }
+
+        // Se já for uma URL proxy do Miado, retorna diretamente para preservar o cache e parâmetros
+        if (rawUrl && (rawUrl.startsWith("/api/cover") || rawUrl.startsWith("/api/artist-image") || rawUrl.startsWith("/api/cat-avatar"))) {
+          return rawUrl;
         }
 
         // Se a faixa já tiver uma URL HTTP válida
@@ -6215,39 +6301,49 @@
           if (!track) return;
           const cleanTrack = {
             ...track,
+            _isManualQueue: true,
             coverUrl: ensureTrackCoverUrl(track, track.title, track.artist)
           };
-          if (!Array.isArray(state.queue) || state.queue.length === 0) {
+          if (!state.currentTrack || !Array.isArray(state.queue) || state.queue.length === 0) {
             state.queue = [cleanTrack];
             state.queueIndex = 0;
+            state.manualQueueCount = 1;
+            this.playTrack(cleanTrack);
           } else {
             const insertIdx = Math.max(0, (state.queueIndex ?? 0) + 1);
             state.queue.splice(insertIdx, 0, cleanTrack);
+            state.manualQueueCount = (state.manualQueueCount || 0) + 1;
           }
           if (window.miadoUI) {
             window.miadoUI.renderRightSidebarBodyOnly();
             window.miadoUI.renderFullscreenUpNext();
           }
-          showToast(`"${cleanTrack.title}" adicionada para tocar a seguir!`);
+          showToast(`"${cleanTrack.title}" tocará a seguir! 🐾`);
         }
 
         addToQueueEnd(track) {
           if (!track) return;
           const cleanTrack = {
             ...track,
+            _isManualQueue: true,
             coverUrl: ensureTrackCoverUrl(track, track.title, track.artist)
           };
-          if (!Array.isArray(state.queue) || state.queue.length === 0) {
+          if (!state.currentTrack || !Array.isArray(state.queue) || state.queue.length === 0) {
             state.queue = [cleanTrack];
             state.queueIndex = 0;
+            state.manualQueueCount = 1;
+            this.playTrack(cleanTrack);
           } else {
-            state.queue.push(cleanTrack);
+            const mCount = state.manualQueueCount || 0;
+            const insertIdx = Math.min(state.queue.length, (state.queueIndex ?? 0) + 1 + mCount);
+            state.queue.splice(insertIdx, 0, cleanTrack);
+            state.manualQueueCount = mCount + 1;
           }
           if (window.miadoUI) {
             window.miadoUI.renderRightSidebarBodyOnly();
             window.miadoUI.renderFullscreenUpNext();
           }
-          showToast(`"${cleanTrack.title}" adicionada ao fim da fila!`);
+          showToast(`"${cleanTrack.title}" adicionada à fila de reprodução 🐾`);
         }
 
         setVolume(val, showFeedback = false) {
@@ -6489,6 +6585,7 @@
           this.renderRightSidebar();
           this.navigateTo("home", false);
 
+          this.setupSpotifyContextMenu();
           this.closeAllModals();
 
           // Na primeira vez abrindo o app, abrir modal de cadastro/login para criar perfil real
@@ -6498,6 +6595,200 @@
               this.openAuthModal("register", 1);
             }, 600);
           }
+        }
+
+        setupSpotifyContextMenu() {
+          const menu = document.getElementById("spotify-context-menu");
+          if (!menu) return;
+
+          document.addEventListener("contextmenu", (e) => {
+            const row = e.target.closest(".track-row, .album-card");
+            if (!row) {
+              this.closeContextMenu();
+              return;
+            }
+            e.preventDefault();
+            this.openContextMenu(e, row);
+          });
+
+          document.addEventListener("click", (e) => {
+            if (!e.target.closest("#spotify-context-menu")) {
+              this.closeContextMenu();
+            }
+            const qBtn = e.target.closest("[data-action-queue-idx], [data-quick-queue-btn], [data-alb-queue-idx], [data-search-queue-idx], [data-home-queue-idx], [data-home-algo-queue], [data-pl-queue-idx], [data-liked-queue-idx], [data-artist-queue-idx], [data-prof-queue]");
+            if (qBtn) {
+              e.preventDefault();
+              e.stopPropagation();
+              const row = qBtn.closest(".track-row");
+              const track = this.findTrackFromElement(row);
+              if (track) {
+                engine.addToQueueEnd(track);
+                qBtn.classList.remove("liked-pop");
+                void qBtn.offsetWidth;
+                qBtn.classList.add("liked-pop");
+                setTimeout(() => qBtn.classList.remove("liked-pop"), 400);
+              }
+            }
+          });
+
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") this.closeContextMenu();
+          });
+
+          window.addEventListener("scroll", () => this.closeContextMenu(), true);
+
+          document.getElementById("ctx-item-add-queue")?.addEventListener("click", () => {
+            if (this.contextMenuTrack) {
+              engine.addToQueueEnd(this.contextMenuTrack);
+            } else if (this.contextMenuAlbum?.tracks?.length) {
+              this.contextMenuAlbum.tracks.forEach(t => engine.addToQueueEnd(t));
+              showToast(`Álbum "${this.contextMenuAlbum.title}" enfileirado! 🐾`);
+            }
+            this.closeContextMenu();
+          });
+
+          document.getElementById("ctx-item-play-next")?.addEventListener("click", () => {
+            if (this.contextMenuTrack) {
+              engine.addToQueueNext(this.contextMenuTrack);
+            }
+            this.closeContextMenu();
+          });
+
+          document.getElementById("ctx-item-toggle-like")?.addEventListener("click", () => {
+            if (this.contextMenuTrack) {
+              state.toggleLike(this.contextMenuTrack);
+              engine.updateLikeButtonUI();
+              this.syncAllLikeButtonsInDOM();
+            }
+            this.closeContextMenu();
+          });
+
+          document.getElementById("ctx-item-add-playlist")?.addEventListener("click", () => {
+            if (this.contextMenuTrack) {
+              this.openTrackOptionsModal(this.contextMenuTrack, this.contextMenuAlbum);
+            }
+            this.closeContextMenu();
+          });
+
+          document.getElementById("ctx-item-go-artist")?.addEventListener("click", () => {
+            const art = this.contextMenuTrack?.artist || this.contextMenuAlbum?.artist;
+            if (art) {
+              this.navigateTo("artist", true, { artistName: art });
+            }
+            this.closeContextMenu();
+          });
+
+          document.getElementById("ctx-item-share")?.addEventListener("click", () => {
+            if (this.contextMenuTrack) {
+              this.shareTrack(this.contextMenuTrack, this.contextMenuAlbum);
+            }
+            this.closeContextMenu();
+          });
+        }
+
+        openContextMenu(e, targetEl) {
+          const menu = document.getElementById("spotify-context-menu");
+          if (!menu) return;
+
+          const track = this.findTrackFromElement(targetEl);
+          this.contextMenuTrack = track;
+          this.contextMenuAlbum = state.currentAlbum;
+
+          const isLiked = track ? state.isLiked(track) : false;
+          const likeIcon = document.getElementById("ctx-like-icon");
+          const likeText = document.getElementById("ctx-like-text");
+          if (likeIcon) likeIcon.setAttribute("fill", isLiked ? "currentColor" : "none");
+          if (likeText) likeText.textContent = isLiked ? "Remover dos Curtidos" : "Curtir faixa";
+
+          menu.classList.add("active");
+          const menuW = 215;
+          const menuH = 260;
+          let left = e.clientX;
+          let top = e.clientY;
+          if (left + menuW > window.innerWidth) left = window.innerWidth - menuW - 10;
+          if (top + menuH > window.innerHeight) top = window.innerHeight - menuH - 10;
+          menu.style.left = `${Math.max(10, left)}px`;
+          menu.style.top = `${Math.max(10, top)}px`;
+        }
+
+        closeContextMenu() {
+          const menu = document.getElementById("spotify-context-menu");
+          if (menu) menu.classList.remove("active");
+          this.contextMenuTrack = null;
+        }
+
+        findTrackFromElement(el) {
+          if (!el) return null;
+          const row = el.closest(".track-row, .album-card");
+          if (!row) return null;
+
+          const tId = row.dataset.trackId;
+          const tKey = row.dataset.trackKey;
+
+          if (tId || tKey) {
+            if (state.currentTrack && (String(state.currentTrack.id) === String(tId) || normalizeTrackKey(state.currentTrack) === tKey)) {
+              return state.currentTrack;
+            }
+            const inQ = state.queue.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+            if (inQ) return inQ;
+            if (state.currentAlbum?.tracks) {
+              const inAlb = state.currentAlbum.tracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inAlb) return inAlb;
+            }
+            if (this.currentArtistSongs) {
+              const inArt = this.currentArtistSongs.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inArt) return inArt;
+            }
+            if (this.lastSearchSongs) {
+              const inSr = this.lastSearchSongs.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inSr) return inSr;
+            }
+            if (this.homeGlobalTopTracks) {
+              const inHomeTop = this.homeGlobalTopTracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inHomeTop) return inHomeTop;
+            }
+            if (this.homeAlgoTracks) {
+              const inHomeAlgo = this.homeAlgoTracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inHomeAlgo) return inHomeAlgo;
+            }
+            if (this.profileLikedTracks) {
+              const inProf = this.profileLikedTracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inProf) return inProf;
+            }
+            if (state.user && Array.isArray(state.user.likedTracks)) {
+              const inLiked = state.user.likedTracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inLiked) return inLiked;
+            }
+            for (const pl of state.playlists || []) {
+              const inPl = (pl.tracks || []).find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inPl) return inPl;
+            }
+            for (const alb of state.albums || []) {
+              const inA = (alb.tracks || []).find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
+              if (inA) return inA;
+            }
+          }
+
+          const titleEl = row.querySelector(".track-title") || row.querySelector(".album-card-title") || row.querySelector(".quick-card-title");
+          const artistEl = row.querySelector(".track-artist") || row.querySelector(".album-card-sub") || row.querySelector(".quick-card-artist");
+          const imgEl = row.querySelector("img");
+          const durEl = row.querySelector(".track-duration-col");
+          if (titleEl) {
+            const title = titleEl.textContent.trim();
+            const rawArtist = artistEl ? artistEl.textContent.split("·")[0].trim() : "";
+            const cleanArtist = rawArtist || "Miado Artist";
+            const cover = imgEl?.src || "";
+            return {
+              id: tId || `tr_${normalizeSongTitleKey(title)}`,
+              title,
+              artist: cleanArtist,
+              albumTitle: (artistEl ? artistEl.textContent.split("·")[1]?.trim() : "") || "Single",
+              coverUrl: cover,
+              duration: durEl ? durEl.textContent.trim() : "3:30",
+              streamUrl: buildFullStreamProxyUrl(title, cleanArtist)
+            };
+          }
+          return null;
         }
 
         closeAllModals() {
@@ -7857,6 +8148,7 @@
           const likedTracks = isMe
             ? deduplicateTracks(state.user.likedTracks || [])
             : (activeUser.likedTracks || [INITIAL_ALBUMS[0].tracks[0], INITIAL_ALBUMS[1].tracks[0], INITIAL_ALBUMS[2].tracks[0]]);
+          this.profileLikedTracks = likedTracks;
 
           const followedArtists = isMe
             ? (state.followedArtists || [])
@@ -8020,6 +8312,9 @@
                             </div>
                             <div class="track-duration-col">${tr.duration || "3:30"}</div>
                             <div class="track-actions-col">
+                              <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-prof-queue="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                              </button>
                               <button class="track-icon-btn ${isLikedTr ? 'liked' : ''}" data-prof-unheart="${idx}" data-like-track-key="${tKey}" data-like-track-id="${tr.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" title="Curtir / Descurtir">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="${isLikedTr ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                               </button>
@@ -8517,6 +8812,9 @@
             ? deduplicateTracks([...globalTopTracks.slice(0, 3), ...recSongsFromAlgo])
             : globalTopTracks.slice(0, 8);
 
+          this.homeGlobalTopTracks = globalTopTracks;
+          this.homeAlgoTracks = algoTracks;
+
           const favArtistsList = Array.isArray(state.user.favoriteArtists) && state.user.favoriteArtists.length > 0
             ? state.user.favoriteArtists
             : ["Billie Eilish", "Lady Gaga", "The Weeknd", "Jão"];
@@ -8641,6 +8939,9 @@
                     </div>
                     <div class="track-duration-col">${track.duration}</div>
                     <div class="track-actions-col">
+                      <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-home-queue-idx="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                      </button>
                       <button class="track-icon-btn ${isLiked ? 'liked' : ''}" data-home-like-idx="${idx}" data-like-track-key="${tKey}" data-like-track-id="${track.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" data-tooltip="${likeTip}" title="${likeTip}" aria-label="${likeTip}">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                       </button>
@@ -8685,6 +8986,9 @@
                     </div>
                     <div class="track-duration-col">${track.duration || "3:40"}</div>
                     <div class="track-actions-col">
+                      <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-home-algo-queue="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                      </button>
                       <button class="track-icon-btn ${isLiked ? 'liked' : ''}" data-home-algo-like="${idx}" data-like-track-key="${tKey}" data-like-track-id="${track.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" data-tooltip="${likeTip}" title="${likeTip}" aria-label="${likeTip}">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                       </button>
@@ -9157,6 +9461,9 @@
                     </div>
                     <div class="track-duration-col">${track.duration}</div>
                     <div class="track-actions-col">
+                      <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-alb-queue-idx="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                      </button>
                       <button class="track-icon-btn ${isLiked ? 'liked' : ''}" data-like-idx="${idx}" data-like-track-key="${tKey}" data-like-track-id="${track.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" data-tooltip="${likeTip}" title="${likeTip}" aria-label="${likeTip}">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                       </button>
@@ -9369,6 +9676,7 @@
 
             try {
               const { artists = [], songs = [], albums = [] } = await MiadoMusicResolver.searchCatalog(cleanTerm);
+              this.lastSearchSongs = songs;
 
               if (!songs.length && !albums.length && !artists.length) {
                 container.innerHTML = `<div style="padding:24px; color:var(--text-muted);">Nenhum resultado encontrado para "${cleanTerm}". Tente outro artista ou música.</div>`;
@@ -9436,6 +9744,9 @@
                         </div>
                         <div class="track-duration-col">${tr.duration}</div>
                         <div class="track-actions-col">
+                          <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-search-queue-idx="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                          </button>
                           <button class="track-icon-btn ${isLiked ? 'liked' : ''}" data-search-like-idx="${idx}" data-like-track-key="${tKey}" data-like-track-id="${tr.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" data-tooltip="${likeTip}" title="${likeTip}" aria-label="${likeTip}">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                           </button>
@@ -10313,6 +10624,9 @@
                     </div>
                     <div class="track-duration-col">${track.duration}</div>
                     <div class="track-actions-col">
+                      <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-pl-queue-idx="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                      </button>
                       <button class="track-icon-btn ${isLiked ? 'liked' : ''}" data-pl-like-idx="${idx}" data-like-track-key="${tKey}" data-like-track-id="${track.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" data-tooltip="${likeTip}" title="${likeTip}" aria-label="${likeTip}">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                       </button>
@@ -10605,6 +10919,9 @@
                     </div>
                     <div class="track-duration-col">${track.duration}</div>
                     <div class="track-actions-col">
+                      <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-liked-queue-idx="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                      </button>
                       <button class="track-icon-btn liked" data-unheart-idx="${idx}" data-like-track-key="${tKey}" data-like-track-id="${track.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" data-tooltip="Remover das Músicas Curtidas" title="Remover das Músicas Curtidas" aria-label="Remover das Músicas Curtidas">
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                       </button>
@@ -10727,6 +11044,8 @@
             songs = deduplicateTracks([...localTracks, ...songs]);
           }
 
+          this.currentArtistSongs = songs;
+
           const heroCover = artistPortrait || (dirEntry && dirEntry.coverUrl) || `/api/artist-image?name=${encodeURIComponent(cleanArtist)}`;
           const isFollowingArtist = state.isArtistFollowed(cleanArtist);
 
@@ -10791,6 +11110,9 @@
                         </div>
                         <div class="track-duration-col">${tr.duration}</div>
                         <div class="track-actions-col">
+                          <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-artist-queue-idx="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                          </button>
                           <button class="track-icon-btn ${isLiked ? 'liked' : ''}" data-artist-like-idx="${idx}" data-like-track-key="${tKey}" data-like-track-id="${tr.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" data-tooltip="${likeTip}" title="${likeTip}" aria-label="${likeTip}">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                           </button>
@@ -11162,28 +11484,100 @@
 
         renderQueue() {
           const container = document.getElementById("right-sidebar-body");
+          if (!container) return;
+
+          if (!Array.isArray(state.queue) || state.queue.length === 0) {
+            container.innerHTML = `
+              <div style="text-align:center; padding:32px 14px; color:var(--text-muted);">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="margin-bottom:8px; opacity:0.6;"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
+                <div style="font-weight:700; color:#fff; font-size:0.88rem;">Sua fila está vazia</div>
+                <div style="font-size:0.74rem; color:var(--text-secondary); margin-top:4px;">Adicione faixas de qualquer álbum ou artista para ouvi-las a seguir.</div>
+              </div>
+            `;
+            return;
+          }
+
+          const currentIdx = state.queueIndex ?? 0;
+          const currentTr = state.queue[currentIdx] || state.currentTrack;
+          const upcoming = state.queue.slice(currentIdx + 1);
+
+          const manualUpcoming = upcoming.filter(t => t && t._isManualQueue);
+          const contextUpcoming = upcoming.filter(t => t && !t._isManualQueue);
+
           container.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:700;">Fila (${state.queue.length})</div>
-              <button id="btn-clear-queue" style="font-size:0.75rem; color:var(--accent-hover); font-weight:700;">Limpar</button>
+              <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:800;">Fila de Reprodução (${state.queue.length})</div>
+              ${upcoming.length > 0 ? `<button id="btn-clear-queue" style="font-size:0.75rem; color:var(--accent-hover); font-weight:700; cursor:pointer;">Limpar Fila</button>` : ""}
             </div>
-            ${state.queue.map((track, idx) => `
-              <div class="track-row ${idx === state.queueIndex ? 'playing' : ''}" style="min-height:48px; padding:5px 8px; border-radius:8px; margin-bottom:4px; gap:8px;" data-queue-idx="${idx}">
-                <img class="track-row-cover" style="width:36px; height:36px; border-radius:6px;" src="${ensureTrackCoverUrl(track)}" alt="${track.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${track.title.replace(/'/g, "")}', '${track.artist.replace(/'/g, "")}')" />
+
+            <!-- 1. TOCANDO AGORA -->
+            ${currentTr ? `
+              <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover); margin-bottom:6px;">Tocando Agora</div>
+              <div class="track-row playing" style="min-height:48px; padding:6px 8px; border-radius:10px; margin-bottom:12px; gap:8px;" data-queue-idx="${currentIdx}">
+                <img class="track-row-cover" style="width:38px; height:38px; border-radius:6px;" src="${ensureTrackCoverUrl(currentTr)}" alt="${currentTr.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${currentTr.title.replace(/'/g, "")}', '${currentTr.artist.replace(/'/g, "")}')" />
                 <div class="track-info-col">
-                  <div class="track-title" style="font-size:0.84rem;">${track.title}</div>
-                  <div class="track-artist" style="font-size:0.72rem;">${track.artist}</div>
+                  <div class="track-title" style="font-size:0.85rem; color:#fff; font-weight:700;">${currentTr.title}</div>
+                  <div class="track-artist" style="font-size:0.73rem;">${currentTr.artist}</div>
                 </div>
-                <div style="display:flex; align-items:center; gap:2px;">
-                  <button class="track-icon-btn" style="width:28px; height:28px;" data-queue-addpl="${idx}" title="Adicionar à Playlist">
+                <div style="display:flex; align-items:center; gap:2px; margin-right:4px;">
+                  <button class="track-icon-btn" style="width:28px; height:28px;" data-queue-addpl="${currentIdx}" title="Adicionar à Playlist">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  </button>
-                  <button class="track-icon-btn" style="width:28px; height:28px;" data-remove-queue="${idx}" title="Remover">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </div>
               </div>
-            `).join("")}
+            ` : ""}
+
+            <!-- 2. A SEGUIR NA FILA (MANUAIS DO USUÁRIO) -->
+            ${manualUpcoming.length > 0 ? `
+              <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:6px;">A Seguir na Fila (${manualUpcoming.length})</div>
+              ${manualUpcoming.map((track) => {
+                const globalIdx = state.queue.indexOf(track);
+                return `
+                <div class="track-row" style="min-height:46px; padding:5px 8px; border-radius:8px; margin-bottom:4px; gap:8px;" data-queue-idx="${globalIdx}">
+                  <img class="track-row-cover" style="width:36px; height:36px; border-radius:6px;" src="${ensureTrackCoverUrl(track)}" alt="${track.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${track.title.replace(/'/g, "")}', '${track.artist.replace(/'/g, "")}')" />
+                  <div class="track-info-col">
+                    <div class="track-title" style="font-size:0.83rem;">${track.title}</div>
+                    <div class="track-artist" style="font-size:0.72rem;">${track.artist}</div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:2px;">
+                    <button class="track-icon-btn" style="width:28px; height:28px;" data-queue-addpl="${globalIdx}" title="Adicionar à Playlist">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                    <button class="track-icon-btn" style="width:28px; height:28px;" data-remove-queue="${globalIdx}" title="Remover da fila">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                </div>
+                `;
+              }).join("")}
+            ` : ""}
+
+            <!-- 3. A SEGUIR DO CONTEXTO ATUAL -->
+            ${contextUpcoming.length > 0 ? `
+              <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin:12px 0 6px;">
+                A Seguir de: ${(state.currentAlbum && state.currentAlbum.title) || "Álbum Atual"}
+              </div>
+              ${contextUpcoming.slice(0, 20).map((track) => {
+                const globalIdx = state.queue.indexOf(track);
+                return `
+                <div class="track-row" style="min-height:46px; padding:5px 8px; border-radius:8px; margin-bottom:4px; gap:8px;" data-queue-idx="${globalIdx}">
+                  <img class="track-row-cover" style="width:36px; height:36px; border-radius:6px;" src="${ensureTrackCoverUrl(track)}" alt="${track.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${track.title.replace(/'/g, "")}', '${track.artist.replace(/'/g, "")}')" />
+                  <div class="track-info-col">
+                    <div class="track-title" style="font-size:0.83rem;">${track.title}</div>
+                    <div class="track-artist" style="font-size:0.72rem;">${track.artist}</div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:2px;">
+                    <button class="track-icon-btn" style="width:28px; height:28px;" data-queue-addpl="${globalIdx}" title="Adicionar à Playlist">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+                    <button class="track-icon-btn" style="width:28px; height:28px;" data-remove-queue="${globalIdx}" title="Remover da fila">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                </div>
+                `;
+              }).join("")}
+            ` : ""}
           `;
 
           const clearBtn = document.getElementById("btn-clear-queue");
@@ -11191,7 +11585,9 @@
             clearBtn.addEventListener("click", () => {
               state.queue = state.currentTrack ? [state.currentTrack] : [];
               state.queueIndex = 0;
+              state.manualQueueCount = 0;
               this.renderQueue();
+              showToast("Fila limpa com sucesso.");
             });
           }
 

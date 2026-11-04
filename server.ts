@@ -2271,14 +2271,29 @@ async function startServer() {
     const q = `${title} ${artist}`.trim();
     if (q) {
       try {
-        const itRes = await fetchWithTimeout(
-          `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=song&limit=5`,
-          {},
-          3400
-        );
-        if (itRes.ok) {
-          const itData = (await itRes.json()) as any;
-          const results: any[] = Array.isArray(itData?.results) ? itData.results : [];
+        const [dzSettled, itSettled] = await Promise.allSettled([
+          fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=5`, {}, 2500).then(r => (r.ok ? r.json() : null)),
+          fetchWithTimeout(
+            `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=song&limit=5`,
+            { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } },
+            2500
+          ).then(r => (r.ok ? r.json() : null))
+        ]);
+
+        if (dzSettled.status === "fulfilled" && dzSettled.value) {
+          const list: any[] = Array.isArray((dzSettled.value as any)?.data) ? (dzSettled.value as any).data : [];
+          const matched =
+            list.find(x => normalizeSongTitleKey(x?.title || "") === normalizeSongTitleKey(title)) ||
+            list.find(x => x?.album?.cover_xl || x?.album?.cover_big || x?.album?.cover_medium) ||
+            list[0];
+          if (matched?.album) {
+            const c = matched.album.cover_xl || matched.album.cover_big || matched.album.cover_medium;
+            if (c) candidateUrls.push(upgradeArtwork(c));
+          }
+        }
+
+        if (itSettled.status === "fulfilled" && itSettled.value) {
+          const results: any[] = Array.isArray((itSettled.value as any)?.results) ? (itSettled.value as any).results : [];
           const best =
             results.find(r => normalizeSongTitleKey(r.trackName || "") === normalizeSongTitleKey(title)) ||
             results[0];
@@ -2287,25 +2302,6 @@ async function startServer() {
           }
         }
       } catch (_e) {}
-
-      if (candidateUrls.length === 0) {
-        try {
-          const dzRes = await fetchWithTimeout(
-            `https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=5`,
-            {},
-            3400
-          );
-          if (dzRes.ok) {
-            const dzData = (await dzRes.json()) as any;
-            const list: any[] = Array.isArray(dzData?.data) ? dzData.data : [];
-            const first = list.find(x => x?.album?.cover_xl || x?.album?.cover_big || x?.album?.cover_medium);
-            if (first?.album) {
-              const c = first.album.cover_xl || first.album.cover_big || first.album.cover_medium;
-              if (c) candidateUrls.push(upgradeArtwork(c));
-            }
-          }
-        } catch (_e) {}
-      }
     }
 
     for (const imgUrl of candidateUrls) {
