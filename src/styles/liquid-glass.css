@@ -1,0 +1,304 @@
+/**
+ * Fase 1 — Liquid Glass Robusto, Consistente (Dev & Prod) e Responsivo
+ * - Camada cromática dinâmica (#miado-ambient-backdrop) alimentada pelas cores da capa atual
+ * - Três níveis padronizados de vidro: glass-1, glass-2, glass-3 (blur 16px..28px, saturate 165%..190%)
+ * - Fallbacks @supports, prefers-reduced-transparency, prefers-reduced-motion e prefers-contrast
+ * - Correção de artefatos de hover em botões de curtir/adicionar e alinhamento uniforme de botões Seguindo
+ */
+
+:root {
+  --ambient-c1: 139, 92, 246;
+  --ambient-c2: 59, 130, 246;
+  --ambient-c3: 236, 72, 153;
+
+  /* Tokens padronizados de Liquid Glass */
+  --glass-blur-1: blur(20px) saturate(175%);
+  --glass-blur-2: blur(24px) saturate(180%);
+  --glass-blur-3: blur(28px) saturate(190%);
+  --glass-blur: var(--glass-blur-2);
+  --glass-blur-heavy: var(--glass-blur-3);
+
+  --glass-bg-1: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  --glass-bg-2: linear-gradient(135deg, rgba(22, 18, 36, 0.56) 0%, rgba(12, 10, 22, 0.42) 100%);
+  --glass-bg-3: linear-gradient(135deg, rgba(26, 20, 42, 0.66) 0%, rgba(14, 11, 26, 0.52) 100%);
+
+  --glass-border-subtle: rgba(255, 255, 255, 0.08);
+  --glass-border-mid: rgba(255, 255, 255, 0.12);
+  --glass-border-bright: rgba(255, 255, 255, 0.2);
+  --glass-specular-inset: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+html,
+body {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  background-color: #07060b;
+  overflow: hidden;
+}
+
+#app-container {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100dvh;
+  background: transparent !important;
+}
+
+/* Fundo cromático dinâmico para que o backdrop-filter sempre tenha cores reais para refratar */
+#miado-ambient-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(var(--ambient-c1), 0.28), transparent 55%),
+    radial-gradient(circle at 82% 85%, rgba(var(--ambient-c2), 0.22), transparent 55%),
+    #07060b;
+}
+
+.ambient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(84px);
+  opacity: 0.62;
+  will-change: transform, background-color;
+  transition: background-color 1.4s ease;
+}
+
+.ambient-orb-1 {
+  width: 54vw;
+  height: 54vw;
+  max-width: 720px;
+  max-height: 720px;
+  top: -12%;
+  left: -6%;
+  background: radial-gradient(circle, rgba(var(--ambient-c1), 0.72) 0%, rgba(var(--ambient-c1), 0) 72%);
+  animation: miadoOrbFloat1 22s ease-in-out infinite alternate;
+}
+
+.ambient-orb-2 {
+  width: 48vw;
+  height: 48vw;
+  max-width: 640px;
+  max-height: 640px;
+  bottom: -10%;
+  right: -4%;
+  background: radial-gradient(circle, rgba(var(--ambient-c2), 0.58) 0%, rgba(var(--ambient-c2), 0) 72%);
+  animation: miadoOrbFloat2 26s ease-in-out infinite alternate;
+}
+
+.ambient-orb-3 {
+  width: 42vw;
+  height: 42vw;
+  max-width: 540px;
+  max-height: 540px;
+  top: 28%;
+  left: 34%;
+  background: radial-gradient(circle, rgba(var(--ambient-c3), 0.45) 0%, rgba(var(--ambient-c3), 0) 72%);
+  animation: miadoOrbFloat3 30s ease-in-out infinite alternate;
+}
+
+@keyframes miadoOrbFloat1 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(40px, 28px, 0) scale(1.08); }
+}
+
+@keyframes miadoOrbFloat2 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(-36px, -24px, 0) scale(1.06); }
+}
+
+@keyframes miadoOrbFloat3 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(24px, -30px, 0) scale(1.05); }
+}
+
+/* Superfícies Liquid Glass Níveis 1, 2 e 3 */
+.sidebar-left,
+.sidebar-right,
+.top-bar {
+  background: var(--glass-bg-2) !important;
+  backdrop-filter: var(--glass-blur-2) !important;
+  -webkit-backdrop-filter: var(--glass-blur-2) !important;
+  border-color: var(--glass-border-subtle) !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.42), var(--glass-specular-inset) !important;
+}
+
+.player-footer {
+  background: var(--glass-bg-3) !important;
+  backdrop-filter: var(--glass-blur-3) !important;
+  -webkit-backdrop-filter: var(--glass-blur-3) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.55), var(--glass-specular-inset) !important;
+}
+
+.album-card,
+.quick-card,
+.friend-activity-card {
+  background: var(--glass-bg-1) !important;
+  backdrop-filter: var(--glass-blur-1);
+  -webkit-backdrop-filter: var(--glass-blur-1);
+  border: 1px solid var(--glass-border-subtle) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), var(--glass-specular-inset);
+}
+
+.album-card:hover,
+.quick-card:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: var(--glass-border-bright) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+/* Focus Mode Selector: div#modal-fullscreen-player — Liquid Glass Spotify / Apple Music */
+#modal-fullscreen-player,
+div#modal-fullscreen-player,
+div#modal-fullscreen-player:nth-of-type(6) {
+  background-color: rgba(6, 5, 12, 0.72) !important;
+  backdrop-filter: blur(60px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(60px) saturate(180%) !important;
+}
+
+.fullscreen-player-dialog,
+div#modal-fullscreen-player .fullscreen-player-dialog,
+div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
+  background: linear-gradient(145deg, rgba(20, 16, 34, 0.78) 0%, rgba(10, 8, 20, 0.68) 100%) !important;
+  backdrop-filter: blur(60px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(60px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.82), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Correção definitiva do efeito estranho no hover dos botões de curtida (♥) e adicionar (+) na tracklist */
+.track-icon-btn::before,
+.track-icon-btn::after,
+.track-icon-btn[data-tooltip]::before,
+.track-icon-btn[data-tooltip]::after,
+.player-ctrl-btn[data-tooltip]::before,
+.player-ctrl-btn[data-tooltip]::after {
+  display: none !important;
+  content: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.track-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: background-color 0.16s ease, color 0.16s ease, transform 0.16s ease, border-color 0.16s ease;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.track-icon-btn:hover {
+  background-color: rgba(168, 85, 247, 0.16) !important;
+  border-color: rgba(192, 132, 252, 0.32) !important;
+  color: #ffffff !important;
+  transform: scale(1.06);
+  box-shadow: none !important;
+}
+
+.track-icon-btn.liked {
+  color: #c084fc !important;
+}
+
+/* Padronização da altura dos cards e alinhamento dos botões Seguindo / Seguir na mesma linha inferior */
+.cards-row-scroll {
+  align-items: stretch !important;
+}
+
+.album-card {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  height: auto !important;
+}
+
+.album-card .card-meta-sub {
+  margin-bottom: 8px;
+}
+
+.album-card button[data-follow-artist],
+.album-card button[data-follow-profile],
+.album-card .album-action-btn {
+  margin-top: auto !important;
+}
+
+/* Otimização Mobile: máx 3 camadas de backdrop-filter simultâneas para manter 60fps */
+@media (max-width: 900px) {
+  .album-card,
+  .quick-card,
+  .friend-activity-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(20, 15, 36, 0.86) !important;
+  }
+
+  .mobile-floating-player {
+    background: var(--glass-bg-2) !important;
+    backdrop-filter: var(--glass-blur-2) !important;
+    -webkit-backdrop-filter: var(--glass-blur-2) !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  }
+
+  .mobile-bottom-nav {
+    background: var(--glass-bg-3) !important;
+    backdrop-filter: var(--glass-blur-2) !important;
+    -webkit-backdrop-filter: var(--glass-blur-2) !important;
+  }
+
+  .track-icon-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+/* Fallbacks para navegadores sem suporte a backdrop-filter ou preferência por transparência reduzida */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sidebar-left,
+  .sidebar-right,
+  .top-bar,
+  .player-footer,
+  .fullscreen-player-dialog,
+  .modal-dialog {
+    background: #120e20 !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .sidebar-left,
+  .sidebar-right,
+  .top-bar,
+  .player-footer,
+  .fullscreen-player-dialog,
+  .modal-dialog,
+  .album-card,
+  .quick-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: #130f22 !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-orb {
+    animation: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --glass-border-subtle: rgba(255, 255, 255, 0.35);
+    --glass-border-mid: rgba(255, 255, 255, 0.5);
+  }
+}
