@@ -26,7 +26,7 @@ service cloud.firestore {
       ];
       return data.keys().hasAll(['uid', 'email', 'name', 'catId', 'createdAt'])
         && data.keys().hasOnly(allowedKeys)
-        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.uid is string && data.uid == request.auth.uid && data.uid.size() >= 1 && data.uid.size() <= 128
         && isValidEmail(data.email)
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
         && (!('handle' in data) || (data.handle is string && data.handle.size() <= 60))
@@ -48,6 +48,27 @@ service cloud.firestore {
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 40));
     }
 
+    function isValidProfile(data) {
+      let allowedKeys = [
+        'uid', 'name', 'username', 'bio', 'avatarUrl', 'bannerUrl', 'favoriteArtists',
+        'currentTrack', 'trackObj', 'albumId', 'isSelf', 'updatedAt', 'createdAt'
+      ];
+      return data.keys().hasAll(['uid', 'name'])
+        && data.keys().hasOnly(allowedKeys)
+        && data.uid is string && data.uid == request.auth.uid && data.uid.size() >= 1 && data.uid.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && (!('username' in data) || (data.username is string && data.username.size() <= 60))
+        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 300))
+        && (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 2000000))
+        && (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() <= 2000000))
+        && (!('favoriteArtists' in data) || (data.favoriteArtists is list && data.favoriteArtists.size() <= 60))
+        && (!('currentTrack' in data) || (data.currentTrack is string && data.currentTrack.size() <= 200))
+        && (!('albumId' in data) || (data.albumId is string && data.albumId.size() <= 100))
+        && (!('isSelf' in data) || (data.isSelf is bool))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50))
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50));
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId)
@@ -55,19 +76,26 @@ service cloud.firestore {
         && isValidUserAccount(request.resource.data)
         && request.resource.data.uid == request.auth.uid;
       allow update: if isOwner(userId)
+        && isValidId(userId)
         && isValidUserAccount(request.resource.data)
         && request.resource.data.uid == resource.data.uid;
       allow delete: if isOwner(userId);
     }
 
     match /profiles/{profileId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(profileId)
+        && isValidId(profileId)
+        && isValidProfile(request.resource.data);
+      allow update: if isOwner(profileId)
+        && isValidId(profileId)
+        && isValidProfile(request.resource.data)
+        && request.resource.data.uid == resource.data.uid;
+      allow delete: if isOwner(profileId);
+    }
+
+    match /test/{docId} {
       allow read: if true;
-      allow create, update: if isAuthenticated()
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.name is string
-        && request.resource.data.name.size() >= 1
-        && request.resource.data.name.size() <= 80;
-      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
     }
 
     match /{document=**} {

@@ -2,37 +2,65 @@
   "entities": {
     "UserAccount": {
       "title": "UserAccount",
-      "description": "User account and music profile stored in Miado database",
+      "description": "User account and private music profile stored in Miado Firestore database",
       "type": "object",
       "properties": {
         "uid": {
           "type": "string",
-          "description": "Unique account identifier"
+          "description": "Unique account identifier matching Firebase Auth UID",
+          "maxLength": 128
         },
         "email": {
           "type": "string",
           "format": "email",
-          "description": "User email address"
+          "description": "User email address",
+          "maxLength": 254
         },
         "name": {
           "type": "string",
-          "description": "Display name"
+          "description": "Display name chosen by user or from Google account",
+          "maxLength": 80
         },
         "handle": {
           "type": "string",
-          "description": "User handle"
+          "description": "Unique user handle (e.g. @username or @name1234)",
+          "maxLength": 60
         },
         "bio": {
           "type": "string",
-          "description": "Profile biography"
+          "description": "Profile biography",
+          "maxLength": 300
         },
         "catId": {
           "type": "string",
-          "description": "Selected cat avatar ID"
+          "description": "Selected cat avatar ID",
+          "maxLength": 40
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Avatar URL or preset path",
+          "maxLength": 2000000
+        },
+        "bannerUrl": {
+          "type": "string",
+          "description": "Banner cover image URL",
+          "maxLength": 2000000
         },
         "favoriteArtists": {
           "type": "array",
           "description": "User favorite artists for recommendations"
+        },
+        "favoriteGenres": {
+          "type": "array",
+          "description": "Favorite musical genres"
+        },
+        "followedArtists": {
+          "type": "array",
+          "description": "List of followed artists"
+        },
+        "followingProfiles": {
+          "type": "array",
+          "description": "List of followed community profile handles"
         },
         "likedTracks": {
           "type": "array",
@@ -46,18 +74,92 @@
           "type": "array",
           "description": "Recently played tracks history"
         },
+        "onboardingCompleted": {
+          "type": "boolean",
+          "description": "Whether the user finished onboarding wizard"
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Creation timestamp"
+          "description": "Creation timestamp",
+          "maxLength": 40
         },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Last update timestamp"
+          "description": "Last update timestamp",
+          "maxLength": 40
         }
       },
       "required": ["uid", "email", "name", "catId", "createdAt"]
+    },
+    "Profile": {
+      "title": "Profile",
+      "description": "Community profile card visible to other authenticated listeners",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Author UID matching Firebase Auth UID",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "User display name",
+          "maxLength": 80
+        },
+        "username": {
+          "type": "string",
+          "description": "User public handle with leading @",
+          "maxLength": 60
+        },
+        "bio": {
+          "type": "string",
+          "description": "Short bio",
+          "maxLength": 300
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Avatar photo or cat preset",
+          "maxLength": 2000000
+        },
+        "bannerUrl": {
+          "type": "string",
+          "description": "Banner cover image URL",
+          "maxLength": 2000000
+        },
+        "favoriteArtists": {
+          "type": "array",
+          "description": "List of favorite artists"
+        },
+        "currentTrack": {
+          "type": "string",
+          "description": "Current song being listened to",
+          "maxLength": 200
+        },
+        "albumId": {
+          "type": "string",
+          "description": "Current album ID",
+          "maxLength": 100
+        },
+        "isSelf": {
+          "type": "boolean",
+          "description": "Self indicator flag"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp",
+          "maxLength": 50
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp",
+          "maxLength": 50
+        }
+      },
+      "required": ["uid", "name"]
     }
   },
   "firestore": {
@@ -65,7 +167,13 @@
       "schema": {
         "$ref": "#/entities/UserAccount"
       },
-      "description": "Stores user profile, liked tracks, playlists, and music history"
+      "description": "Stores private user account, music preferences, liked tracks, playlists, and listening history. Restricted strictly to owner."
+    },
+    "/profiles/{profileId}": {
+      "schema": {
+        "$ref": "#/entities/Profile"
+      },
+      "description": "Public community profiles. Readable by authenticated users; writable only by profile owner."
     }
   }
 }

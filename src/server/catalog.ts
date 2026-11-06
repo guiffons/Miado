@@ -113,8 +113,8 @@ export function buildCanonicalDedupKey(track: {
   const cleanTitle = normalizeCatalogText(
     String(track.title || "")
       .replace(/\s*[\(\[]\s*(?:feat\.?|ft\.?|with|part\.?)\s+[^\)\]]+[\)\]]/gi, "")
-      .replace(/\s*[\(\[]\s*(?:explicit|clean|deluxe|remaster(?:ed)?|bonus(?:\s+track)?|album\s+version|single\s+version)[^\)\]]*[\)\]]/gi, "")
-      .replace(/\s*-\s*(?:remaster(?:ed)?|deluxe|bonus track|explicit|clean).*$/i, "")
+      .replace(/\s*[\(\[]\s*[^\)\]]*\b(?:explicit|clean|deluxe|remaster(?:ed)?|bonus(?:\s+track)?|album\s+version|single\s+version|radio\s+edit|anniversary|edition)\b[^\)\]]*[\)\]]/gi, "")
+      .replace(/\s*-\s*(?:\d{4}\s+)?(?:remaster(?:ed)?|deluxe|bonus track|explicit|clean|single version|radio edit).*$/i, "")
   );
   const artistSet = extractAllArtistNames(track.artist || "", track.artists, track.title || "");
   return `meta:${cleanTitle}::${artistSet.join("+")}`;
@@ -131,7 +131,7 @@ const STRICT_NON_STUDIO_PATTERNS: RegExp[] = [
   /[\(\[\-]\s*(?:live|ao\s*vivo|ac[uú]stico|acoustic|unplugged|karaok[eê]|instrumental|acapella|a\s*cappella)\b/i,
   /\b(?:karaok[eê]|tribute\s+to|originally\s+performed\s+by|in\s+the\s+style\s+of|cover\s+version|8-bit\s+version|lullaby\s+version)\b/i,
   /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed)\b/i,
-  /[\(\[\-]\s*(?:[^\)\]]*\bremix\b|rework|bootleg|mashup|extended\s+mix|club\s+mix|radio\s+edit)\b/i
+  /[\(\[\-]\s*(?:[^\)\]]*\bremix\b|rework|bootleg|mashup|extended\s+mix|club\s+mix)\b/i
 ];
 
 const NON_STUDIO_ARTIST_PATTERNS: RegExp[] = [

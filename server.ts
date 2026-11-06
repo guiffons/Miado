@@ -153,10 +153,46 @@ function checkAuthRateLimit(ip: string): boolean {
   return entry.count <= 35;
 }
 
+const DB_ENCRYPTION_KEY = crypto.createHash("sha256").update(SESSION_SECRET + ":aes_256_gcm_db_key").digest();
+
+function encryptPayloadAES(dataObj: unknown): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", DB_ENCRYPTION_KEY, iv);
+  const plaintext = JSON.stringify(dataObj);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `enc_v1:${iv.toString("base64")}:${tag.toString("base64")}:${encrypted.toString("base64")}`;
+}
+
+function decryptPayloadAES(cipherStr: string): any {
+  if (!cipherStr || !cipherStr.startsWith("enc_v1:")) return null;
+  try {
+    const parts = cipherStr.split(":");
+    if (parts.length !== 4) return null;
+    const iv = Buffer.from(parts[1], "base64");
+    const tag = Buffer.from(parts[2], "base64");
+    const encrypted = Buffer.from(parts[3], "base64");
+    const decipher = crypto.createDecipheriv("aes-256-gcm", DB_ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8");
+    return JSON.parse(decrypted);
+  } catch {
+    return null;
+  }
+}
+
 function readDb(): DbSchema {
   try {
     if (fs.existsSync(DB_FILE)) {
-      return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+      const parsed = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+      if (parsed && typeof parsed._encryptedVault === "string") {
+        const decryptedVault = decryptPayloadAES(parsed._encryptedVault);
+        if (decryptedVault && typeof decryptedVault === "object") {
+          const { _encryptedVault: _, ...rest } = parsed;
+          return { ...rest, ...decryptedVault };
+        }
+      }
+      return parsed;
     }
   } catch (e) {
     console.warn("Erro ao ler banco local:", e);
@@ -168,8 +204,20 @@ function writeDb(data: DbSchema): DbSchema {
   try {
     const current = readDb();
     const merged: DbSchema = { ...current, ...data };
+    const { accounts, user, likedTracks, playlists, recentHistory, ...publicFields } = merged;
+    const encryptedVault = encryptPayloadAES({
+      accounts: accounts || {},
+      user: user || {},
+      likedTracks: likedTracks || [],
+      playlists: playlists || [],
+      recentHistory: recentHistory || []
+    });
+    const diskObject = {
+      ...publicFields,
+      _encryptedVault: encryptedVault
+    };
     const tmpFile = `${DB_FILE}.tmp`;
-    fs.writeFileSync(tmpFile, JSON.stringify(merged, null, 2), "utf8");
+    fs.writeFileSync(tmpFile, JSON.stringify(diskObject, null, 2), "utf8");
     fs.renameSync(tmpFile, DB_FILE);
     return merged;
   } catch (e) {
@@ -221,8 +269,9 @@ function normalizeStr(s: string): string {
 function normalizeSongTitleKey(title: string): string {
   const cleaned = String(title || "")
     .replace(/['’‘`´]/g, "'")
-    .replace(/\((?:deluxe|remastered|remaster|explicit|clean|version|radio edit|bonus track|single|feat|ft|with).*?\)/gi, "")
-    .replace(/\[(?:deluxe|remastered|remaster|explicit|clean|version|radio edit|bonus track|single|feat|ft|with).*?\]/gi, "");
+    .replace(/\([^)]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|anniversary|edition|feat|ft|with)\b[^)]*\)/gi, "")
+    .replace(/\[[^\]]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|anniversary|edition|feat|ft|with)\b[^\]]*\]/gi, "")
+    .replace(/\s*-\s*(?:\d{4}\s+)?(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|anniversary|edition).*$/gi, "");
   return normalizeStr(cleaned) || normalizeStr(title);
 }
 
@@ -308,7 +357,9 @@ const ARTIST_ALIASES: Record<string, string[]> = {
   "lady gaga": ["lady gaga", "stefani germanotta"],
   "the weeknd": ["the weeknd", "weeknd", "abel tesfaye"],
   "jao": ["jao", "jão"],
-  "jão": ["jao", "jão"]
+  "jão": ["jao", "jão"],
+  "anavitoria": ["anavitoria", "anavitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"],
+  "anavitória": ["anavitoria", "anavitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"]
 };
 
 function artistMatchesTarget(candidateArtist: string, targetArtist: string): boolean {
@@ -546,6 +597,18 @@ const HARD_REJECT_WORDS = [
  * Catálogo Verificado de Mestres de Estúdio Oficiais HD (Áudio de Gravadora 100% Puro, Sem Lives/Shows)
  */
 const VERIFIED_STUDIO_CATALOG: Record<string, { url: string; durationSec: number; source: string }> = {
+  // --- ANAVITÓRIA (Universal Music / COR Master Studio Oficial em Português) ---
+  "lisboa|anavitoria": {
+    url: "/audio/lisboa_anavitoria.m4a",
+    durationSec: 219,
+    source: "Miado Master Studio HD (ANAVITÓRIA & Lenine - Versão Oficial em Português)"
+  },
+  "lisboa|anavitória": {
+    url: "/audio/lisboa_anavitoria.m4a",
+    durationSec: 219,
+    source: "Miado Master Studio HD (ANAVITÓRIA & Lenine - Versão Oficial em Português)"
+  },
+
   // --- KANYE WEST (Def Jam / Roc-A-Fella Master Studio) ---
   "heartless|kanye west": {
     url: "https://discoveryprovider.audius.co/v1/tracks/bbmrW/stream?app_name=MIADO",
@@ -1133,7 +1196,7 @@ async function resolveFromSinglePipedInstance(
           const rawTitle = String(it.title || "");
           const uploader = String(it.uploaderName || "");
           const low = `${rawTitle} ${uploader}`.toLowerCase();
-          const durOk = d >= 95 && d <= 600 && (!hasExactDuration || Math.abs(d - expectedSec) <= 35);
+          const durOk = d >= 90 && d <= 660 && (!hasExactDuration || Math.abs(d - expectedSec) <= 45);
           if (!durOk) return null;
           if (HARD_REJECT_WORDS.some(w => low.includes(w) && !targetTitleNorm.includes(w))) return null;
           if (!isOriginalStudioTrack(rawTitle, uploader, "", d)) return null;
@@ -1142,7 +1205,7 @@ async function resolveFromSinglePipedInstance(
           const artistOk = !targetArtistNorm || normItem.includes(targetArtistNorm) || artistMatchesTarget(uploader, targetArtistNorm);
           if (!titleOk || !artistOk) return null;
 
-          let sc = 100 - (hasExactDuration ? Math.abs(d - expectedSec) * 2 : 0);
+          let sc = 100 - (hasExactDuration ? Math.abs(d - expectedSec) * 1.5 : 0);
           const upLow = uploader.toLowerCase();
           if (upLow.includes("- topic") || upLow.includes("vevo") || it.uploaderVerified) sc += 50;
           if (artistMatchesTarget(uploader.replace(/\s*-\s*topic/i, "").replace(/vevo/i, ""), targetArtistNorm)) sc += 40;
@@ -1160,7 +1223,7 @@ async function resolveFromSinglePipedInstance(
       if (!stRes.ok) return null;
       const stData = (await stRes.json()) as any;
       const dur = Number(stData.duration) || Number(validItem.duration) || expectedSec;
-      if (dur < 95 || dur > 600 || Math.abs(dur - expectedSec) > 24) return null;
+      if (dur < 90 || dur > 660 || (hasExactDuration && Math.abs(dur - expectedSec) > 45)) return null;
 
       const streams = (stData.audioStreams || []).filter(
         (s: any) => s.url && (s.format === "M4A" || s.format === "WEBM" || (s.mimeType && s.mimeType.startsWith("audio/")))
@@ -1183,7 +1246,7 @@ async function resolveFromSinglePipedInstance(
         const rawTitle = String(v?.title || "");
         const author = String(v?.author || "");
         const low = `${rawTitle} ${author}`.toLowerCase();
-        const durOk = d >= 95 && d <= 600 && (!hasExactDuration || Math.abs(d - expectedSec) <= 35);
+        const durOk = d >= 90 && d <= 660 && (!hasExactDuration || Math.abs(d - expectedSec) <= 45);
         if (!v?.videoId || !durOk) return false;
         if (HARD_REJECT_WORDS.some(w => low.includes(w) && !targetTitleNorm.includes(w))) return false;
         if (!isOriginalStudioTrack(rawTitle, author, "", d)) return false;
@@ -1198,7 +1261,7 @@ async function resolveFromSinglePipedInstance(
       if (!vRes.ok) return null;
       const vData = (await vRes.json()) as any;
       const dur = Number(vData.lengthSeconds) || Number(validVideo.lengthSeconds) || expectedSec;
-      if (dur < 95 || dur > 600 || (hasExactDuration && Math.abs(dur - expectedSec) > 35)) return null;
+      if (dur < 90 || dur > 660 || (hasExactDuration && Math.abs(dur - expectedSec) > 45)) return null;
 
       const formats = (vData.adaptiveFormats || []).filter((f: any) => f.url && f.type && f.type.startsWith("audio/"));
       formats.sort((a: any, b: any) => (parseInt(b.bitrate) || 0) - (parseInt(a.bitrate) || 0));
@@ -1368,11 +1431,11 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
         const results: any[] = data?.results || [];
         if (!results.length) continue;
 
-        // Pass 1: Correspondência estrita de título + artista + tolerância de ±18s
+        // Pass 1: Correspondência estrita de título + artista + tolerância de ±40s
         for (const item of results) {
           const durSec = Number(item?.more_info?.duration || 0);
           if (!item?.more_info?.encrypted_media_url || durSec < 60 || durSec > 720) continue;
-          if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 18) continue;
+          if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 40) continue;
 
           const itemTitle = String(item.title || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#039;/g, "'");
           const itemAlbum = String(item.more_info?.album || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
@@ -1519,7 +1582,7 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
 
         const durSec = Math.round(durMs / 1000);
         if (durSec < 60 || durSec > 720) continue;
-        if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 18) continue;
+        if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 40) continue;
 
         const rawTitle = String(t.title || "");
         const uploader = String(t.user?.username || "");
@@ -1664,7 +1727,7 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
           if (!isOriginalStudioTrack(name)) return false;
           const fnNorm = normalizeStr(name.replace(/\.(mp3|m4a)$/i, ""));
           const lenSec = parseFloat(f.length || "0") || expectedSec;
-          return fnNorm.includes(tNorm) && lenSec >= 60 && lenSec <= 720 && Math.abs(lenSec - expectedSec) <= 15;
+          return fnNorm.includes(tNorm) && lenSec >= 60 && lenSec <= 720 && (!hasExactStudioDuration || Math.abs(lenSec - expectedSec) <= 45);
         });
         if (audioFile) {
           const lenSec = Math.round(parseFloat(audioFile.length || "0")) || expectedSec;
@@ -1901,83 +1964,104 @@ async function startServer() {
     }
   });
 
-  // 1d. Paginação Quase Infinita de Artistas, Álbuns e Músicas (/api/discover-more)
+  // 1d. Paginação de Artistas, Álbuns e Músicas (/api/discover-more) com limite inteligente de 6 páginas
   const DISCOVER_SEEDS = [
-    "Billie Eilish", "The Weeknd", "Lady Gaga", "Sabrina Carpenter", "Paramore",
-    "Ghost", "Linkin Park", "Lana Del Rey", "Bruno Mars", "Arctic Monkeys",
-    "Olivia Rodrigo", "Dua Lipa", "Chappell Roan", "Taylor Swift", "SZA",
-    "Bring Me The Horizon", "Sleep Token", "Deftones", "Evanescence", "My Chemical Romance",
-    "Kendrick Lamar", "Tyler, The Creator", "Frank Ocean", "Travis Scott", "Post Malone",
-    "Charli xcx", "Ariana Grande", "Rihanna", "Beyoncé", "Adele",
-    "Nirvana", "Metallica", "System Of A Down", "Iron Maiden", "Black Sabbath",
-    "Radiohead", "The Cure", "Gorillaz", "Tame Impala", "The Strokes",
-    "Liniker", "Jão", "ANAVITÓRIA", "Marina Sena", "Djavan",
-    "Charlie Brown Jr.", "Pitty", "Legião Urbana", "Racionais MC's", "Seu Jorge",
-    "Coldplay", "Imagine Dragons", "Twenty One Pilots", "Muse", "Green Day",
-    "Hozier", "Mitski", "Phoebe Bridgers", "Clairo", "beabadoobee",
-    "Bad Bunny", "Karol G", "Rosalía", "Rauw Alejandro", "Peso Pluma",
-    "Daft Punk", "Justice", "RÜFÜS DU SOL", "Fred again..", "Peggy Gou"
+    // Página 1 (24 artistas inéditos além do diretório inicial)
+    "Tame Impala", "Gorillaz", "The Strokes", "The Cure", "Deftones", "Sleep Token",
+    "Bring Me The Horizon", "My Chemical Romance", "Evanescence", "Avril Lavigne", "Blink-182", "Green Day",
+    "Muse", "Twenty One Pilots", "Hozier", "Mitski", "Phoebe Bridgers", "Clairo",
+    "beabadoobee", "TV Girl", "Cigarettes After Sex", "Mac DeMarco", "Beach House", "MGMT",
+    // Página 2
+    "Jão", "ANAVITÓRIA", "Marina Sena", "Liniker", "Djavan", "Seu Jorge",
+    "Tim Maia", "Jorge Ben Jor", "Caetano Veloso", "Gilberto Gil", "Gal Costa", "Rita Lee",
+    "Marisa Monte", "Tribalistas", "Nando Reis", "Cazuza", "Legião Urbana", "Engenheiros do Hawaii",
+    "Skank", "Jota Quest", "O Rappa", "Natiruts", "Lagum", "Melim",
+    // Página 3
+    "Frank Ocean", "Tyler, The Creator", "Childish Gambino", "Kali Uchis", "Steve Lacy", "Daniel Caesar",
+    "Brent Faiyaz", "Summer Walker", "H.E.R.", "Kehlani", "Jhené Aiko", "Giveon",
+    "Anderson .Paak", "Silk Sonic", "Kaytranada", "Thundercat", "FKA twigs", "Caroline Polachek",
+    "Rina Sawayama", "PinkPantheress", "Ice Spice", "Central Cee", "Dave", "Little Simz",
+    // Página 4
+    "System Of A Down", "Korn", "Slipknot", "Rammstein", "Avenged Sevenfold", "Ghost",
+    "Iron Maiden", "Black Sabbath", "Judas Priest", "Megadeth", "Pantera", "Slayer",
+    "Alice In Chains", "Soundgarden", "Pearl Jam", "Foo Fighters", "Red Hot Chili Peppers", "Queens of the Stone Age",
+    "The Smashing Pumpkins", "Nine Inch Nails", "Placebo", "Interpol", "Franz Ferdinand", "Yeah Yeah Yeahs",
+    // Página 5
+    "Racionais MC's", "Sabotage", "Djonga", "BK'", "Filipe Ret", "L7NNON",
+    "Cabelinho", "Orochi", "Xamã", "Criolo", "Emicida", "Baco Exu do Blues",
+    "Matuê", "WIU", "Teto", "Veigh", "KayBlack", "Yunk Vino",
+    "Duquesa", "Tasha & Tracie", "Ebony", "Slipmami", "Urias", "Pabllo Vittar",
+    // Página 6
+    "Daft Punk", "Justice", "RÜFÜS DU SOL", "Fred again..", "Peggy Gou", "Disclosure",
+    "Flume", "ODESZA", "Porter Robinson", "Madeon", "Gesaffelstein", "Aphex Twin",
+    "Bicep", "Four Tet", "Jamie xx", "Caribou", "Bonobo", "Massive Attack",
+    "Portishead", "Björk", "Grimes", "Arca", "SOPHIE", "Rosalía"
   ];
+  const MAX_DISCOVER_PAGES = 6;
 
   app.get("/api/discover-more", async (req: Request, res: Response) => {
     try {
-      const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
-      const seedsPerPage = 4;
-      const startIdx = ((page - 1) * seedsPerPage) % DISCOVER_SEEDS.length;
-      const selectedSeeds: string[] = [];
-      for (let i = 0; i < seedsPerPage; i++) {
-        selectedSeeds.push(DISCOVER_SEEDS[(startIdx + i) % DISCOVER_SEEDS.length]);
+      const rawPage = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+      if (rawPage > MAX_DISCOVER_PAGES) {
+        res.json({
+          ok: true,
+          page: rawPage,
+          hasMore: false,
+          artists: [],
+          albums: [],
+          songs: []
+        });
+        return;
       }
 
-      const dzIndex = (page * 25) % 200;
-      const [dzChartArtistsSettled, dzChartAlbumsSettled, dzChartTracksSettled, ...seedResults] = await Promise.allSettled([
-        fetchWithTimeout(`https://api.deezer.com/chart/0/artists?index=${dzIndex}&limit=24`, {}, 3800).then(r => (r.ok ? r.json() : null)),
-        fetchWithTimeout(`https://api.deezer.com/chart/0/albums?index=${dzIndex}&limit=20`, {}, 3800).then(r => (r.ok ? r.json() : null)),
-        fetchWithTimeout(`https://api.deezer.com/chart/0/tracks?index=${dzIndex}&limit=24`, {}, 3800).then(r => (r.ok ? r.json() : null)),
-        ...selectedSeeds.map(seed =>
-          fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(seed)}&limit=12`, {}, 3800).then(r => (r.ok ? r.json() : null))
-        )
-      ]);
+      const page = rawPage;
+      const pageBlockSize = 24;
+      const blockStart = (page - 1) * pageBlockSize;
+      const pageArtistsPool = DISCOVER_SEEDS.slice(blockStart, blockStart + pageBlockSize);
+      const selectedSeeds = pageArtistsPool.slice(0, 4);
 
       const artistsMap = new Map<string, { name: string; role: string; coverUrl: string }>();
       const albumsMap = new Map<string, any>();
       const songsList: any[] = [];
+
+      // Garante imediatamente os 24 artistas exclusivos desta página sem depender de rede externa
+      for (const artName of pageArtistsPool) {
+        const key = normalizeStr(artName);
+        if (!artistsMap.has(key)) {
+          const graph = ARTIST_SIMILARITY_GRAPH[key];
+          artistsMap.set(key, {
+            name: artName,
+            role: (graph && graph.genre) || "Artista Verificado",
+            coverUrl: `/api/artist-image?name=${encodeURIComponent(artName)}`
+          });
+        }
+      }
+
+      const dzIndex = 96 + (page - 1) * 28;
+      const [dzChartArtistsSettled, dzChartAlbumsSettled, dzChartTracksSettled, ...seedResults] = await Promise.allSettled([
+        fetchWithTimeout(`https://api.deezer.com/chart/0/artists?index=${dzIndex}&limit=24`, {}, 2400).then(r => (r.ok ? r.json() : null)),
+        fetchWithTimeout(`https://api.deezer.com/chart/0/albums?index=${dzIndex}&limit=16`, {}, 2400).then(r => (r.ok ? r.json() : null)),
+        fetchWithTimeout(`https://api.deezer.com/chart/0/tracks?index=${dzIndex}&limit=20`, {}, 2400).then(r => (r.ok ? r.json() : null)),
+        ...selectedSeeds.map(seed =>
+          fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(seed)}&limit=8`, {}, 2400).then(r => (r.ok ? r.json() : null))
+        )
+      ]);
 
       if (dzChartArtistsSettled.status === "fulfilled" && Array.isArray((dzChartArtistsSettled.value as any)?.data)) {
         for (const a of (dzChartArtistsSettled.value as any).data) {
           const name = String(a?.name || "").trim();
           if (!name) continue;
           const key = normalizeStr(name);
+          const rawPic = a?.picture_xl || a?.picture_big || a?.picture_medium || "";
+          const validPic = rawPic && !rawPic.includes("/images/artist//") ? upgradeArtwork(rawPic) : "";
           if (!artistsMap.has(key)) {
             artistsMap.set(key, {
               name,
-              role: "Artista",
-              coverUrl: `/api/artist-image?name=${encodeURIComponent(name)}`
+              role: "Artista Verificado",
+              coverUrl: validPic
+                ? `/api/artist-image?name=${encodeURIComponent(name)}&url=${encodeURIComponent(validPic)}`
+                : `/api/artist-image?name=${encodeURIComponent(name)}`
             });
-          }
-        }
-      }
-
-      for (const seed of selectedSeeds) {
-        const key = normalizeStr(seed);
-        if (!artistsMap.has(key)) {
-          artistsMap.set(key, {
-            name: seed,
-            role: "Artista",
-            coverUrl: `/api/artist-image?name=${encodeURIComponent(seed)}`
-          });
-        }
-        const graph = ARTIST_SIMILARITY_GRAPH[key];
-        if (graph && Array.isArray(graph.related)) {
-          for (const rel of graph.related) {
-            const rk = normalizeStr(rel);
-            if (!artistsMap.has(rk)) {
-              artistsMap.set(rk, {
-                name: rel,
-                role: graph.genre || "Artista",
-                coverUrl: `/api/artist-image?name=${encodeURIComponent(rel)}`
-              });
-            }
           }
         }
       }
@@ -2055,10 +2139,14 @@ async function startServer() {
 
           const artKey = normalizeStr(artist);
           if (!artistsMap.has(artKey)) {
+            const rawArtistPic = item?.artist?.picture_xl || item?.artist?.picture_big || item?.artist?.picture_medium || "";
+            const validPic = rawArtistPic && !rawArtistPic.includes("/images/artist//") ? upgradeArtwork(rawArtistPic) : "";
             artistsMap.set(artKey, {
               name: artist,
-              role: "Artista",
-              coverUrl: `/api/artist-image?name=${encodeURIComponent(artist)}`
+              role: "Artista Verificado",
+              coverUrl: validPic
+                ? `/api/artist-image?name=${encodeURIComponent(artist)}&url=${encodeURIComponent(validPic)}`
+                : `/api/artist-image?name=${encodeURIComponent(artist)}`
             });
           }
         }
@@ -2067,7 +2155,8 @@ async function startServer() {
       res.json({
         ok: true,
         page,
-        artists: Array.from(artistsMap.values()).slice(0, 24),
+        hasMore: page < MAX_DISCOVER_PAGES,
+        artists: Array.from(artistsMap.values()).slice(0, 28),
         albums: Array.from(albumsMap.values()).slice(0, 18),
         songs: deduplicateSongsList(songsList).slice(0, 20)
       });
@@ -2076,10 +2165,15 @@ async function startServer() {
     }
   });
 
-  // Helper unificado para autenticar via Token de Sessão ou Firebase ID Token
+  // Helper unificado para autenticar via Token de Sessão (Header ou Cookie) ou Firebase ID Token
   async function resolveAuthenticatedUser(req: Request): Promise<{ uid: string; email: string } | null> {
     const authHeader = String(req.headers.authorization || "");
-    const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    let bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!bearer) {
+      const cookieHeader = String(req.headers.cookie || "");
+      const m = cookieHeader.match(/(?:^|;\s*)miado_session=([^;]+)/);
+      if (m && m[1]) bearer = decodeURIComponent(m[1]).trim();
+    }
     if (!bearer) return null;
     const sessionUser = verifySessionToken(bearer);
     if (sessionUser?.email) {
@@ -2098,18 +2192,22 @@ async function startServer() {
     const authUser = await resolveAuthenticatedUser(req);
 
     const accounts = db.accounts || {};
+    // SÓ retorna dados de conta se a requisição tiver um usuário autenticado legítimo via token
     const activeEmail = (authUser?.email || "").toLowerCase().trim();
     if (activeEmail && accounts[activeEmail]) {
       const acc = accounts[activeEmail];
       res.json({
         user: acc.user,
         favoriteArtists: acc.favoriteArtists || (acc.user?.favoriteArtists as string[]) || [],
+        followedArtists: acc.followedArtists || (acc.user?.followedArtists as unknown[]) || [],
+        followingProfiles: acc.followingProfiles || (acc.user?.followingProfiles as unknown[]) || [],
         onboardingCompleted: acc.onboardingCompleted ?? (acc.user?.onboardingCompleted as boolean) ?? false,
         likedTracks: acc.likedTracks || [],
         playlists: acc.playlists || [],
         recentHistory: acc.recentHistory || [],
         feedPosts: acc.feedPosts || [],
         customAlbumCovers: acc.customAlbumCovers || {},
+        profiles: db.profiles || {},
         volume: acc.volume ?? 0.85,
         authenticated: true
       });
@@ -2119,6 +2217,7 @@ async function startServer() {
     // Visitante sem login recebe apenas o diretório público de perfis da comunidade (zero vazamento de conta ativa!)
     res.json({
       authenticated: false,
+      user: null,
       profiles: db.profiles || {},
       volume: 0.85
     });
@@ -2132,7 +2231,7 @@ async function startServer() {
     const authUser = await resolveAuthenticatedUser(req);
     const emailKey = (authUser?.email || "").toLowerCase().trim();
 
-    if (!emailKey) {
+    if (!emailKey || emailKey === "usr_guest@miado.app") {
       // Modo visitante: não sobrescreve nenhuma conta no servidor
       res.json({ ok: true, guestMode: true });
       return;
@@ -2142,6 +2241,18 @@ async function startServer() {
       ? body.favoriteArtists.map((a: unknown) => sanitizeText(a, 80)).filter(Boolean)
       : Array.isArray(body.user?.favoriteArtists)
       ? body.user.favoriteArtists.map((a: unknown) => sanitizeText(a, 80)).filter(Boolean)
+      : undefined;
+
+    const followedArtistsList = Array.isArray(body.followedArtists)
+      ? body.followedArtists
+      : Array.isArray(body.user?.followedArtists)
+      ? body.user.followedArtists
+      : undefined;
+
+    const followingProfilesList = Array.isArray(body.followingProfiles)
+      ? body.followingProfiles
+      : Array.isArray(body.user?.followingProfiles)
+      ? body.user.followingProfiles
       : undefined;
 
     const onboardingDone =
@@ -2164,15 +2275,33 @@ async function startServer() {
       recentHistory: []
     };
 
+    const incomingHandle = sanitizeText(body.user?.handle || body.user?.username || existing.user.handle, 40).toLowerCase().trim();
+    const normalizedHandle = incomingHandle.startsWith("@") ? incomingHandle : `@${incomingHandle}`;
+
+    // Verifica se o @handle já pertence a outra conta
+    const handleTakenByOther = Object.values(accounts).some(acc => {
+      if (!acc || acc.email.toLowerCase() === emailKey) return false;
+      const h = String(acc.user?.username || acc.user?.handle || "").toLowerCase().trim();
+      const normH = h.startsWith("@") ? h : `@${h}`;
+      return normH === normalizedHandle;
+    });
+
+    const safeHandle = handleTakenByOther
+      ? String(existing.user.handle || existing.user.username || `@${emailKey.split("@")[0]}`)
+      : normalizedHandle;
+
     const mergedUser = body.user
       ? {
           ...existing.user,
           ...body.user,
           email: emailKey,
           name: sanitizeText(body.user.name || existing.user.name, 60),
-          handle: sanitizeText(body.user.handle || body.user.username || existing.user.handle, 40),
+          handle: safeHandle,
+          username: safeHandle,
           bio: sanitizeText(body.user.bio ?? existing.user.bio, 240),
           favoriteArtists: favArtists ?? existing.favoriteArtists ?? existing.user.favoriteArtists ?? [],
+          followedArtists: followedArtistsList ?? existing.followedArtists ?? existing.user.followedArtists ?? [],
+          followingProfiles: followingProfilesList ?? existing.followingProfiles ?? existing.user.followingProfiles ?? [],
           onboardingCompleted: onboardingDone ?? existing.onboardingCompleted ?? existing.user.onboardingCompleted ?? true
         }
       : existing.user;
@@ -2182,6 +2311,8 @@ async function startServer() {
       updatedAt: new Date().toISOString(),
       user: mergedUser,
       favoriteArtists: favArtists ?? existing.favoriteArtists ?? [],
+      followedArtists: followedArtistsList ?? existing.followedArtists ?? [],
+      followingProfiles: followingProfilesList ?? existing.followingProfiles ?? [],
       onboardingCompleted: onboardingDone ?? existing.onboardingCompleted ?? true,
       likedTracks: Array.isArray(body.likedTracks) ? body.likedTracks.slice(0, 500) : existing.likedTracks,
       playlists: Array.isArray(body.playlists) ? body.playlists.slice(0, 100) : existing.playlists,
@@ -2191,8 +2322,31 @@ async function startServer() {
       volume: typeof body.volume === "number" ? Math.max(0, Math.min(1, body.volume)) : existing.volume
     };
 
-    writeDb({ accounts });
-    res.json({ ok: true, authenticated: true });
+    const profiles = { ...(current.profiles || {}) };
+    if (mergedUser && safeHandle && safeHandle !== "@visitante" && safeHandle !== "@novo_usuario") {
+      const prevProf = profiles[safeHandle];
+      profiles[safeHandle] = {
+        id: prevProf?.id || existing.uid || `prof_${Date.now()}`,
+        name: String(mergedUser.name || "Ouvinte"),
+        username: safeHandle,
+        bio: String(mergedUser.bio || ""),
+        avatarUrl: String(mergedUser.avatarUrl || mergedUser.customAvatar || "/api/cat-avatar?id=cat_1"),
+        bannerUrl: String(mergedUser.bannerUrl || mergedUser.customBanner || ""),
+        currentTrack: prevProf?.currentTrack || "Ouvindo no Miado",
+        albumId: prevProf?.albumId || "billie_hmhas",
+        favoriteArtists: Array.isArray(mergedUser.favoriteArtists) ? (mergedUser.favoriteArtists as string[]) : [],
+        followersCount: Number(mergedUser.followersCount || prevProf?.followersCount || 0),
+        followingCount: Number(mergedUser.followingCount || prevProf?.followingCount || 0),
+        online: true,
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    writeDb({
+      accounts,
+      profiles
+    });
+    res.json({ ok: true, authenticated: true, user: mergedUser });
   });
 
   // Endpoints LGPD: Exportação e Exclusão da própria conta autenticada
@@ -2260,11 +2414,6 @@ async function startServer() {
         return;
       }
 
-      const uid = "usr_" + crypto.randomBytes(8).toString("hex");
-      const salt = crypto.randomBytes(16).toString("hex");
-      const passwordHash = hashPassword(rawPassword, salt);
-      const now = new Date().toISOString();
-
       const rawName = sanitizeText(name || "", 60);
       const displayName = rawName && rawName !== "Visitante" ? rawName : cleanEmail.split("@")[0];
       const rawHandleCandidate = String(username || handle || "").trim();
@@ -2277,11 +2426,27 @@ async function startServer() {
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/^@+/, "")
-        .replace(/[^a-z0-9_]/g, "_")
+        .replace(/[^a-z0-9_.]/g, "_")
         .replace(/_+/g, "_")
         .replace(/^_|_$/g, "")
         .slice(0, 28) || "ouvinte";
       const cleanHandle = `@${cleanSlug}`;
+
+      // Proíbe @handle repetido no banco de dados
+      const isHandleTaken = Object.values(accounts).some(acc => {
+        const existingH = String(acc?.user?.username || acc?.user?.handle || "").toLowerCase().trim();
+        const normH = existingH.startsWith("@") ? existingH : `@${existingH}`;
+        return normH === cleanHandle;
+      });
+      if (isHandleTaken) {
+        res.status(409).json({ ok: false, error: `O usuário ${cleanHandle} já está em uso. Escolha outro @ diferente.` });
+        return;
+      }
+
+      const uid = "usr_" + crypto.randomBytes(8).toString("hex");
+      const salt = crypto.randomBytes(16).toString("hex");
+      const passwordHash = hashPassword(rawPassword, salt);
+      const now = new Date().toISOString();
 
       const favList = Array.isArray(favoriteArtists)
         ? favoriteArtists.map((a: unknown) => sanitizeText(a, 80)).filter(Boolean)
@@ -2299,6 +2464,8 @@ async function startServer() {
         customAvatar: currentData?.user?.customAvatar || "",
         customBanner: currentData?.user?.customBanner || "",
         favoriteArtists: favList,
+        followedArtists: [],
+        followingProfiles: [],
         onboardingCompleted: Boolean(onboardingCompleted ?? false),
         createdAt: now
       };
@@ -2317,6 +2484,8 @@ async function startServer() {
         updatedAt: now,
         user: userProfile,
         favoriteArtists: favList,
+        followedArtists: [],
+        followingProfiles: [],
         onboardingCompleted: Boolean(onboardingCompleted ?? false),
         likedTracks: [],
         playlists: cleanInitialPlaylists,
@@ -2326,15 +2495,26 @@ async function startServer() {
       };
 
       accounts[cleanEmail] = record;
+      const profiles = { ...(db.profiles || {}) };
+      profiles[cleanHandle] = {
+        id: uid,
+        name: displayName,
+        username: cleanHandle,
+        bio: userProfile.bio,
+        avatarUrl: userProfile.avatarUrl,
+        bannerUrl: "",
+        currentTrack: "Ouvindo no Miado",
+        albumId: "billie_hmhas",
+        favoriteArtists: favList,
+        followersCount: 0,
+        followingCount: 0,
+        online: true,
+        updatedAt: now
+      };
+
       writeDb({
         accounts,
-        activeAccountEmail: cleanEmail,
-        user: record.user,
-        favoriteArtists: record.favoriteArtists,
-        onboardingCompleted: record.onboardingCompleted,
-        likedTracks: record.likedTracks,
-        playlists: record.playlists,
-        recentHistory: record.recentHistory
+        profiles
       });
 
       const sessionToken = createSessionToken(record.uid, record.email);
@@ -2356,6 +2536,8 @@ async function startServer() {
           createdAt: record.createdAt,
           user: record.user,
           favoriteArtists: record.favoriteArtists,
+          followedArtists: record.followedArtists,
+          followingProfiles: record.followingProfiles,
           onboardingCompleted: record.onboardingCompleted,
           likedTracks: record.likedTracks,
           playlists: record.playlists,
@@ -2413,13 +2595,7 @@ async function startServer() {
         : [];
 
       writeDb({
-        activeAccountEmail: cleanEmail,
-        user: record.user,
-        favoriteArtists: record.favoriteArtists || (record.user?.favoriteArtists as string[]) || [],
-        onboardingCompleted: record.onboardingCompleted ?? true,
-        likedTracks: record.likedTracks,
-        playlists: record.playlists,
-        recentHistory: record.recentHistory
+        accounts
       });
 
       const sessionToken = createSessionToken(record.uid, record.email);
@@ -2441,6 +2617,8 @@ async function startServer() {
           createdAt: record.createdAt,
           user: record.user,
           favoriteArtists: record.favoriteArtists || (record.user?.favoriteArtists as string[]) || [],
+          followedArtists: record.followedArtists || (record.user?.followedArtists as unknown[]) || [],
+          followingProfiles: record.followingProfiles || (record.user?.followingProfiles as unknown[]) || [],
           onboardingCompleted: record.onboardingCompleted ?? true,
           likedTracks: record.likedTracks,
           playlists: record.playlists,
@@ -2461,12 +2639,18 @@ async function startServer() {
   });
 
   // 2c. Endpoint Rápido para Salvar Preferências de Perfil + Artistas Favoritos (/api/user/preferences)
-  app.post("/api/user/preferences", (req: Request, res: Response) => {
+  app.post("/api/user/preferences", async (req: Request, res: Response) => {
     try {
-      const { email, name, handle, username, bio, catId, customAvatar, customBanner, favoriteArtists, onboardingCompleted } = req.body || {};
+      const { email, name, handle, username, bio, catId, customAvatar, customBanner, favoriteArtists, followedArtists, followingProfiles, onboardingCompleted } = req.body || {};
+      const authUser = await resolveAuthenticatedUser(req);
       const db = readDb();
       const accounts = db.accounts || {};
-      const targetEmail = sanitizeText(email || db.activeAccountEmail || db.user?.email || "", 120).toLowerCase();
+      const targetEmail = sanitizeText(authUser?.email || email || "", 120).toLowerCase();
+
+      if (!targetEmail || targetEmail === "usr_guest@miado.app") {
+        res.json({ ok: true, guestMode: true });
+        return;
+      }
 
       const cleanFavs = Array.isArray(favoriteArtists)
         ? favoriteArtists.map((a: unknown) => sanitizeText(a, 80)).filter(Boolean)
@@ -2480,11 +2664,24 @@ async function startServer() {
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
           .replace(/^@+/, "")
-          .replace(/[^a-z0-9_]/g, "_")
+          .replace(/[^a-z0-9_.]/g, "_")
           .replace(/_+/g, "_")
           .replace(/^_|_$/g, "")
           .slice(0, 28);
         if (slug) cleanHandle = `@${slug}`;
+      }
+
+      if (cleanHandle) {
+        const handleTaken = Object.values(accounts).some(acc => {
+          if (!acc || acc.email.toLowerCase() === targetEmail) return false;
+          const existingH = String(acc.user?.username || acc.user?.handle || "").toLowerCase().trim();
+          const normH = existingH.startsWith("@") ? existingH : `@${existingH}`;
+          return normH === cleanHandle;
+        });
+        if (handleTaken) {
+          res.status(409).json({ ok: false, error: `O usuário ${cleanHandle} já está em uso por outra pessoa.` });
+          return;
+        }
       }
 
       const updatedUser: Record<string, unknown> = {
@@ -2493,8 +2690,10 @@ async function startServer() {
         ...(cleanHandle !== undefined ? { handle: cleanHandle, username: cleanHandle } : {}),
         ...(bio !== undefined ? { bio: sanitizeText(bio, 240) } : {}),
         ...(catId !== undefined ? { catId: sanitizeText(catId, 32) } : {}),
-        ...(customAvatar !== undefined ? { customAvatar } : {}),
-        ...(customBanner !== undefined ? { customBanner } : {}),
+        ...(customAvatar !== undefined ? { customAvatar, avatarUrl: customAvatar } : {}),
+        ...(customBanner !== undefined ? { customBanner, bannerUrl: customBanner } : {}),
+        ...(followedArtists !== undefined ? { followedArtists } : {}),
+        ...(followingProfiles !== undefined ? { followingProfiles } : {}),
         favoriteArtists: cleanFavs,
         onboardingCompleted: Boolean(onboardingCompleted ?? true)
       };
@@ -2505,15 +2704,36 @@ async function startServer() {
           updatedAt: new Date().toISOString(),
           user: { ...accounts[targetEmail].user, ...updatedUser },
           favoriteArtists: cleanFavs,
+          ...(followedArtists !== undefined ? { followedArtists } : {}),
+          ...(followingProfiles !== undefined ? { followingProfiles } : {}),
           onboardingCompleted: Boolean(onboardingCompleted ?? true)
         };
       }
 
+      const profiles = { ...(db.profiles || {}) };
+      const finalHandle = String(updatedUser.username || updatedUser.handle || "").toLowerCase().trim();
+      if (finalHandle && finalHandle !== "@visitante" && finalHandle !== "@novo_usuario") {
+        const existingProf = profiles[finalHandle];
+        profiles[finalHandle] = {
+          id: existingProf?.id || `prof_${Date.now()}`,
+          name: String(updatedUser.name || "Ouvinte"),
+          username: finalHandle,
+          bio: String(updatedUser.bio || ""),
+          avatarUrl: String(updatedUser.avatarUrl || updatedUser.customAvatar || "/api/cat-avatar?id=cat_1"),
+          bannerUrl: String(updatedUser.bannerUrl || updatedUser.customBanner || ""),
+          currentTrack: existingProf?.currentTrack || "Ouvindo no Miado",
+          albumId: existingProf?.albumId || "billie_hmhas",
+          favoriteArtists: cleanFavs,
+          followersCount: Number(existingProf?.followersCount || 0),
+          followingCount: Number(existingProf?.followingCount || 0),
+          online: true,
+          updatedAt: new Date().toISOString()
+        };
+      }
+
       writeDb({
-        user: updatedUser,
-        favoriteArtists: cleanFavs,
-        onboardingCompleted: Boolean(onboardingCompleted ?? true),
-        accounts
+        accounts,
+        profiles
       });
 
       res.json({
@@ -2692,6 +2912,24 @@ async function startServer() {
       const nestedSongs = await Promise.all(songPromises);
       const flatSongs = deduplicateSongsList(nestedSongs.flat());
 
+      // Constrói lista de Álbuns Recomendados baseados nos artistas seguidos/ouvidos
+      const recAlbumsMap = new Map<string, any>();
+      flatSongs.forEach(s => {
+        if (!s || !s.albumTitle || s.albumTitle === "Single Original" || s.albumTitle === "Single") return;
+        const aKey = `${normalizeSongTitleKey(s.albumTitle)}|${normalizeStr(s.artist)}`;
+        if (!recAlbumsMap.has(aKey)) {
+          recAlbumsMap.set(aKey, {
+            id: `rec_alb_${recAlbumsMap.size}_${normalizeStr(s.artist).replace(/\s+/g, "_")}`,
+            title: s.albumTitle,
+            artist: s.artist,
+            year: s.year || 2025,
+            genre: s.genre || "Pop",
+            coverUrl: s.coverUrl,
+            tracks: []
+          });
+        }
+      });
+
       // Constrói sinais reais de afinidade para o motor 80% explotação + 20% exploração (Fase 8)
       const signals: UserSignalEvent[] = primarySeeds.map((a) => ({
         type: "favorite_artist",
@@ -2699,20 +2937,23 @@ async function startServer() {
         timestampMs: Date.now()
       }));
 
-      const rankedSongs = rankRecommendationsWithExploration(flatSongs, signals, 20);
-      const recommendedSongs = rankedSongs.length > 0 ? rankedSongs : flatSongs.slice(0, 18);
-      const recommendedArtists = Array.from(recommendedArtistsMap.values()).slice(0, 12);
+      const rankedSongs = rankRecommendationsWithExploration(flatSongs, signals, 30);
+      const recommendedSongs = rankedSongs.length > 0 ? rankedSongs : flatSongs.slice(0, 30);
+      const recommendedArtists = Array.from(recommendedArtistsMap.values()).slice(0, 24);
+      const recommendedAlbums = Array.from(recAlbumsMap.values()).slice(0, 30);
 
       res.json({
         basedOnArtists: primarySeeds,
         recommendedSongs,
-        recommendedArtists
+        recommendedArtists,
+        recommendedAlbums
       });
     } catch (_e) {
       res.json({
         basedOnArtists: ["Lady Gaga", "The Weeknd", "Jão"],
         recommendedSongs: [],
-        recommendedArtists: []
+        recommendedArtists: [],
+        recommendedAlbums: []
       });
     }
   });
@@ -2736,9 +2977,10 @@ async function startServer() {
       imageUrl = upgradeArtwork(explicitUrl);
     }
 
+    // 1. Tentativa Primária: Deezer Artist API
     if (!imageUrl) {
       try {
-        const dzRes = await fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=10`, {}, 4000);
+        const dzRes = await fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=10`, {}, 3800);
         if (dzRes.ok) {
           const dzData = (await dzRes.json()) as any;
           const list: any[] = Array.isArray(dzData?.data) ? dzData.data : [];
@@ -2757,7 +2999,7 @@ async function startServer() {
           if (match) {
             let candidate = match.picture_xl || match.picture_big || match.picture_medium || "";
             if ((!candidate || candidate.includes("/images/artist//")) && match.id) {
-              const artDetailRes = await fetchWithTimeout(`https://api.deezer.com/artist/${match.id}`, {}, 3000);
+              const artDetailRes = await fetchWithTimeout(`https://api.deezer.com/artist/${match.id}`, {}, 2800);
               if (artDetailRes.ok) {
                 const artDetail = (await artDetailRes.json()) as any;
                 candidate = artDetail?.picture_xl || artDetail?.picture_big || artDetail?.picture_medium || "";
@@ -2766,6 +3008,47 @@ async function startServer() {
             if (candidate && !candidate.includes("/images/artist//")) {
               imageUrl = upgradeArtwork(candidate);
             }
+          }
+        }
+      } catch (_e) {}
+    }
+
+    // 1.5. Fallback Deezer Track Search (captura foto de perfil oficial do objeto artist dentro das faixas)
+    if (!imageUrl) {
+      try {
+        const dzTrackRes = await fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(name)}&limit=6`, {}, 2800);
+        if (dzTrackRes.ok) {
+          const dzTrackData = (await dzTrackRes.json()) as any;
+          const tracks: any[] = Array.isArray(dzTrackData?.data) ? dzTrackData.data : [];
+          const matchedTrack =
+            tracks.find(t => normalizeStr(t?.artist?.name || "") === key && t?.artist?.picture_xl) ||
+            tracks.find(t => normalizeStr(t?.artist?.name || "").includes(key) && (t?.artist?.picture_xl || t?.artist?.picture_big)) ||
+            tracks[0];
+          const cand = matchedTrack?.artist?.picture_xl || matchedTrack?.artist?.picture_big || matchedTrack?.artist?.picture_medium || "";
+          if (cand && !cand.includes("/images/artist//")) {
+            imageUrl = upgradeArtwork(cand);
+          }
+        }
+      } catch (_e) {}
+    }
+
+    // 2. Fallback Secundário (quando o Deezer aplica rate limit em requisições simultâneas): iTunes Catalog HD
+    if (!imageUrl) {
+      try {
+        const itRes = await fetchWithTimeout(
+          `https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=song&limit=6&country=BR`,
+          {},
+          3200
+        );
+        if (itRes.ok) {
+          const itData = (await itRes.json()) as any;
+          const results: any[] = Array.isArray(itData?.results) ? itData.results : [];
+          const best =
+            results.find(r => normalizeStr(r.artistName || "") === key && r.artworkUrl100) ||
+            results.find(r => normalizeStr(r.artistName || "").includes(key) && r.artworkUrl100) ||
+            results.find(r => r.artworkUrl100);
+          if (best?.artworkUrl100) {
+            imageUrl = upgradeArtwork(best.artworkUrl100);
           }
         }
       } catch (_e) {}
@@ -3356,7 +3639,11 @@ async function startServer() {
       });
 
       const resolvedArtistName = matchedArtist?.name || name;
-      const artistPortrait = `/api/artist-image?name=${encodeURIComponent(resolvedArtistName)}`;
+      const rawMatchedPic = matchedArtist?.picture_xl || matchedArtist?.picture_big || matchedArtist?.picture_medium || "";
+      const validMatchedPic = rawMatchedPic && !rawMatchedPic.includes("/images/artist//") ? upgradeArtwork(rawMatchedPic) : "";
+      const artistPortrait = validMatchedPic
+        ? `/api/artist-image?name=${encodeURIComponent(resolvedArtistName)}&url=${encodeURIComponent(validMatchedPic)}`
+        : `/api/artist-image?name=${encodeURIComponent(resolvedArtistName)}`;
 
       res.json({
         artist: {
@@ -3388,18 +3675,20 @@ async function startServer() {
   app.get("/api/search", async (req: Request, res: Response) => {
     const q = String(req.query.q || "").trim();
     if (!q) {
-      res.json({ artists: [], songs: [], albums: [] });
+      res.json({ artists: [], songs: [], albums: [], hasMore: false });
       return;
     }
+    const page = Math.max(1, Math.min(4, parseInt(String(req.query.page || "1"), 10) || 1));
     const limit = Math.min(45, Number(req.query.limit) || 30);
+    const dzOffset = (page - 1) * 20;
 
     const [itunesSettled, deezerSettled, deezerArtistsSettled, itunesAlbumsSettled, saavnSettled] = await Promise.allSettled([
-      fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=song&limit=${limit}`, {}, 4200).then(r => (r.ok ? r.json() : null)),
-      fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=${limit}`, {}, 4200).then(r => (r.ok ? r.json() : null)),
-      fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(q)}&limit=12`, {}, 3800).then(r => (r.ok ? r.json() : null)),
+      fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=song&limit=${limit}&offset=${dzOffset}`, {}, 4200).then(r => (r.ok ? r.json() : null)),
+      fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=${limit}&index=${dzOffset}`, {}, 4200).then(r => (r.ok ? r.json() : null)),
+      fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(q)}&limit=18&index=${(page - 1) * 15}`, {}, 3800).then(r => (r.ok ? r.json() : null)),
       fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=album&limit=14`, {}, 3800).then(r => (r.ok ? r.json() : null)),
       fetchWithTimeout(
-        `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=20&p=1&q=${encodeURIComponent(q)}`,
+        `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=20&p=${page}&q=${encodeURIComponent(q)}`,
         { headers: SAAVN_GLOBAL_HEADERS },
         3600
       ).then(r => (r.ok ? r.json() : null))
@@ -3697,7 +3986,7 @@ async function startServer() {
       });
     });
 
-    const artists = Array.from(artistsMap.values()).slice(0, 10);
+    const artists = Array.from(artistsMap.values()).slice(0, 18);
     const songs = deduplicateSongsList(rawSongs);
     const albums = Array.from(albumMap.values()).slice(0, 12);
 
@@ -3706,7 +3995,7 @@ async function startServer() {
       alb.tracks = matching.length >= 4 ? matching : [];
     });
 
-    res.json({ artists, songs, albums });
+    res.json({ artists, songs, albums, page, hasMore: page < 4 && (artists.length > 0 || songs.length > 0) });
   });
 
   // 6b. Sincronização Permanente com Firebase Firestore (/api/user/firestore-sync)
@@ -3783,12 +4072,6 @@ async function startServer() {
       }
 
       writeDb({
-        activeAccountEmail: targetEmail,
-        user: userProfile,
-        favoriteArtists: cleanFavs,
-        likedTracks: cleanLiked,
-        playlists: cleanPlaylists,
-        recentHistory: cleanHistory,
         accounts
       });
 
@@ -4038,6 +4321,20 @@ async function startServer() {
       }
     } else if (!isThirtySecSnippetUrl) {
       targetUrl = rawUrlParam;
+    }
+
+    // Se for arquivo estático local verificado (ex: /audio/lisboa_anavitoria.m4a ou public/audio/lisboa_anavitoria.m4a)
+    if (targetUrl.startsWith("/audio/") || targetUrl.startsWith("public/audio/") || targetUrl.includes("lisboa_anavitoria.m4a")) {
+      const cleanPath = targetUrl.startsWith("/") ? targetUrl.slice(1) : targetUrl;
+      const filePath = path.resolve(process.cwd(), cleanPath.startsWith("public/") ? cleanPath : `public/${cleanPath}`);
+      if (fs.existsSync(filePath)) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Accept-Ranges", "bytes");
+        res.setHeader("Content-Type", "audio/mp4");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.sendFile(filePath);
+        return;
+      }
     }
 
     // Se a faixa completa foi montada em scBufferCache, serve o Buffer direto da memória com suporte completo a HTTP Range (206 Partial Content)

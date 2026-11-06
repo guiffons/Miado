@@ -168,7 +168,10 @@ export function initMiadoClient() {
           target.dataset.errorHandled = "done";
           if ((target.classList && target.classList.contains("user-pill-avatar")) || target.id === "top-user-avatar" || target.id === "prof-hero-avatar") {
             window.handleCatAvatarError(target);
-          } else if (target.classList && (target.classList.contains("artist-bubble-img") || target.classList.contains("artist-avatar-img"))) {
+          } else if (
+            (target.classList && (target.classList.contains("artist-bubble-img") || target.classList.contains("artist-avatar-img"))) ||
+            target.hasAttribute("data-artist-bubble-img")
+          ) {
             window.handleImgError(target, target.getAttribute("alt") || target.dataset.title || "Artista", "Artista");
           } else {
             window.handleImgError(target, target.getAttribute("alt") || target.dataset.title || "Miado", target.dataset.artist || "");
@@ -191,10 +194,13 @@ export function initMiadoClient() {
         if (!art) return "/api/artist-image?name=Artista";
         const name = typeof art === "string" ? art : (art.name || "");
         const rawCover = typeof art === "object" ? (art.coverUrl || art.pictureUrl || "") : "";
+        if (rawCover && rawCover.startsWith("/api/artist-image")) {
+          return rawCover;
+        }
         if (!rawCover || rawCover.startsWith("data:") || rawCover.includes("dzcdn.net") || rawCover.includes("deezer.com")) {
           return `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(rawCover.startsWith("data:") ? "" : rawCover)}`;
         }
-        return rawCover;
+        return `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(rawCover)}`;
       }
 
       function showToast(message) {
@@ -1208,6 +1214,23 @@ export function initMiadoClient() {
           this.historyStack = [{ view: "home", params: {} }];
           this.historyIndex = 0;
 
+          // Reset completo de contas antigas e sessões compartilhadas do servidor solicitado pelo usuário
+          if (localStorage.getItem("miado_db_clean_reset_v1") !== "1") {
+            try {
+              localStorage.removeItem("miado_user_v5");
+              localStorage.removeItem("miado_active_session_v1");
+              localStorage.removeItem("miado_auth_token");
+              localStorage.removeItem("miado_user_uid");
+              localStorage.removeItem("miado_playlists_v5");
+              localStorage.removeItem("miado_liked_tracks_v3");
+              localStorage.removeItem("miado_recent_history_50");
+              localStorage.removeItem("miado_feed_posts_v6");
+              localStorage.removeItem("miado_real_friends_v1");
+              localStorage.removeItem("miado_followed_artists_v1");
+              localStorage.setItem("miado_db_clean_reset_v1", "1");
+            } catch (_e) {}
+          }
+
           this.user = this.loadUser();
           this.followedArtists = this.loadFollowedArtists();
           this.friends = this.loadFriends();
@@ -1242,6 +1265,11 @@ export function initMiadoClient() {
               };
               if (this.currentView === "home" && window.miadoUI) {
                 window.miadoUI.renderHomeView();
+              } else if (this.currentView === "search" && window.miadoUI) {
+                const inp = document.getElementById("view-search-input");
+                if (!inp || !inp.value.trim()) {
+                  window.miadoUI.renderSearchView();
+                }
               }
             }
           } catch (e) {}
@@ -1570,6 +1598,7 @@ export function initMiadoClient() {
                 this.recommendations = {
                   seedArtists: data.basedOnArtists || data.seedArtists || combined,
                   recommendedArtists: Array.isArray(data.recommendedArtists) ? data.recommendedArtists : [],
+                  recommendedAlbums: Array.isArray(data.recommendedAlbums) ? data.recommendedAlbums : [],
                   recommendedSongs: deduplicateTracks(data.recommendedSongs || [])
                 };
                 if (this.currentView === "home" && window.miadoUI) {
@@ -1710,8 +1739,46 @@ export function initMiadoClient() {
 
         applyAccountPayload(payload) {
           if (!payload) return;
+          if (payload.token) {
+            localStorage.setItem("miado_auth_token", String(payload.token));
+          }
           const acc = payload.account || payload;
           const incomingUser = acc.user || payload.user;
+
+          // Restaura artistas seguidos salvos na conta
+          const rawFollowed = Array.isArray(acc.followedArtists)
+            ? acc.followedArtists
+            : Array.isArray(payload.followedArtists)
+            ? payload.followedArtists
+            : Array.isArray(incomingUser?.followedArtists)
+            ? incomingUser.followedArtists
+            : Array.isArray(incomingUser?.favoriteArtists)
+            ? incomingUser.favoriteArtists
+            : null;
+
+          if (Array.isArray(rawFollowed) && rawFollowed.length > 0) {
+            const seenArt = new Set();
+            const hydratedFollowed = [];
+            rawFollowed.forEach(item => {
+              const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
+              if (!name) return;
+              const k = name.toLowerCase();
+              if (seenArt.has(k)) return;
+              seenArt.add(k);
+              const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
+              hydratedFollowed.push({
+                name,
+                role: (typeof item === "object" && item?.role) || (dirMatch && dirMatch.role) || "Artista Verificado",
+                coverUrl: ensureArtistAvatarUrl(typeof item === "object" && item?.coverUrl ? item : { name, coverUrl: dirMatch?.coverUrl }),
+                followedAt: (typeof item === "object" && item?.followedAt) || new Date().toISOString()
+              });
+            });
+            if (hydratedFollowed.length > 0) {
+              this.followedArtists = hydratedFollowed;
+              localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
+            }
+          }
+
           if (incomingUser && (incomingUser.name || incomingUser.email)) {
             const incomingLiked = Array.isArray(acc.likedTracks)
               ? acc.likedTracks
@@ -1727,6 +1794,7 @@ export function initMiadoClient() {
               username: cleanHandle,
               handle: cleanHandle,
               email: String(incomingUser.email || acc.email || this.user.email || "").toLowerCase().trim(),
+              followedArtists: (this.followedArtists || []).map(a => a.name),
               followingCount: (this.friends?.length || 0) + (this.followedArtists?.length || 0),
               followersCount: incomingUser.followersCount === 1280 ? 0 : (incomingUser.followersCount || 0),
               likedTracks: deduplicateTracks((incomingLiked || []).map(tr => ({
@@ -1791,13 +1859,51 @@ export function initMiadoClient() {
 
         async hydrateFromServerDb() {
           try {
-            const res = await fetch("/api/db");
+            const token = localStorage.getItem("miado_auth_token") || "";
+            if (!token) {
+              // Modo Visitante isolado: não tenta carregar contas do servidor sem token legítimo
+              return;
+            }
+            const headers = { "Authorization": `Bearer ${token}` };
+            const res = await fetch("/api/db", { headers });
             if (!res.ok) return;
             const db = await res.json();
             if (!db || !db.authenticated || !db.user || !db.user.email || db.user.email === "usr_guest@miado.app") {
               return;
             }
             let updated = false;
+
+            const rawFollowed = Array.isArray(db.followedArtists) && db.followedArtists.length > 0
+              ? db.followedArtists
+              : Array.isArray(db.user.followedArtists) && db.user.followedArtists.length > 0
+              ? db.user.followedArtists
+              : Array.isArray(db.user.favoriteArtists) && db.user.favoriteArtists.length > 0 && (!this.followedArtists || this.followedArtists.length === 0)
+              ? db.user.favoriteArtists
+              : null;
+
+            if (Array.isArray(rawFollowed) && rawFollowed.length > 0) {
+              const seenArt = new Set();
+              const mergedFollowed = [];
+              [...rawFollowed, ...(this.followedArtists || [])].forEach(item => {
+                const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
+                if (!name) return;
+                const k = name.toLowerCase();
+                if (seenArt.has(k)) return;
+                seenArt.add(k);
+                const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
+                mergedFollowed.push({
+                  name,
+                  role: (typeof item === "object" && item?.role) || (dirMatch && dirMatch.role) || "Artista Verificado",
+                  coverUrl: ensureArtistAvatarUrl(typeof item === "object" && item?.coverUrl ? item : { name, coverUrl: dirMatch?.coverUrl }),
+                  followedAt: (typeof item === "object" && item?.followedAt) || new Date().toISOString()
+                });
+              });
+              if (mergedFollowed.length > 0) {
+                this.followedArtists = mergedFollowed;
+                localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
+              }
+            }
+
             const serverLikes = Array.isArray(db.likedTracks) && db.likedTracks.length > 0
               ? db.likedTracks
               : (Array.isArray(db.user.likedTracks) ? db.user.likedTracks : this.user.likedTracks);
@@ -1809,6 +1915,7 @@ export function initMiadoClient() {
               name: cleanName,
               username: cleanHandle,
               handle: cleanHandle,
+              followedArtists: (this.followedArtists || []).map(a => a.name),
               followingCount: (this.friends?.length || 0) + (this.followedArtists?.length || 0),
               followersCount: db.user.followersCount === 1280 ? 0 : (db.user.followersCount || 0),
               likedTracks: deduplicateTracks((serverLikes || []).map(tr => ({
@@ -1820,6 +1927,7 @@ export function initMiadoClient() {
               this.user.avatarUrl = CAT_AVATAR_PRESETS[0].url;
             }
             localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
+            localStorage.setItem("miado_active_session_v1", "true");
             updated = true;
 
             if (Array.isArray(db.recentHistory) && db.recentHistory.length > 0 && this.recentHistory.length === 0) {
@@ -1859,9 +1967,15 @@ export function initMiadoClient() {
               this.fetchRecommendations();
               if (window.miadoEngine) window.miadoEngine.updateLikeButtonUI();
               if (window.miadoUI) {
+                window.miadoUI.enforceWelcomeScreenGate();
                 window.miadoUI.syncHeaderUserUI();
                 window.miadoUI.renderSidebarPlaylists();
                 window.miadoUI.syncAllLikeButtonsInDOM();
+                if (this.currentView === "profile") {
+                  window.miadoUI.renderProfileView();
+                } else if (this.currentView === "home") {
+                  window.miadoUI.renderHomeView();
+                }
               }
             }
           } catch (e) {}
@@ -1877,12 +1991,21 @@ export function initMiadoClient() {
           if (!hasRealAccount) return;
 
           try {
+            const token = localStorage.getItem("miado_auth_token") || "";
+            const headers = { "Content-Type": "application/json" };
+            if (token) headers["Authorization"] = `Bearer ${token}`;
             fetch("/api/db", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers,
               body: JSON.stringify({
                 accountEmail: this.user.email || "",
-                user: this.user,
+                user: {
+                  ...this.user,
+                  followedArtists: (this.followedArtists || []).map(a => a.name),
+                  followingProfiles: (this.friends || []).map(f => f.username)
+                },
+                followedArtists: this.followedArtists || [],
+                followingProfiles: this.friends || [],
                 likedTracks: this.user.likedTracks || [],
                 recentHistory: this.recentHistory,
                 playlists: (this.playlists || []).filter(pl => pl && !DEFAULT_LEGACY_PLAYLIST_IDS.has(String(pl.id || ""))),
@@ -2708,33 +2831,37 @@ export function initMiadoClient() {
          * consulta o servidor /api/search + Catálogo Local + fallback cliente, filtrando
          * rigorosamente versões 'live', 'remix' ou 'karaoke'.
          */
-        static async searchCatalog(query) {
+        static async searchCatalog(query, page = 1) {
           const cleanQ = (query || "").trim();
           const lowerQ = cleanQ.toLowerCase();
 
-          const localArtists = POPULAR_ARTISTS_DIRECTORY.filter(a => a.name.toLowerCase().includes(lowerQ) || a.role.toLowerCase().includes(lowerQ));
+          const localArtists = page === 1
+            ? POPULAR_ARTISTS_DIRECTORY.filter(a => a.name.toLowerCase().includes(lowerQ) || a.role.toLowerCase().includes(lowerQ))
+            : [];
           const localSongs = [];
           const localAlbums = [];
-          state.albums.forEach(alb => {
-            if (
-              MiadoMusicResolver.isStudioOnly(alb.title, alb.artist, alb.title) &&
-              (alb.title.toLowerCase().includes(lowerQ) || alb.artist.toLowerCase().includes(lowerQ) || (alb.genre && alb.genre.toLowerCase().includes(lowerQ)))
-            ) {
-              localAlbums.push(alb);
-            }
-            (alb.tracks || []).forEach(tr => {
+          if (page === 1) {
+            state.albums.forEach(alb => {
               if (
-                MiadoMusicResolver.isStudioOnly(tr.title, tr.artist, tr.albumTitle) &&
-                (tr.title.toLowerCase().includes(lowerQ) || tr.artist.toLowerCase().includes(lowerQ))
+                MiadoMusicResolver.isStudioOnly(alb.title, alb.artist, alb.title) &&
+                (alb.title.toLowerCase().includes(lowerQ) || alb.artist.toLowerCase().includes(lowerQ) || (alb.genre && alb.genre.toLowerCase().includes(lowerQ)))
               ) {
-                localSongs.push(tr);
+                localAlbums.push(alb);
               }
+              (alb.tracks || []).forEach(tr => {
+                if (
+                  MiadoMusicResolver.isStudioOnly(tr.title, tr.artist, tr.albumTitle) &&
+                  (tr.title.toLowerCase().includes(lowerQ) || tr.artist.toLowerCase().includes(lowerQ))
+                ) {
+                  localSongs.push(tr);
+                }
+              });
             });
-          });
+          }
 
-          // 1. Consulta o backend /api/search com filtro Studio Only
+          // 1. Consulta o backend /api/search com filtro Studio Only e paginação
           try {
-            const apiRes = await fetch(`/api/search?q=${encodeURIComponent(cleanQ)}&studioOnly=1`);
+            const apiRes = await fetch(`/api/search?q=${encodeURIComponent(cleanQ)}&page=${page}&studioOnly=1`);
             if (apiRes.ok) {
               const apiData = await apiRes.json();
               if (apiData && ((apiData.songs && apiData.songs.length > 0) || (apiData.albums && apiData.albums.length > 0) || (apiData.artists && apiData.artists.length > 0))) {
@@ -2748,13 +2875,13 @@ export function initMiadoClient() {
                     artistsMap.set(key, {
                       ...art,
                       role: "Artista",
-                      coverUrl: art.coverUrl || `/api/artist-image?name=${encodeURIComponent(art.name)}`
+                      coverUrl: ensureArtistAvatarUrl(art)
                     });
                   }
                 });
                 localArtists.forEach(art => {
                   const key = art.name.toLowerCase();
-                  if (!artistsMap.has(key)) artistsMap.set(key, { ...art, role: "Artista" });
+                  if (!artistsMap.has(key)) artistsMap.set(key, { ...art, role: "Artista", coverUrl: ensureArtistAvatarUrl(art) });
                 });
 
                 MiadoMusicResolver.filterStudioOnlyAlbums(apiData.albums || []).forEach(a => {
@@ -3634,15 +3761,28 @@ export function initMiadoClient() {
         }
 
         setupInfiniteScroll() {
-          if (this.scrollContainer) {
-            this.scrollContainer.addEventListener("scroll", () => {
-              if (state.currentView !== "home" || this.isFetchingDiscover) return;
+          const checkScrollNearBottom = () => {
+            if ((state.currentView !== "home" && state.currentView !== "search") || this.isFetchingDiscover) return;
+            if (this.scrollContainer) {
               const { scrollTop, scrollHeight, clientHeight } = this.scrollContainer;
-              if (scrollTop + clientHeight >= scrollHeight - 520) {
+              if (scrollHeight > clientHeight + 80 && scrollTop + clientHeight >= scrollHeight - 600) {
+                this.loadMoreDiscoverContent();
+                return;
+              }
+            }
+            const docEl = document.scrollingElement || document.documentElement;
+            if (docEl) {
+              const { scrollTop, scrollHeight, clientHeight } = docEl;
+              if (scrollHeight > clientHeight + 80 && scrollTop + clientHeight >= scrollHeight - 600) {
                 this.loadMoreDiscoverContent();
               }
-            });
+            }
+          };
+
+          if (this.scrollContainer) {
+            this.scrollContainer.addEventListener("scroll", checkScrollNearBottom, { passive: true });
           }
+          window.addEventListener("scroll", checkScrollNearBottom, { passive: true });
 
           const onboardGrid = document.getElementById("onboard-artists-grid");
           if (onboardGrid) {
@@ -3652,12 +3792,78 @@ export function initMiadoClient() {
               if (scrollTop + clientHeight >= scrollHeight - 140) {
                 this.loadMoreOnboardingArtists();
               }
-            });
+            }, { passive: true });
+          }
+        }
+
+        setupSentinelObserver() {
+          if (this._sentinelObserver) {
+            this._sentinelObserver.disconnect();
+          }
+          const maxPages = 6;
+          if ((this.discoverPage || 0) >= maxPages) {
+            const s1 = document.getElementById("home-infinite-status");
+            const s2 = document.getElementById("search-infinite-status");
+            if (s1) s1.innerHTML = `<span>Catálogo completo carregado para manter o app rápido</span>`;
+            if (s2) s2.innerHTML = `<span>Catálogo completo carregado para manter o app rápido</span>`;
+            return;
+          }
+          if (typeof IntersectionObserver !== "undefined") {
+            const scrollRoot = this.scrollContainer || null;
+            this._sentinelObserver = new IntersectionObserver(
+              (entries) => {
+                for (const entry of entries) {
+                  if (entry.isIntersecting && !this.isFetchingDiscover && (this.discoverPage || 0) < maxPages) {
+                    this.loadMoreDiscoverContent();
+                    break;
+                  }
+                }
+              },
+              { root: scrollRoot, rootMargin: "520px" }
+            );
+            const homeSentinel = document.getElementById("home-infinite-status");
+            if (homeSentinel) {
+              this._sentinelObserver.observe(homeSentinel);
+              if (!homeSentinel.dataset.clickBound) {
+                homeSentinel.dataset.clickBound = "1";
+                homeSentinel.style.cursor = "pointer";
+                homeSentinel.addEventListener("click", () => {
+                  if (!this.isFetchingDiscover && (this.discoverPage || 0) < maxPages) {
+                    this.loadMoreDiscoverContent();
+                  }
+                });
+              }
+            }
+            const searchSentinel = document.getElementById("search-infinite-status");
+            if (searchSentinel) {
+              this._sentinelObserver.observe(searchSentinel);
+              if (!searchSentinel.dataset.clickBound) {
+                searchSentinel.dataset.clickBound = "1";
+                searchSentinel.style.cursor = "pointer";
+                searchSentinel.addEventListener("click", () => {
+                  if (!this.isFetchingDiscover && (this.discoverPage || 0) < maxPages) {
+                    this.loadMoreDiscoverContent();
+                  }
+                });
+              }
+            }
+          }
+
+          const homeArtistsGrid = document.getElementById("home-artists-infinite-grid");
+          if (homeArtistsGrid && !homeArtistsGrid.dataset.infiniteBound) {
+            homeArtistsGrid.dataset.infiniteBound = "1";
+            homeArtistsGrid.addEventListener("scroll", () => {
+              if (this.isFetchingDiscover || (this.discoverPage || 0) >= maxPages) return;
+              const { scrollLeft, scrollWidth, clientWidth } = homeArtistsGrid;
+              if (scrollWidth > clientWidth + 40 && scrollLeft + clientWidth >= scrollWidth - 360) {
+                this.loadMoreDiscoverContent();
+              }
+            }, { passive: true });
           }
         }
 
         async loadMoreOnboardingArtists() {
-          if (this.isFetchingOnboardArtists) return;
+          if (this.isFetchingOnboardArtists || (this.onboardDiscoverPage || 0) >= 6) return;
           this.isFetchingOnboardArtists = true;
           const nextPage = (this.onboardDiscoverPage || 0) + 1;
           try {
@@ -3687,13 +3893,65 @@ export function initMiadoClient() {
           }
         }
 
+        createArtistBubbleCardElement(art) {
+          const card = document.createElement("div");
+          card.className = "artist-bubble-card";
+          card.setAttribute("data-open-artist", art.name);
+          card.setAttribute("data-search-artist-name", art.name);
+          const cover = ensureArtistAvatarUrl(art);
+          card.innerHTML = `
+            <div class="artist-avatar-wrap">
+              <div class="artist-avatar-inner shimmer">
+                <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${cover}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+              </div>
+              <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4.5 19 12 7 19.5 7 4.5"/></svg>
+              </button>
+            </div>
+            <div class="artist-bubble-info">
+              <div class="artist-bubble-name">${art.name}</div>
+              <div class="artist-bubble-sub">${art.role || "Artista"}</div>
+            </div>
+          `;
+          card.addEventListener("click", (e) => {
+            if (e.target.closest("[data-play-artist]")) return;
+            this.navigateTo("artist", true, { artistName: art.name });
+          });
+          const playBtn = card.querySelector("[data-play-artist]");
+          if (playBtn) {
+            playBtn.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              showToast(`Carregando músicas de ${art.name}...`);
+              const prof = await MiadoMusicResolver.fetchArtistProfile(art.name);
+              if (prof && Array.isArray(prof.songs) && prof.songs.length > 0) {
+                state.queue = [...prof.songs];
+                state.queueIndex = 0;
+                engine.playTrack(prof.songs[0], { id: `art_${art.name}`, title: art.name, artist: art.name, coverUrl: prof.songs[0].coverUrl });
+                this.renderRightSidebarBodyOnly();
+              } else {
+                this.navigateTo("artist", true, { artistName: art.name });
+              }
+            });
+          }
+          return card;
+        }
+
         async loadMoreDiscoverContent() {
-          if (this.isFetchingDiscover || state.currentView !== "home") return;
+          const MAX_DISCOVER_PAGES = 6;
+          if (this.isFetchingDiscover || (state.currentView !== "home" && state.currentView !== "search")) return;
+          if ((this.discoverPage || 0) >= MAX_DISCOVER_PAGES) {
+            const statusDone = document.getElementById("home-infinite-status") || document.getElementById("search-infinite-status");
+            if (statusDone) {
+              statusDone.innerHTML = `<span>Catálogo completo carregado para manter o app rápido</span>`;
+            }
+            return;
+          }
+
           this.isFetchingDiscover = true;
           const nextPage = (this.discoverPage || 0) + 1;
-          const statusEl = document.getElementById("home-infinite-status");
+          const statusEl = document.getElementById("home-infinite-status") || document.getElementById("search-infinite-status");
           if (statusEl) {
-            statusEl.innerHTML = `<span class="infinite-scroll-dot"></span><span>Carregando mais artistas, álbuns e músicas...</span>`;
+            statusEl.innerHTML = `<span class="infinite-scroll-dot"></span><span>Carregando mais artistas...</span>`;
           }
 
           try {
@@ -3706,206 +3964,114 @@ export function initMiadoClient() {
             const newAlbums = Array.isArray(data?.albums) ? data.albums : [];
             const newSongs = Array.isArray(data?.songs) ? data.songs : [];
 
-            const artistsGrid = document.getElementById("home-artists-infinite-grid");
-            if (artistsGrid && newArtists.length > 0) {
-              const existingNames = new Set(
-                Array.from(artistsGrid.querySelectorAll("[data-open-artist]")).map(el =>
-                  String(el.getAttribute("data-open-artist") || "").toLowerCase().trim()
-                )
-              );
+            let appendedCount = 0;
+
+            if (newArtists.length > 0) {
               newArtists.forEach(art => {
                 if (!art || !art.name) return;
                 const k = art.name.toLowerCase().trim();
-                if (existingNames.has(k)) return;
-                existingNames.add(k);
-                this.extraDiscoveredArtists.push(art);
-
-                const card = document.createElement("div");
-                card.className = "artist-bubble-card";
-                card.setAttribute("data-open-artist", art.name);
-                const cover = ensureArtistAvatarUrl(art);
-                card.innerHTML = `
-                  <div class="artist-avatar-wrap shimmer">
-                    <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${cover}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
-                    <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-                    </button>
-                  </div>
-                  <div class="artist-bubble-info">
-                    <div class="artist-bubble-name">${art.name}</div>
-                    <div class="artist-bubble-sub">${art.role || "Artista"}</div>
-                  </div>
-                `;
-                card.addEventListener("click", (e) => {
-                  if (e.target.closest("[data-play-artist]")) return;
-                  this.navigateTo("artist", true, { artistName: art.name });
-                });
-                const playBtn = card.querySelector("[data-play-artist]");
-                if (playBtn) {
-                  playBtn.addEventListener("click", async (e) => {
-                    e.stopPropagation();
-                    showToast(`Carregando músicas de ${art.name}...`);
-                    const prof = await MiadoMusicResolver.fetchArtistProfile(art.name);
-                    if (prof && Array.isArray(prof.songs) && prof.songs.length > 0) {
-                      state.queue = [...prof.songs];
-                      state.queueIndex = 0;
-                      engine.playTrack(prof.songs[0], { id: `art_${art.name}`, title: art.name, artist: art.name, coverUrl: prof.songs[0].coverUrl });
-                      this.renderRightSidebarBodyOnly();
-                    } else {
-                      this.navigateTo("artist", true, { artistName: art.name });
-                    }
+                if (!this.extraDiscoveredArtists.some(x => x.name.toLowerCase().trim() === k)) {
+                  this.extraDiscoveredArtists.push({
+                    ...art,
+                    coverUrl: ensureArtistAvatarUrl(art)
                   });
                 }
-                artistsGrid.appendChild(card);
               });
+
+              const artistsGrid = document.getElementById("home-artists-infinite-grid");
+              if (artistsGrid) {
+                const existingNames = new Set(
+                  Array.from(artistsGrid.querySelectorAll("[data-open-artist]")).map(el =>
+                    String(el.getAttribute("data-open-artist") || "").toLowerCase().trim()
+                  )
+                );
+                newArtists.forEach(art => {
+                  if (!art || !art.name) return;
+                  const k = art.name.toLowerCase().trim();
+                  if (existingNames.has(k)) return;
+                  existingNames.add(k);
+                  artistsGrid.appendChild(this.createArtistBubbleCardElement(art));
+                });
+              }
+
+              const bottomArtistsSec = document.getElementById("home-bottom-artists-section");
+              const bottomArtistsGrid = document.getElementById("home-bottom-artists-grid");
+              if (bottomArtistsGrid) {
+                if (bottomArtistsSec) bottomArtistsSec.style.display = "block";
+                const existingBottomNames = new Set(
+                  Array.from(bottomArtistsGrid.querySelectorAll("[data-open-artist]")).map(el =>
+                    String(el.getAttribute("data-open-artist") || "").toLowerCase().trim()
+                  )
+                );
+                newArtists.forEach(art => {
+                  if (!art || !art.name) return;
+                  const k = art.name.toLowerCase().trim();
+                  if (existingBottomNames.has(k)) return;
+                  existingBottomNames.add(k);
+                  bottomArtistsGrid.appendChild(this.createArtistBubbleCardElement(art));
+                  appendedCount++;
+                });
+              }
+
+              const searchArtistsGrid = document.getElementById("search-artists-infinite-grid");
+              if (searchArtistsGrid) {
+                const existingSearchNames = new Set(
+                  Array.from(searchArtistsGrid.querySelectorAll("[data-search-artist-name]")).map(el =>
+                    String(el.getAttribute("data-search-artist-name") || "").toLowerCase().trim()
+                  )
+                );
+                newArtists.forEach(art => {
+                  if (!art || !art.name) return;
+                  const k = art.name.toLowerCase().trim();
+                  if (existingSearchNames.has(k)) return;
+                  existingSearchNames.add(k);
+                  searchArtistsGrid.appendChild(this.createArtistBubbleCardElement(art));
+                  appendedCount++;
+                });
+              }
             }
 
-            const albumsContainer = document.getElementById("home-albums-infinite-grid");
-            if (albumsContainer && newAlbums.length > 0) {
-              if (!this.homeAlbumsPool) this.homeAlbumsPool = [];
-              const existingAlbIds = new Set(this.homeAlbumsPool.map(a => String(a.id)));
+            if (newAlbums.length > 0) {
               newAlbums.forEach(album => {
-                if (!album || !album.title || existingAlbIds.has(String(album.id))) return;
-                existingAlbIds.add(String(album.id));
+                if (!album || !album.title) return;
                 const resolvedCover = ensureTrackCoverUrl(album.coverUrl, album.title, album.artist);
                 const cleanAlb = { ...album, coverUrl: resolvedCover };
-                this.homeAlbumsPool.push(cleanAlb);
-                this.extraDiscoveredAlbums.push(cleanAlb);
-
-                const card = document.createElement("div");
-                card.className = "album-card";
-                card.setAttribute("data-album-id", cleanAlb.id);
-                card.innerHTML = `
-                  <div class="album-cover-wrap">
-                    <img class="album-cover-img" data-album-img="${cleanAlb.id}" src="${cleanAlb.coverUrl}" alt="${cleanAlb.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${cleanAlb.title.replace(/'/g, "")}', '${cleanAlb.artist.replace(/'/g, "")}')" />
-                    <button class="floating-card-play" data-play-album-id="${cleanAlb.id}" title="Tocar ${cleanAlb.title}">
-                      <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-                    </button>
-                  </div>
-                  <div class="album-card-title">${cleanAlb.title}</div>
-                  <div class="album-card-sub">${cleanAlb.artist}</div>
-                `;
-                card.addEventListener("click", (e) => {
-                  if (e.target.closest("[data-play-album-id]")) return;
-                  this.navigateTo("album", true, { albumId: cleanAlb.id, customAlbum: cleanAlb });
-                });
-                const playBtn = card.querySelector("[data-play-album-id]");
-                if (playBtn) {
-                  playBtn.addEventListener("click", async (e) => {
-                    e.stopPropagation();
-                    if (!Array.isArray(cleanAlb.tracks) || cleanAlb.tracks.length === 0) {
-                      const details = await MiadoMusicResolver.fetchAlbumDetails(cleanAlb);
-                      if (details && Array.isArray(details.tracks) && details.tracks.length > 0) {
-                        cleanAlb.tracks = deduplicateTracks(details.tracks);
-                      }
-                    }
-                    if (cleanAlb.tracks && cleanAlb.tracks.length > 0) {
-                      state.queue = [...cleanAlb.tracks];
-                      state.queueIndex = 0;
-                      engine.playTrack(cleanAlb.tracks[0], cleanAlb);
-                      this.renderRightSidebarBodyOnly();
-                    }
-                  });
+                if (!this.extraDiscoveredAlbums.some(a => String(a.id) === String(cleanAlb.id))) {
+                  this.extraDiscoveredAlbums.push(cleanAlb);
                 }
-                albumsContainer.appendChild(card);
               });
             }
 
-            const tracksTable = document.getElementById("home-songs-infinite-table");
-            if (tracksTable && newSongs.length > 0) {
-              if (!this.homeGlobalTopTracks) this.homeGlobalTopTracks = [];
-              const existingTrackKeys = new Set(this.homeGlobalTopTracks.map(t => normalizeTrackKey(t)));
+            if (newSongs.length > 0) {
               newSongs.forEach(rawTrack => {
                 if (!rawTrack || !rawTrack.title) return;
                 const tKey = normalizeTrackKey(rawTrack);
-                if (existingTrackKeys.has(tKey)) return;
-                existingTrackKeys.add(tKey);
-
-                const track = {
-                  ...rawTrack,
-                  coverUrl: ensureTrackCoverUrl(rawTrack, rawTrack.title, rawTrack.artist),
-                  streamUrl: toProxyStreamUrl(rawTrack.streamUrl || "", rawTrack.title, rawTrack.artist, true)
-                };
-                const idx = this.homeGlobalTopTracks.length;
-                this.homeGlobalTopTracks.push(track);
-                this.extraDiscoveredSongs.push(track);
-
-                const isLiked = state.isLiked(track);
-                const safeTitle = String(track.title || "").replace(/"/g, "&quot;");
-                const safeArtist = String(track.artist || "").replace(/"/g, "&quot;");
-                const likeTip = isLiked ? "Remover das Músicas Curtidas" : "Curtir faixa";
-
-                const row = document.createElement("div");
-                row.className = `track-row ${state.currentTrack && (String(state.currentTrack.id) === String(track.id) || normalizeTrackKey(state.currentTrack) === tKey) ? "playing" : ""}`;
-                row.setAttribute("data-home-top-idx", String(idx));
-                row.setAttribute("data-track-id", String(track.id));
-                row.setAttribute("data-track-key", tKey);
-                row.innerHTML = `
-                  <div class="track-num-col"><span>${idx + 1}</span></div>
-                  <img class="track-row-cover" src="${track.coverUrl}" alt="${safeTitle}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${String(track.title || "").replace(/'/g, "")}', '${String(track.artist || "").replace(/'/g, "")}')" />
-                  <div class="track-info-col">
-                    <div class="track-title">${track.title}</div>
-                    <div class="track-artist">${track.artist}${track.albumTitle ? ` · ${track.albumTitle}` : ""}</div>
-                  </div>
-                  <div class="track-duration-col">${track.duration || "3:30"}</div>
-                  <div class="track-actions-col">
-                    <button class="track-icon-btn btn-add-queue-direct" data-quick-queue-btn data-home-queue-idx="${idx}" title="Adicionar à fila" aria-label="Adicionar à fila">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h16M4 12h10M4 18h10M18 15v6m3-3h-6"/></svg>
-                    </button>
-                    <button class="track-icon-btn ${isLiked ? "liked" : ""}" data-home-like-idx="${idx}" data-like-track-key="${tKey}" data-like-track-id="${track.id}" data-like-track-title="${safeTitle}" data-like-track-artist="${safeArtist}" data-tooltip="${likeTip}" title="${likeTip}" aria-label="${likeTip}">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="${isLiked ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                    </button>
-                    <button class="track-icon-btn" data-home-addpl-idx="${idx}" title="Adicionar à Playlist" aria-label="Adicionar à Playlist">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    </button>
-                    <button class="track-icon-btn" data-home-share-idx="${idx}" title="Compartilhar" aria-label="Compartilhar">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                    </button>
-                  </div>
-                `;
-                row.addEventListener("click", (e) => {
-                  if (e.target.closest(".track-actions-col")) return;
-                  state.queue = this.homeGlobalTopTracks.map(t => ({ ...t }));
-                  state.queueIndex = idx;
-                  engine.playTrack(track, track.albumObj || state.currentAlbum);
-                  this.renderRightSidebarBodyOnly();
-                });
-                const likeBtn = row.querySelector("[data-home-like-idx]");
-                if (likeBtn) {
-                  likeBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    const nowLiked = state.toggleLike(track);
-                    likeBtn.classList.remove("liked-pop");
-                    void likeBtn.offsetWidth;
-                    if (nowLiked) likeBtn.classList.add("liked-pop");
-                    engine.updateLikeButtonUI();
-                    this.syncAllLikeButtonsInDOM();
+                if (!this.extraDiscoveredSongs.some(t => normalizeTrackKey(t) === tKey)) {
+                  this.extraDiscoveredSongs.push({
+                    ...rawTrack,
+                    coverUrl: ensureTrackCoverUrl(rawTrack, rawTrack.title, rawTrack.artist),
+                    streamUrl: toProxyStreamUrl(rawTrack.streamUrl || "", rawTrack.title, rawTrack.artist, true)
                   });
                 }
-                const addPlBtn = row.querySelector("[data-home-addpl-idx]");
-                if (addPlBtn) {
-                  addPlBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    this.openTrackOptionsModal(track, track.albumObj);
-                  });
-                }
-                const shareBtn = row.querySelector("[data-home-share-idx]");
-                if (shareBtn) {
-                  shareBtn.addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    this.shareTrack(track, track.albumObj);
-                  });
-                }
-                tracksTable.appendChild(row);
               });
             }
 
+            const reachedLimit = this.discoverPage >= MAX_DISCOVER_PAGES || data?.hasMore === false;
             if (statusEl) {
-              statusEl.innerHTML = `<span>Role para baixo para descobrir ainda mais músicas e artistas</span>`;
+              statusEl.innerHTML = reachedLimit
+                ? `<span>Catálogo completo carregado para manter o app rápido</span>`
+                : `<span>Role para baixo ou toque aqui para descobrir mais artistas</span>`;
+            }
+
+            // Se a página atual adicionou poucos artistas novos por sobreposição com o Top 100 e ainda há páginas, busca a próxima automaticamente
+            if (!reachedLimit && appendedCount < 6 && this.discoverPage < MAX_DISCOVER_PAGES) {
+              this.isFetchingDiscover = false;
+              await this.loadMoreDiscoverContent();
+              return;
             }
           } catch (_e) {
             if (statusEl) {
-              statusEl.innerHTML = `<span>Role para carregar mais</span>`;
+              statusEl.innerHTML = `<span>Toque ou role para carregar mais artistas</span>`;
             }
           } finally {
             this.isFetchingDiscover = false;
@@ -5118,14 +5284,25 @@ export function initMiadoClient() {
             });
             authHandleInput.addEventListener("input", () => {
               authHandleInput.dataset.userEdited = authHandleInput.value.trim() ? "1" : "";
-              const raw = authHandleInput.value;
-              if (raw) {
-                authHandleInput.value = sanitizeCleanHandle(raw, authNameInput.value);
+              let val = authHandleInput.value;
+              if (val && !val.startsWith("@")) {
+                authHandleInput.value = "@" + val.replace(/^@+/, "");
+              }
+            });
+            authHandleInput.addEventListener("blur", () => {
+              if (authHandleInput.value.trim()) {
+                authHandleInput.value = sanitizeCleanHandle(authHandleInput.value, authNameInput.value);
               }
             });
           }
 
           if (onboardHandleInput) {
+            onboardHandleInput.addEventListener("input", () => {
+              let val = onboardHandleInput.value;
+              if (val && !val.startsWith("@")) {
+                onboardHandleInput.value = "@" + val.replace(/^@+/, "");
+              }
+            });
             onboardHandleInput.addEventListener("blur", () => {
               onboardHandleInput.value = sanitizeCleanHandle(
                 onboardHandleInput.value,
@@ -5282,6 +5459,51 @@ export function initMiadoClient() {
             });
           }
 
+          const btnAuthGoogle = document.getElementById("btn-auth-google");
+          if (btnAuthGoogle) {
+            btnAuthGoogle.addEventListener("click", async () => {
+              try {
+                if (window.miadoFirestore && typeof window.miadoFirestore.loginWithGoogle === "function") {
+                  showToast("Conectando com o Google...");
+                  const { user, token } = await window.miadoFirestore.loginWithGoogle();
+                  if (token) localStorage.setItem("miado_auth_token", token);
+                  if (user) {
+                    localStorage.setItem("miado_user_uid", user.uid);
+                    localStorage.setItem("miado_active_session_v1", "true");
+
+                    // Gera @ com nome da conta e dígitos aleatórios caso ainda não tenha handle personalizado
+                    if (!state.user.username || state.user.username === "@visitante" || state.user.username === "@ouvinte") {
+                      const cleanEmail = (user.email || "").toLowerCase();
+                      const cleanName = user.displayName || cleanEmail.split("@")[0] || "Ouvinte Miado";
+                      const baseSlug = (user.displayName || cleanEmail.split("@")[0] || "ouvinte")
+                        .toLowerCase()
+                        .normalize("NFD")
+                        .replace(/[\u0300-\u036f]/g, "")
+                        .replace(/[^a-z0-9]/g, "")
+                        .slice(0, 14) || "ouvinte";
+                      const randomDigits = Math.floor(1000 + Math.random() * 9000);
+                      state.user.name = cleanName;
+                      state.user.username = `@${baseSlug}${randomDigits}`;
+                      state.user.handle = state.user.username;
+                      state.user.email = cleanEmail;
+                      state.user.avatarUrl = user.photoURL || "/api/cat-avatar?id=cat_1";
+                      state.saveUser();
+                    }
+                  }
+                  document.getElementById("modal-auth")?.classList.remove("active");
+                  const welcomeEl = document.getElementById("miado-welcome-screen");
+                  if (welcomeEl) welcomeEl.classList.remove("active", "closing");
+                  this.syncHeaderUserUI();
+                  this.renderSidebarPlaylists();
+                  if (state.currentView === "home") this.renderHomeView();
+                  showToast(`Bem-vindo, ${user.displayName || "Ouvinte"} (${state.user.username})!`);
+                }
+              } catch (err) {
+                showAuthError(err?.message || "Não foi possível autenticar com o Google.");
+              }
+            });
+          }
+
           // Etapa 2: Upload de foto e avanço para Etapa 3 (Artistas Favoritos)
           const onboardFileAvatar = document.getElementById("onboard-file-avatar");
           if (onboardFileAvatar) {
@@ -5399,12 +5621,38 @@ export function initMiadoClient() {
             });
           }
 
+          const btnAuthDeleteAccount = document.getElementById("btn-auth-delete-account");
+          if (btnAuthDeleteAccount) {
+            btnAuthDeleteAccount.addEventListener("click", async () => {
+              const confirmed = window.confirm("Tem certeza que deseja excluir sua conta e todos os seus dados? Esta ação não pode ser desfeita.");
+              if (!confirmed) return;
+              try {
+                if (window.miadoFirestore && typeof window.miadoFirestore.deleteAccount === "function") {
+                  await window.miadoFirestore.deleteAccount();
+                  return;
+                }
+                const token = localStorage.getItem("miado_auth_token") || "";
+                await fetch("/api/account", {
+                  method: "DELETE",
+                  headers: token ? { "Authorization": `Bearer ${token}` } : {}
+                });
+              } catch (e) {}
+              localStorage.clear();
+              window.location.reload();
+            });
+          }
+
           const btnAuthLogout = document.getElementById("btn-auth-logout");
           if (btnAuthLogout) {
             btnAuthLogout.addEventListener("click", async () => {
               try {
+                if (window.miadoFirestore && typeof window.miadoFirestore.logout === "function") {
+                  await window.miadoFirestore.logout();
+                }
                 await fetch("/api/auth/logout", { method: "POST" });
               } catch (e) {}
+              localStorage.removeItem("miado_auth_token");
+              localStorage.removeItem("miado_user_uid");
               localStorage.removeItem("miado_active_session_v1");
               localStorage.removeItem("miado_user_onboarded_v1");
               window._miadoGuestSessionActive = false;
@@ -5944,7 +6192,7 @@ export function initMiadoClient() {
                     <h2 class="section-title">Músicas Favoritas (${likedTracks.length})</h2>
                   </div>
                   ${likedTracks.length === 0 ? `
-                    <div class="album-card" style="text-align:center; padding:32px; color:var(--text-secondary);">
+                    <div class="album-card profile-empty-state-card" style="text-align:center; padding:32px 20px; color:var(--text-secondary); cursor:default;">
                       Nenhuma música curtida ainda. Curta qualquer faixa para fixá-la aqui!
                     </div>
                   ` : `
@@ -5990,22 +6238,25 @@ export function initMiadoClient() {
                     <h2 class="section-title">Artistas Seguidos (${followedArtists.length})</h2>
                   </div>
                   ${followedArtists.length === 0 ? `
-                    <div class="album-card" style="text-align:center; padding:32px; color:var(--text-secondary);">
-                      Nenhum artista seguido ainda. Clique em "+ Seguir" nos cards de artistas para adicioná-los aqui!
+                    <div class="album-card profile-empty-state-card" style="text-align:center; padding:32px 20px; color:var(--text-secondary); cursor:default;">
+                      Nenhum artista seguido ainda. Clique em "Seguir artista" no perfil dos seus artistas favoritos para adicioná-los aqui!
                     </div>
                   ` : `
-                    <div class="artist-bubbles-grid">
-                      ${followedArtists.map((art, aIdx) => {
+                    <div class="artist-bubbles-grid profile-followed-artists-grid">
+                      ${followedArtists.map((art) => {
                         const isFollowing = state.isArtistFollowed(art.name);
+                        const resolvedAvatar = ensureArtistAvatarUrl(art);
                         return `
                           <div class="artist-bubble-card" data-prof-open-artist="${art.name}">
-                            <img class="artist-bubble-img" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                            <div class="artist-avatar-wrap shimmer">
+                              <img class="artist-bubble-img loaded" data-artist-bubble-img="${art.name}" src="${resolvedAvatar}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                            </div>
                             <div class="artist-bubble-info">
                               <div class="artist-bubble-name">${art.name}</div>
                               <div class="artist-bubble-sub">${art.role || "Artista Seguido"}</div>
                             </div>
-                            <button type="button" class="category-pill ${isFollowing ? 'active' : ''}" data-prof-follow-artist="${art.name}" data-artist-cover="${art.coverUrl}" data-artist-role="${art.role}">
-                              ${isFollowing ? "✓ Seguindo" : "+ Seguir"}
+                            <button type="button" class="category-pill ${isFollowing ? 'active' : ''}" data-prof-follow-artist="${art.name}" data-artist-cover="${resolvedAvatar}" data-artist-role="${art.role || 'Artista'}">
+                              ${isFollowing ? "Seguindo" : "Seguir"}
                             </button>
                           </div>
                         `;
@@ -6022,7 +6273,7 @@ export function initMiadoClient() {
                     <h2 class="section-title">Seguidores (${followerUsers.length})</h2>
                   </div>
                   ${followerUsers.length === 0 ? `
-                    <div class="album-card" style="text-align:center; padding:32px; color:var(--text-secondary);">
+                    <div class="album-card profile-empty-state-card" style="text-align:center; padding:32px 20px; color:var(--text-secondary); cursor:default;">
                       Nenhum seguidor ainda. Compartilhe seu perfil na comunidade para conquistar seguidores!
                     </div>
                   ` : `
@@ -6058,7 +6309,7 @@ export function initMiadoClient() {
                     <h2 class="section-title">Pessoas que Este Perfil Segue (${followingUsers.length})</h2>
                   </div>
                   ${followingUsers.length === 0 ? `
-                    <div class="album-card" style="text-align:center; padding:32px; color:var(--text-secondary);">
+                    <div class="album-card profile-empty-state-card" style="text-align:center; padding:32px 20px; color:var(--text-secondary); cursor:default;">
                       Nenhum amigo seguido ainda. Encontre perfis reais na aba Comunidade!
                     </div>
                   ` : `
@@ -6121,13 +6372,13 @@ export function initMiadoClient() {
 
               <!-- 6. ABA: EDITAR DADOS (SOMENTE MEU PERFIL) -->
               ${isMe ? `
-                <div id="prof-pane-edit" style="display:${activeSectionTab === 'edit' ? 'block' : 'none'};">
-                  <div class="album-card" style="padding:22px; cursor:default; display:flex; flex-direction:column; gap:16px;">
-                    <div>
-                      <h2 class="section-title">Personalização do Seu Perfil & Gatinho</h2>
+                <div id="prof-pane-edit" style="display:${activeSectionTab === 'edit' ? 'block' : 'none'}; width:100%;">
+                  <div class="album-card profile-edit-card" style="padding:20px 16px; cursor:default; display:flex; flex-direction:column; gap:16px; width:100%; max-width:100%; min-width:0; margin:0 auto; box-sizing:border-box;">
+                    <div style="text-align:center; width:100%;">
+                      <h2 class="section-title" style="text-align:center; margin:0 auto;">Personalização do Seu Perfil & Gatinho</h2>
                     </div>
 
-                    <div class="cat-avatar-picker-grid" id="prof-page-cat-grid">
+                    <div class="cat-avatar-picker-grid" id="prof-page-cat-grid" style="width:100%; margin:0 auto;">
                       ${CAT_AVATAR_PRESETS.map((cat, idx) => {
                         const isSelected = userAvatar === cat.url;
                         return `
@@ -6139,7 +6390,7 @@ export function initMiadoClient() {
                       }).join("")}
                     </div>
 
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; width:100%;">
                       <div>
                         <label style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; display:block; margin-bottom:4px;">Nome no Perfil</label>
                         <input type="text" id="prof-page-input-name" value="${state.user.name}" style="width:100%;" placeholder="Seu nome" />
@@ -6150,23 +6401,23 @@ export function initMiadoClient() {
                       </div>
                     </div>
 
-                    <div>
+                    <div style="width:100%;">
                       <label style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; display:block; margin-bottom:4px;">Bio</label>
                       <textarea id="prof-page-input-bio" rows="2" style="width:100%;">${state.user.bio || ""}</textarea>
                     </div>
 
-                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
-                      <button type="button" class="album-action-btn" id="btn-prof-upload-avatar-btn">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; width:100%;">
+                      <button type="button" class="album-action-btn" id="btn-prof-upload-avatar-btn" style="flex:1 1 180px; justify-content:center;">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                         Trocar Foto do Perfil
                       </button>
-                      <button type="button" class="album-action-btn" id="btn-prof-upload-banner-btn">
+                      <button type="button" class="album-action-btn" id="btn-prof-upload-banner-btn" style="flex:1 1 180px; justify-content:center;">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                         Trocar Imagem de Capa
                       </button>
                     </div>
 
-                    <div id="prof-save-feedback-banner" style="display:none; padding:10px 14px; border-radius:10px; background-color:rgba(16, 185, 129, 0.16); border:1px solid rgba(16, 185, 129, 0.45); color:#6ee7b7; font-size:0.82rem; font-weight:700; align-items:center; gap:8px;">
+                    <div id="prof-save-feedback-banner" style="display:none; padding:10px 14px; border-radius:10px; background-color:rgba(16, 185, 129, 0.16); border:1px solid rgba(16, 185, 129, 0.45); color:#6ee7b7; font-size:0.82rem; font-weight:700; align-items:center; justify-content:center; gap:8px;">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="20 6 9 17 4 12"/></svg>
                       <span>Alterações do perfil confirmadas e salvas com sucesso!</span>
                     </div>
@@ -6246,27 +6497,62 @@ export function initMiadoClient() {
 
             const btnSaveProfile = document.getElementById("prof-page-btn-save");
             if (btnSaveProfile) {
-              btnSaveProfile.addEventListener("click", () => {
+              btnSaveProfile.addEventListener("click", async () => {
                 const nameInp = document.getElementById("prof-page-input-name");
                 const handleInp = document.getElementById("prof-page-input-handle");
                 const bioInp = document.getElementById("prof-page-input-bio");
-                if (nameInp && nameInp.value.trim()) state.user.name = nameInp.value.trim();
+                const newName = (nameInp && nameInp.value.trim()) ? nameInp.value.trim() : state.user.name;
+                let newHandle = state.user.username;
                 if (handleInp && handleInp.value.trim()) {
-                  const h = handleInp.value.trim();
-                  state.user.username = h.startsWith("@") ? h : `@${h}`;
+                  newHandle = sanitizeCleanHandle(handleInp.value.trim(), newName);
                 }
-                if (bioInp) state.user.bio = bioInp.value.trim();
+                const newBio = bioInp ? bioInp.value.trim() : (state.user.bio || "");
+
+                try {
+                  const token = localStorage.getItem("miado_auth_token") || "";
+                  const headers = { "Content-Type": "application/json" };
+                  if (token) headers["Authorization"] = `Bearer ${token}`;
+                  const prefRes = await fetch("/api/user/preferences", {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({
+                      email: state.user.email || "",
+                      name: newName,
+                      handle: newHandle,
+                      bio: newBio,
+                      customAvatar: state.user.avatarUrl,
+                      customBanner: state.user.bannerUrl,
+                      favoriteArtists: state.user.favoriteArtists || [],
+                      followedArtists: (state.followedArtists || []).map(a => a.name),
+                      followingProfiles: (state.friends || []).map(f => f.username),
+                      onboardingCompleted: true
+                    })
+                  });
+                  if (prefRes.status === 409) {
+                    const errData = await prefRes.json().catch(() => ({}));
+                    showToast(errData.error || "Este @username já está em uso por outra conta.");
+                    if (handleInp) handleInp.value = state.user.username;
+                    return;
+                  }
+                } catch (_e) {}
+
+                state.user.name = newName;
+                state.user.username = newHandle;
+                state.user.handle = newHandle;
+                state.user.bio = newBio;
+                if (handleInp) handleInp.value = newHandle;
                 state.saveUser();
                 state.createOrUpdateCommunityProfile({
                   name: state.user.name,
                   username: state.user.username,
                   bio: state.user.bio,
-                  avatarUrl: state.user.avatarUrl
+                  avatarUrl: state.user.avatarUrl,
+                  bannerUrl: state.user.bannerUrl
                 }).catch(() => {});
                 this.syncHeaderUserUI();
                 const banner = document.getElementById("prof-save-feedback-banner");
                 if (banner) banner.style.display = "flex";
-                showToast("Perfil salvo com sucesso!");
+                showToast("Perfil salvo e criptografado com sucesso!");
               });
             }
           }
@@ -6437,22 +6723,184 @@ export function initMiadoClient() {
             ? baseCatalogWithoutHardcoded.filter(a => favArtistSet.has(String(a.artist || "").toLowerCase().trim()))
             : [];
 
-          const homeAlbumsMap = new Map();
-          [...userFavAlbums, ...chartNewReleases, ...(this.extraDiscoveredAlbums || []), ...baseCatalogWithoutHardcoded].forEach(alb => {
-            if (!alb || !alb.title) return;
-            const key = `${alb.title.toLowerCase().trim()}|${(alb.artist || "").toLowerCase().trim()}`;
-            if (!homeAlbumsMap.has(key)) {
-              homeAlbumsMap.set(key, {
+          // 1. Pool do Algoritmo do Usuário (50% = até 25 álbuns baseados nas músicas ouvidas e artistas seguidos)
+          const algoArtistNames = Array.from(new Set([
+            ...(Array.isArray(state.followedArtists) ? state.followedArtists.map(a => a.name) : []),
+            ...(Array.isArray(state.user.favoriteArtists) ? state.user.favoriteArtists : []),
+            ...(Array.isArray(state.recentHistory) ? state.recentHistory.map(t => t.artist) : []),
+            ...(Array.isArray(state.user.likedTracks) ? state.user.likedTracks.map(t => t.artist) : [])
+          ].filter(Boolean)));
+
+          const recAlbumsFromServer = (state.recommendations && Array.isArray(state.recommendations.recommendedAlbums))
+            ? state.recommendations.recommendedAlbums.map((alb, idx) => ({
+                id: alb.id || `algo_alb_${idx}`,
+                collectionId: alb.collectionId,
+                dzAlbumId: alb.dzAlbumId,
+                title: alb.title,
+                artist: alb.artist,
+                year: alb.year || 2024,
+                coverUrl: ensureTrackCoverUrl(alb.coverUrl, alb.title, alb.artist),
+                tracks: []
+              }))
+            : [];
+
+          const historyDerivedAlbums = [];
+          [...(state.recentHistory || []), ...(state.user.likedTracks || [])].forEach((tr, idx) => {
+            if (!tr || !tr.artist) return;
+            const albTitle = tr.albumTitle || tr.title;
+            if (!albTitle) return;
+            historyDerivedAlbums.push({
+              id: tr.albumId || `hist_alb_${idx}_${albTitle.replace(/\s+/g, "_")}`,
+              title: albTitle,
+              artist: tr.artist,
+              year: tr.year || 2024,
+              coverUrl: ensureTrackCoverUrl(tr.coverUrl, albTitle, tr.artist),
+              tracks: []
+            });
+          });
+
+          const followedArtistSyntheticAlbums = [
+            { title: "SUPER", artist: "Jão", year: 2023 },
+            { title: "Pirata", artist: "Jão", year: 2021 },
+            { title: "Anti-Herói", artist: "Jão", year: 2019 },
+            { title: "Lobos", artist: "Jão", year: 2018 },
+            { title: "Three Cheers for Sweet Revenge", artist: "My Chemical Romance", year: 2004 },
+            { title: "The Black Parade", artist: "My Chemical Romance", year: 2006 },
+            { title: "Hybrid Theory", artist: "Linkin Park", year: 2000 },
+            { title: "Meteora", artist: "Linkin Park", year: 2003 },
+            { title: "From Zero", artist: "Linkin Park", year: 2024 },
+            { title: "HIT ME HARD AND SOFT", artist: "Billie Eilish", year: 2024 },
+            { title: "Happier Than Ever", artist: "Billie Eilish", year: 2021 },
+            { title: "Short n' Sweet", artist: "Sabrina Carpenter", year: 2024 },
+            { title: "emails i can't send", artist: "Sabrina Carpenter", year: 2022 },
+            { title: "MAYHEM", artist: "Lady Gaga", year: 2025 },
+            { title: "The Fame Monster", artist: "Lady Gaga", year: 2009 },
+            { title: "Born This Way", artist: "Lady Gaga", year: 2011 },
+            { title: "Hurry Up Tomorrow", artist: "The Weeknd", year: 2025 },
+            { title: "After Hours", artist: "The Weeknd", year: 2020 },
+            { title: "Starboy", artist: "The Weeknd", year: 2016 },
+            { title: "AM", artist: "Arctic Monkeys", year: 2013 },
+            { title: "Favourite Worst Nightmare", artist: "Arctic Monkeys", year: 2007 },
+            { title: "Born to Die", artist: "Lana Del Rey", year: 2012 },
+            { title: "Ultraviolence", artist: "Lana Del Rey", year: 2014 },
+            { title: "GUTS", artist: "Olivia Rodrigo", year: 2023 },
+            { title: "SOUR", artist: "Olivia Rodrigo", year: 2021 },
+            { title: "The Tortured Poets Department", artist: "Taylor Swift", year: 2024 },
+            { title: "1989 (Taylor's Version)", artist: "Taylor Swift", year: 2023 },
+            { title: "GNX", artist: "Kendrick Lamar", year: 2024 },
+            { title: "DAMN.", artist: "Kendrick Lamar", year: 2017 },
+            { title: "UTOPIA", artist: "Travis Scott", year: 2023 },
+            { title: "ASTROWORLD", artist: "Travis Scott", year: 2018 },
+            { title: "SOS", artist: "SZA", year: 2022 }
+          ].map((item, idx) => ({
+            id: `curated_algo_${idx}_${item.artist.replace(/\s+/g, "_")}`,
+            title: item.title,
+            artist: item.artist,
+            year: item.year,
+            coverUrl: `/api/cover?title=${encodeURIComponent(item.title)}&artist=${encodeURIComponent(item.artist)}`,
+            tracks: []
+          }));
+
+          const algoPriorityPool = [
+            ...userFavAlbums,
+            ...recAlbumsFromServer,
+            ...historyDerivedAlbums,
+            ...followedArtistSyntheticAlbums.filter(a => algoArtistNames.some(n => n.toLowerCase() === a.artist.toLowerCase())),
+            ...followedArtistSyntheticAlbums
+          ];
+
+          // 2. Pool de Álbuns Brasileiros (pelo menos 30% = mínimo 15 álbuns nacionais)
+          const brazilianCuratedAlbums = [
+            ...baseCatalogWithoutHardcoded.filter(a => a.category === "brasil" || a.category === "jao" || (a.filterTags && a.filterTags.includes("brasil"))),
+            { id: "br_liniker_caju", title: "CAJU", artist: "Liniker", year: 2024 },
+            { id: "br_matue_333", title: "333", artist: "Matuê", year: 2024 },
+            { id: "br_matue_mdt", title: "Máquina do Tempo", artist: "Matuê", year: 2020 },
+            { id: "br_luisa_escandalo", title: "Escândalo Íntimo", artist: "Luísa Sonza", year: 2023 },
+            { id: "br_anitta_fg", title: "Funk Generation", artist: "Anitta", year: 2024 },
+            { id: "br_marina_vicio", title: "Vício Inerente", artist: "Marina Sena", year: 2023 },
+            { id: "br_marina_de_primeira", title: "De Primeira", artist: "Marina Sena", year: 2021 },
+            { id: "br_duda_tara", title: "Tara e Tal", artist: "Duda Beat", year: 2024 },
+            { id: "br_baco_qvvjfa", title: "Quantas Vezes Você Já Foi Amado?", artist: "Baco Exu do Blues", year: 2022 },
+            { id: "br_baco_bluesman", title: "Bluesman", artist: "Baco Exu do Blues", year: 2018 },
+            { id: "br_tim_maia_1973", title: "Tim Maia (1973)", artist: "Tim Maia", year: 1973 },
+            { id: "br_djavan_luz", title: "Luz", artist: "Djavan", year: 1982 },
+            { id: "br_rita_lee_fruto", title: "Fruto Proibido", artist: "Rita Lee", year: 1975 },
+            { id: "br_cbjr_transpiracao", title: "Transpiração Contínua Prolongada", artist: "Charlie Brown Jr.", year: 1997 },
+            { id: "br_racionais_sobrevivendo", title: "Sobrevivendo no Inferno", artist: "Racionais MC's", year: 1997 },
+            { id: "br_jorge_ben_tabua", title: "A Tábua de Esmeralda", artist: "Jorge Ben Jor", year: 1974 },
+            { id: "br_caetano_transa", title: "Transa", artist: "Caetano Veloso", year: 1972 },
+            { id: "br_bk_icarus", title: "ICARUS", artist: "BK'", year: 2022 }
+          ].map(alb => ({
+            ...alb,
+            coverUrl: ensureTrackCoverUrl(alb.coverUrl, alb.title, alb.artist),
+            tracks: alb.tracks || []
+          }));
+
+          // 3. Pool de Álbuns Mundiais em Alta (20% = 10+ álbuns globais)
+          const globalFamousPool = [
+            ...chartNewReleases,
+            ...(this.extraDiscoveredAlbums || []),
+            ...baseCatalogWithoutHardcoded,
+            ...followedArtistSyntheticAlbums
+          ];
+
+          const maybeShuffle = (arr) => {
+            if (!this._homeAlbumsRefreshSeed) return arr;
+            const copy = [...arr];
+            for (let i = copy.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+          };
+
+          const seenMixKeys = new Set();
+          const addUniqueToMix = (targetArr, sourceArr, maxCount) => {
+            for (const alb of sourceArr) {
+              if (targetArr.length >= maxCount) break;
+              if (!alb || !alb.title) continue;
+              const k = `${String(alb.title).toLowerCase().trim()}|${String(alb.artist || "").toLowerCase().trim()}`;
+              if (seenMixKeys.has(k)) continue;
+              seenMixKeys.add(k);
+              targetArr.push({
                 ...alb,
                 coverUrl: ensureTrackCoverUrl(alb.coverUrl, alb.title, alb.artist)
               });
             }
+          };
+
+          const algoPick = [];
+          const brPick = [];
+          const globalPick = [];
+
+          // Garante pelo menos 30% BR (15 álbuns), 50% Algoritmo (25 álbuns) e 20% Global (10 álbuns) = 50 álbuns no total
+          addUniqueToMix(brPick, maybeShuffle(brazilianCuratedAlbums), 16);
+          addUniqueToMix(algoPick, maybeShuffle(algoPriorityPool), 25);
+          addUniqueToMix(globalPick, maybeShuffle(globalFamousPool), 50 - brPick.length - algoPick.length);
+
+          // Intercala harmoniosamente (Algoritmo + BR + Global) mantendo limite de 50 álbuns
+          const interleaved50 = [];
+          const maxLen = Math.max(algoPick.length, brPick.length, globalPick.length);
+          for (let i = 0; i < maxLen && interleaved50.length < 50; i++) {
+            if (i < algoPick.length && interleaved50.length < 50) interleaved50.push(algoPick[i]);
+            if (i < brPick.length && interleaved50.length < 50) interleaved50.push(brPick[i]);
+            if (i + 1 < algoPick.length && interleaved50.length < 50 && i % 2 === 0) {
+              // Prioriza peso de 50% do algoritmo
+            }
+            if (i < globalPick.length && interleaved50.length < 50) interleaved50.push(globalPick[i]);
+          }
+          // Adiciona quaisquer restantes dos pools até fechar exatamente 50
+          [...algoPick, ...brPick, ...globalPick].forEach(alb => {
+            if (interleaved50.length < 50 && !interleaved50.includes(alb)) {
+              interleaved50.push(alb);
+            }
           });
-          const homeAlbumsPool = Array.from(homeAlbumsMap.values());
+
+          const homeAlbumsPool = interleaved50.slice(0, 50);
           this.homeAlbumsPool = homeAlbumsPool;
 
           const quickCards = homeAlbumsPool.slice(0, 6);
-          const newReleasesAlbums = homeAlbumsPool.slice(0, activeFilter === "albums" ? Math.max(18, homeAlbumsPool.length) : Math.max(12, homeAlbumsPool.length));
+          const newReleasesAlbums = homeAlbumsPool.slice(0, 50);
           const globalAlbums = [];
 
           const chartSongs = (state.charts && Array.isArray(state.charts.topSongs) && state.charts.topSongs.length > 0)
@@ -6482,13 +6930,13 @@ export function initMiadoClient() {
             }
           });
 
-          // "Artistas do Momento" baseados nos Charts Reais + Descobertas Infinitas
+          // "Artistas do Momento" baseados nos Charts Reais Top 100 + Descobertas Infinitas
           const chartArtistsRaw = [
             ...((state.charts && Array.isArray(state.charts.top100Artists) && state.charts.top100Artists.length > 0)
               ? state.charts.top100Artists
               : []),
-            ...(this.extraDiscoveredArtists || []),
-            ...POPULAR_ARTISTS_DIRECTORY.filter(a => a.name.toLowerCase() !== "yung lixo")
+            ...POPULAR_ARTISTS_DIRECTORY.filter(a => a.name.toLowerCase() !== "yung lixo"),
+            ...(this.extraDiscoveredArtists || [])
           ];
           const seenChartNames = new Set();
           const homeArtistsList = [];
@@ -6570,14 +7018,22 @@ export function initMiadoClient() {
               <section class="showcase-section" style="margin-bottom:28px;">
                 <div class="section-head">
                   <h2 class="section-title">Artistas do Momento</h2>
+                  ${activeFilter === "all" && homeArtistsList.length > (window.innerWidth <= 860 ? 18 : 12) ? `
+                    <button class="btn-see-all" id="btn-see-all-artists-home" title="Ver todos os ${homeArtistsList.length} artistas">Ver todos (${homeArtistsList.length})</button>
+                  ` : ""}
                 </div>
                 <div class="artist-bubbles-grid" id="home-artists-infinite-grid">
-                  ${homeArtistsList.slice(0, activeFilter === "artists" ? Math.max(24, homeArtistsList.length) : Math.max(12, Math.min(24, homeArtistsList.length))).map(art => `
+                  ${(() => {
+                    const isMobile = window.innerWidth <= 860;
+                    const maxHomeArtists = activeFilter === "artists" ? 100 : (isMobile ? 18 : 12);
+                    return homeArtistsList.slice(0, maxHomeArtists).map(art => `
                     <div class="artist-bubble-card" data-open-artist="${art.name}">
-                      <div class="artist-avatar-wrap shimmer">
-                        <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                      <div class="artist-avatar-wrap">
+                        <div class="artist-avatar-inner shimmer">
+                          <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                        </div>
                         <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4.5 19 12 7 19.5 7 4.5"/></svg>
                         </button>
                       </div>
                       <div class="artist-bubble-info">
@@ -6585,7 +7041,8 @@ export function initMiadoClient() {
                         <div class="artist-bubble-sub">${art.role || "Artista"}</div>
                       </div>
                     </div>
-                  `).join("")}
+                  `).join("");
+                  })()}
                 </div>
               </section>
             ` : ""}
@@ -6594,9 +7051,10 @@ export function initMiadoClient() {
               <section class="showcase-section">
                 <div class="section-head">
                   <h2 class="section-title">Álbuns em Alta</h2>
+                  <button class="btn-see-all" id="btn-refresh-home-albums">Atualizar</button>
                 </div>
-                <div class="cards-grid-albums home-albums-grid-3rows" id="home-albums-infinite-grid">
-                  ${newReleasesAlbums.concat(globalAlbums.filter(g => !newReleasesAlbums.includes(g))).map(album => `
+                <div class="cards-grid-albums home-albums-grid-3rows home-albums-row-scroll" id="home-albums-infinite-grid">
+                  ${newReleasesAlbums.map(album => `
                     <div class="album-card" data-album-id="${album.id}">
                       <div class="album-cover-wrap">
                         <img class="album-cover-img" data-album-img="${album.id}" src="${album.coverUrl}" alt="${album.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${album.title.replace(/'/g, "")}', '${album.artist.replace(/'/g, "")}')" />
@@ -6740,10 +7198,54 @@ export function initMiadoClient() {
               </section>
             ` : ""}
 
+            <section class="showcase-section" id="home-bottom-artists-section" style="${(this.extraDiscoveredArtists || []).length > 0 ? '' : 'display:none;'}">
+              <div class="section-head">
+                <h2 class="section-title">Mais Artistas Descobertos</h2>
+              </div>
+              <div class="artist-bubbles-grid search-artists-grid-3rows" id="home-bottom-artists-grid">
+                ${(this.extraDiscoveredArtists || []).map(art => `
+                  <div class="artist-bubble-card" data-open-artist="${art.name}">
+                    <div class="artist-avatar-wrap">
+                      <div class="artist-avatar-inner shimmer">
+                        <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${ensureArtistAvatarUrl(art)}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                      </div>
+                      <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4.5 19 12 7 19.5 7 4.5"/></svg>
+                      </button>
+                    </div>
+                    <div class="artist-bubble-info">
+                      <div class="artist-bubble-name">${art.name}</div>
+                      <div class="artist-bubble-sub">${art.role || "Artista"}</div>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            </section>
+
             <div class="infinite-scroll-sentinel" id="home-infinite-status">
               <span>Role para baixo para descobrir mais artistas, álbuns e músicas</span>
             </div>
           `;
+
+          this.setupSentinelObserver();
+
+          const btnSeeAllArtistsHome = document.getElementById("btn-see-all-artists-home");
+          if (btnSeeAllArtistsHome) {
+            btnSeeAllArtistsHome.addEventListener("click", () => {
+              this.homeFilter = "artists";
+              this.renderHomeView();
+            });
+          }
+
+          const btnRefreshHomeAlbums = document.getElementById("btn-refresh-home-albums");
+          if (btnRefreshHomeAlbums) {
+            btnRefreshHomeAlbums.addEventListener("click", async () => {
+              btnRefreshHomeAlbums.textContent = "Atualizando...";
+              this._homeAlbumsRefreshSeed = Date.now();
+              await state.fetchRecommendations();
+              this.renderHomeView();
+            });
+          }
 
           const btnRefreshRecs = document.getElementById("btn-refresh-recommendations");
           if (btnRefreshRecs) {
@@ -7016,15 +7518,6 @@ export function initMiadoClient() {
                   Voltar
                 </button>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                  <button type="button" class="back-btn-pill" id="btn-album-pick-cover-top" title="Colocar capa personalizada da galeria neste álbum">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    Capa da Galeria
-                  </button>
-                  ${hasCustomAlbumCover ? `
-                    <button class="back-btn-pill" id="btn-album-reset-cover" style="color:#f87171; border-color:rgba(248,113,113,0.4);" title="Restaurar capa original do álbum">
-                      Restaurar Capa
-                    </button>
-                  ` : ""}
                   <button class="back-btn-pill" id="btn-album-save-lib" title="Adicionar álbum à biblioteca">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   </button>
@@ -7037,10 +7530,6 @@ export function initMiadoClient() {
               <div class="album-hero-center">
                 <div style="position:relative; display:inline-block;">
                   <img class="album-hero-artwork" id="album-hero-artwork-img" src="${album.coverUrl}" alt="${album.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${album.title.replace(/'/g, "")}', '${album.artist.replace(/'/g, "")}')" />
-                  <button type="button" id="btn-album-pick-cover-badge" title="Alterar capa do álbum com imagem da galeria" style="position:absolute; right:10px; bottom:28px; background:rgba(10,8,18,0.86); border:1px solid rgba(168,85,247,0.65); color:#ffffff; border-radius:999px; padding:6px 12px; font-size:0.74rem; font-weight:700; display:flex; align-items:center; gap:6px; cursor:pointer; backdrop-filter:blur(10px);">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    Trocar Capa
-                  </button>
                 </div>
                 <h1 class="album-hero-title">${album.title}</h1>
                 <div class="album-hero-artist" id="btn-album-artist-link">${album.artist}</div>
@@ -7054,10 +7543,6 @@ export function initMiadoClient() {
                   <button class="album-action-btn" id="btn-album-shuffle-all">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>
                     Aleatório
-                  </button>
-                  <button type="button" class="album-action-btn" id="btn-album-pick-cover-hero">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    Capa da Galeria
                   </button>
                 </div>
               </div>
@@ -7112,32 +7597,6 @@ export function initMiadoClient() {
           document.getElementById("btn-album-artist-link").addEventListener("click", () => {
             this.navigateTo("artist", true, { artistName: album.artist });
           });
-
-          const handlePickAlbumCover = () => {
-            triggerImagePicker((dataUrl) => {
-              state.setCustomAlbumCover(album, dataUrl);
-              album.coverUrl = dataUrl;
-              this.renderAlbumView(album.id, album);
-              showToast(`Capa personalizada aplicada ao álbum "${album.title}"!`);
-            });
-          };
-
-          const btnCoverTop = document.getElementById("btn-album-pick-cover-top");
-          if (btnCoverTop) btnCoverTop.addEventListener("click", handlePickAlbumCover);
-          const btnCoverBadge = document.getElementById("btn-album-pick-cover-badge");
-          if (btnCoverBadge) btnCoverBadge.addEventListener("click", handlePickAlbumCover);
-          const btnCoverHero = document.getElementById("btn-album-pick-cover-hero");
-          if (btnCoverHero) btnCoverHero.addEventListener("click", handlePickAlbumCover);
-
-          const btnResetAlbumCover = document.getElementById("btn-album-reset-cover");
-          if (btnResetAlbumCover) {
-            btnResetAlbumCover.addEventListener("click", () => {
-              state.removeCustomAlbumCover(album);
-              album.coverUrl = `/api/cover?title=${encodeURIComponent(album.title)}&artist=${encodeURIComponent(album.artist)}`;
-              this.renderAlbumView(album.id, album);
-              showToast("Capa original do álbum restaurada!");
-            });
-          }
 
           document.getElementById("btn-album-save-lib").addEventListener("click", () => {
             const newPl = {
@@ -7253,19 +7712,37 @@ export function initMiadoClient() {
           const renderEmptyBrowseState = () => {
             const container = document.getElementById("search-results-container");
             if (!container) return;
-            const browseArtists = (state.charts && Array.isArray(state.charts.top100Artists) && state.charts.top100Artists.length > 0)
-              ? state.charts.top100Artists
-              : POPULAR_ARTISTS_DIRECTORY;
+            const rawBrowse = [
+              ...((state.charts && Array.isArray(state.charts.top100Artists) && state.charts.top100Artists.length > 0)
+                ? state.charts.top100Artists
+                : []),
+              ...POPULAR_ARTISTS_DIRECTORY.filter(a => a.name.toLowerCase() !== "yung lixo"),
+              ...(this.extraDiscoveredArtists || [])
+            ];
+            const seenBrowse = new Set();
+            const browseArtists = [];
+            rawBrowse.forEach(art => {
+              if (!art || !art.name) return;
+              const k = art.name.toLowerCase().trim();
+              if (k === "yung lixo" || seenBrowse.has(k)) return;
+              seenBrowse.add(k);
+              browseArtists.push({
+                name: art.name,
+                role: art.role || "Artista",
+                coverUrl: ensureArtistAvatarUrl(art)
+              });
+            });
+
             container.innerHTML = `
               <div class="showcase-section">
                 <div class="section-head">
                   <h2 class="section-title">Artistas em Destaque</h2>
                 </div>
-                <div class="artist-bubbles-grid search-artists-grid-3rows">
+                <div class="artist-bubbles-grid search-artists-grid-3rows" id="search-artists-infinite-grid">
                   ${browseArtists.map(art => `
                     <div class="artist-bubble-card" data-search-artist-name="${art.name}">
                       <div class="artist-avatar-wrap shimmer">
-                        <img class="artist-bubble-img" src="${ensureArtistAvatarUrl(art)}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                        <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                       </div>
                       <div class="artist-bubble-info">
                         <div class="artist-bubble-name">${art.name}</div>
@@ -7274,6 +7751,9 @@ export function initMiadoClient() {
                     </div>
                   `).join("")}
                 </div>
+                <div class="infinite-scroll-sentinel" id="search-infinite-status">
+                  <span>Role para baixo para descobrir mais artistas</span>
+                </div>
               </div>
             `;
             container.querySelectorAll("[data-search-artist-name]").forEach(card => {
@@ -7281,6 +7761,7 @@ export function initMiadoClient() {
                 this.navigateTo("artist", true, { artistName: card.dataset.searchArtistName });
               });
             });
+            this.setupSentinelObserver();
           };
 
           const syncViewClearState = () => {
@@ -7333,11 +7814,11 @@ export function initMiadoClient() {
                     <div class="section-head">
                       <h2 class="section-title">Artistas</h2>
                     </div>
-                    <div class="artist-bubbles-grid search-artists-grid-3rows">
+                    <div class="artist-bubbles-grid search-artists-grid-3rows" id="search-active-artists-grid">
                       ${artists.map(art => `
                         <div class="artist-bubble-card" data-search-artist-name="${art.name}">
                           <div class="artist-avatar-wrap shimmer">
-                            <img class="artist-bubble-img" src="${ensureArtistAvatarUrl(art)}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                            <img class="artist-bubble-img" src="${ensureArtistAvatarUrl(art)}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                           </div>
                           <div class="artist-bubble-info">
                             <div class="artist-bubble-name">${art.name}</div>
@@ -7897,17 +8378,29 @@ export function initMiadoClient() {
                     <div style="font-size:0.86rem; color:var(--text-secondary);">Você ainda não está seguindo nenhum artista. Clique em <strong>+ Seguir</strong> nos cards de artistas na aba Início ou na página de qualquer artista!</div>
                   </div>
                 ` : `
-                  <div class="artist-bubbles-grid">
-                    ${state.followedArtists.map((art, aIdx) => `
-                      <div class="artist-bubble-card" data-social-open-artist="${art.name}">
-                        <img class="artist-bubble-img" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
-                        <div class="artist-bubble-name">${art.name}</div>
-                        <div class="artist-bubble-sub">${art.role || "Artista Seguido"}</div>
-                        <button type="button" class="category-pill active" data-social-unfollow-artist="${aIdx}" style="margin-top:8px; height:28px; padding:0 12px; font-size:0.72rem; width:100%;">
-                          ✓ Seguindo
-                        </button>
-                      </div>
-                    `).join("")}
+                  <div class="artist-bubbles-grid profile-followed-artists-grid">
+                    ${state.followedArtists.map((art, aIdx) => {
+                      const resolvedAvatar = ensureArtistAvatarUrl(art);
+                      return `
+                        <div class="artist-bubble-card" data-social-open-artist="${art.name}">
+                          <div class="artist-avatar-wrap">
+                            <div class="artist-avatar-inner shimmer">
+                              <img class="artist-bubble-img loaded" data-artist-bubble-img="${art.name}" src="${resolvedAvatar}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                            </div>
+                            <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4.5 19 12 7 19.5 7 4.5"/></svg>
+                            </button>
+                          </div>
+                          <div class="artist-bubble-info">
+                            <div class="artist-bubble-name">${art.name}</div>
+                            <div class="artist-bubble-sub">${art.role || "Artista Seguido"}</div>
+                          </div>
+                          <button type="button" class="category-pill active" data-social-unfollow-artist="${aIdx}" style="margin-top:8px; height:30px; padding:0 14px; font-size:0.75rem;">
+                            ✓ Seguindo
+                          </button>
+                        </div>
+                      `;
+                    }).join("")}
                   </div>
                 `}
               </div>
@@ -8075,8 +8568,16 @@ export function initMiadoClient() {
 
           this.scrollContainer.querySelectorAll("[data-social-open-artist]").forEach(card => {
             card.addEventListener("click", (e) => {
-              if (e.target.closest("[data-social-unfollow-artist]")) return;
+              if (e.target.closest("[data-social-unfollow-artist]") || e.target.closest("[data-play-artist]")) return;
               this.navigateTo("artist", true, { artistName: card.dataset.socialOpenArtist });
+            });
+          });
+
+          this.scrollContainer.querySelectorAll("[data-social-open-artist] [data-play-artist]").forEach(btn => {
+            btn.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              const aName = btn.dataset.playArtist;
+              if (aName) await this.playArtistTopTracks(aName);
             });
           });
 
@@ -8713,9 +9214,9 @@ export function initMiadoClient() {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>
                     Aleatório
                   </button>
-                  <button class="album-action-btn ${isFollowingArtist ? 'primary' : ''}" id="btn-artist-follow-toggle" style="${isFollowingArtist ? 'background-color:rgba(168,85,247,0.22); border:1px solid var(--accent-hover); color:#ffffff;' : ''}">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="${isFollowingArtist ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                    ${isFollowingArtist ? "✓ Seguindo Artista" : "+ Seguir Artista"}
+                  <button class="album-action-btn ${isFollowingArtist ? 'primary' : ''}" id="btn-artist-follow-toggle" style="min-width:158px; width:158px; justify-content:center; border:none; box-shadow:none; ${isFollowingArtist ? 'background-color:rgba(168,85,247,0.28); color:#ffffff;' : ''}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFollowingArtist ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                    <span>${isFollowingArtist ? "Seguindo" : "Seguir artista"}</span>
                   </button>
                 </div>
               </div>
@@ -8813,11 +9314,11 @@ export function initMiadoClient() {
               });
               btnFollowToggle.classList.toggle("primary", nowFollowing);
               btnFollowToggle.style.cssText = nowFollowing
-                ? "background-color:rgba(168,85,247,0.22); border:1px solid var(--accent-hover); color:#ffffff;"
-                : "";
+                ? "min-width:158px; width:158px; justify-content:center; border:none; box-shadow:none; background-color:rgba(168,85,247,0.28); color:#ffffff;"
+                : "min-width:158px; width:158px; justify-content:center; border:none; box-shadow:none;";
               btnFollowToggle.innerHTML = `
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="${nowFollowing ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                ${nowFollowing ? "✓ Seguindo Artista" : "+ Seguir Artista"}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="${nowFollowing ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2.2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                <span>${nowFollowing ? "Seguindo" : "Seguir artista"}</span>
               `;
               showToast(nowFollowing ? `Agora você segue ${cleanArtist}!` : `Você deixou de seguir ${cleanArtist}.`);
               this.renderRightSidebarBodyOnly();
@@ -9028,7 +9529,7 @@ export function initMiadoClient() {
             ${state.followedArtists.map((art) => `
               <div class="friend-activity-card" style="padding:10px; cursor:pointer;" data-sidebar-open-artist="${art.name}">
                 <div style="display:flex; align-items:center; gap:10px;">
-                  <img src="${art.coverUrl}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--accent-hover);" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                  <img src="${ensureArtistAvatarUrl(art)}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--accent-hover);" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                   <div style="flex:1; min-width:0;">
                     <div style="font-size:0.84rem; font-weight:700; color:#ffffff;" class="text-truncate">${art.name}</div>
                     <div style="font-size:0.7rem; color:var(--accent-hover);" class="text-truncate">${art.role || "Artista Oficial"}</div>
