@@ -155,28 +155,37 @@ export function initEnhancements(): void {
     }
   });
 
-  // Mobile swipe-down gesture on Fullscreen Player modal
+  // Gesto seguro de deslizar para baixo no Player em Tela Cheia (apenas na pílula superior ou header)
   const fsModal = document.getElementById("modal-fullscreen-player");
   if (fsModal) {
     let startY = 0;
-    let isDragging = false;
+    let isPillDrag = false;
+
     fsModal.addEventListener(
       "touchstart",
       (e: TouchEvent) => {
         if (e.touches.length === 1) {
-          startY = e.touches[0].clientY;
-          isDragging = true;
+          const target = e.target as HTMLElement | null;
+          const isHeaderOrHandle = target && (target.closest(".fs-grab-pill") || target.closest(".fs-player-header"));
+          if (isHeaderOrHandle) {
+            startY = e.touches[0].clientY;
+            isPillDrag = true;
+          } else {
+            isPillDrag = false;
+          }
         }
       },
       { passive: true }
     );
+
     fsModal.addEventListener(
       "touchend",
       (e: TouchEvent) => {
-        if (!isDragging) return;
-        isDragging = false;
+        if (!isPillDrag) return;
+        isPillDrag = false;
         const endY = e.changedTouches[0]?.clientY || startY;
-        if (endY - startY > 85) {
+        // Exige arrasto intencional de no mínimo 120px para baixo na área superior
+        if (endY - startY >= 120) {
           fsModal.classList.remove("active");
         }
       },

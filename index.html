@@ -212,9 +212,9 @@
     <!-- 5. MINI-PLAYER FLUTUANTE (MOBILE SPOTIFY / APPLE MUSIC LIQUID GLASS) -->
     <div class="mobile-floating-player" id="mobile-floating-player">
       <img id="mobile-thumb-img" class="mobile-thumb-img" src="" alt="Capa" referrerpolicy="no-referrer" />
-      <div class="mobile-track-text" id="mobile-track-trigger" title="Toque para abrir o Player">
-        <div class="mobile-track-title" id="mobile-track-title">Escolha uma música</div>
-        <div class="mobile-track-artist" id="mobile-track-artist">Miado</div>
+      <div class="mobile-track-text marquee-container mobile-title-marquee-wrap" id="mobile-track-trigger" title="Toque para abrir o Player">
+        <div class="mobile-track-title marquee-text" id="mobile-track-title">Escolha uma música</div>
+        <div class="mobile-track-artist text-truncate" id="mobile-track-artist">Miado</div>
       </div>
       <div style="display:flex; align-items:center; gap:2px; flex-shrink:0;">
         <button class="track-icon-btn" id="mobile-btn-like" title="Curtir Música">
@@ -364,8 +364,10 @@
           <!-- Coluna Direita (Desktop) / Abaixo (Mobile): Título, Artista, Progresso, Controles, Volume e A Seguir na Fila -->
           <div class="fs-right-column">
             <div class="fs-title-heart-row">
-              <div style="min-width:0; flex:1;">
-                <div class="fs-hero-track-title text-truncate" id="fs-track-title">Escolha uma música</div>
+              <div style="min-width:0; flex:1; overflow:hidden;">
+                <div class="marquee-container fs-title-marquee-wrap">
+                  <div class="fs-hero-track-title marquee-text" id="fs-track-title">Escolha uma música</div>
+                </div>
                 <div class="fs-hero-track-artist text-truncate" id="fs-track-artist">Miado</div>
               </div>
               <div class="fs-action-row" style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
@@ -589,6 +591,8 @@
           </div>
 
           <div id="onboard-genres-grid" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+
+          <div id="onboard-related-artists-wrap" style="display:none; padding:4px 0;"></div>
 
           <div class="spotify-artist-pick-grid" id="onboard-artists-grid"></div>
 

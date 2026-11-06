@@ -213,7 +213,7 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
       id: art.id ? `dz_art_${art.id}` : `art_${topArtists100.length + 1}`,
       name: art.name,
       role: `Top #${topArtists100.length + 1} Global`,
-      coverUrl: art.picture_xl || art.picture_big || `/api/artist-image?name=${encodeURIComponent(art.name)}`,
+      coverUrl: `/api/artist-image?name=${encodeURIComponent(art.name)}&url=${encodeURIComponent(art.picture_xl || art.picture_big || "")}`,
       rank: topArtists100.length + 1
     });
   }

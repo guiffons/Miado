@@ -538,13 +538,21 @@ const HARD_REJECT_WORDS = [
   "slowed", "sped up", "speed up", "nightcore", "karaoke", "karaokê",
   "originally performed", "originally perfomed", "in the style of",
   "8d audio", "hardstyle", "bootleg", "mashup", "parodia", "paródia", "tribute", "ringtone", "preview",
-  "type beat", "acapella", "acapela", "piano karaoke"
+  "type beat", "acapella", "acapela", "piano karaoke", "soul version", "1950s", "techno",
+  "tribute version", "instrumental karaoke", "melody karaoke", "cover version", "orchestral cover"
 ];
 
 /**
  * Catálogo Verificado de Mestres de Estúdio Oficiais HD (Áudio de Gravadora 100% Puro, Sem Lives/Shows)
  */
 const VERIFIED_STUDIO_CATALOG: Record<string, { url: string; durationSec: number; source: string }> = {
+  // --- KANYE WEST (Def Jam / Roc-A-Fella Master Studio) ---
+  "heartless|kanye west": {
+    url: "https://discoveryprovider.audius.co/v1/tracks/bbmrW/stream?app_name=MIADO",
+    durationSec: 211,
+    source: "Miado Studio Master (Def Jam / Roc-A-Fella Records)"
+  },
+
   // --- JÃO (Universal Music / Master Studio HD) ---
   "me lambe|jao": {
     url: "https://ia600106.us.archive.org/19/items/locadora-versao-estendida/Me%20Lambe.mp3",
@@ -1377,16 +1385,17 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
           const itemTitleNorm = normalizeSongTitleKey(itemTitle);
           if (itemTitleNorm !== tNorm) continue;
 
-          const primaryArtists: string[] = [
-            ...(item.more_info?.artistMap?.primary_artists || []),
-            ...(item.more_info?.artistMap?.artists || [])
-          ].map((a: any) => String(a?.name || "")).filter(Boolean);
+          const primList: string[] = (item.more_info?.artistMap?.primary_artists || [])
+            .map((a: any) => String(a?.name || "")).filter(Boolean);
+          const allSingers: string[] = (item.more_info?.artistMap?.artists || [])
+            .filter((a: any) => !a.role || a.role === "singer" || a.role === "primary_artists")
+            .map((a: any) => String(a?.name || "")).filter(Boolean);
+          const primaryArtists = primList.length > 0 ? primList : (allSingers.length > 0 ? allSingers : [itemSub]);
 
           const hasStrictArtist =
             primaryArtists.some(
               aName => isOriginalStudioTrack(itemTitle, aName, itemAlbum, durSec) && artistMatchesTarget(aName, cleanArtist || artist)
-            ) ||
-            (primaryArtists.length === 0 && artistMatchesTarget(itemSub, cleanArtist || artist));
+            );
           if (!hasStrictArtist) continue;
 
           const decrypted = decryptSaavnMediaUrl(item.more_info.encrypted_media_url);
@@ -1415,14 +1424,15 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
           const itemTitleNorm = normalizeSongTitleKey(itemTitle);
           if (itemTitleNorm !== tNorm && !itemTitleNorm.includes(tNorm) && !tNorm.includes(itemTitleNorm)) continue;
 
-          const primaryArtists: string[] = [
-            ...(item.more_info?.artistMap?.primary_artists || []),
-            ...(item.more_info?.artistMap?.artists || [])
-          ].map((a: any) => String(a?.name || "")).filter(Boolean);
+          const primList: string[] = (item.more_info?.artistMap?.primary_artists || [])
+            .map((a: any) => String(a?.name || "")).filter(Boolean);
+          const allSingers: string[] = (item.more_info?.artistMap?.artists || [])
+            .filter((a: any) => !a.role || a.role === "singer" || a.role === "primary_artists")
+            .map((a: any) => String(a?.name || "")).filter(Boolean);
+          const primaryArtists = primList.length > 0 ? primList : (allSingers.length > 0 ? allSingers : [itemSub]);
 
           const hasArtistMatch =
-            primaryArtists.some(aName => artistMatchesTarget(aName, cleanArtist || artist)) ||
-            artistMatchesTarget(itemSub, cleanArtist || artist);
+            primaryArtists.some(aName => artistMatchesTarget(aName, cleanArtist || artist));
           if (!hasArtistMatch) continue;
 
           const decrypted = decryptSaavnMediaUrl(item.more_info.encrypted_media_url);
@@ -1433,6 +1443,36 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
               durationSec: durSec
             };
           }
+        }
+      }
+    } catch (_e) {}
+    return null;
+  };
+
+  // 1.5. Audius Lossless Studio Stream Resolver (resolução direta sem bloqueio regional)
+  const tryAudius = async (): Promise<{ url: string; source: string; durationSec: number } | null> => {
+    try {
+      const q = `${cleanTitle || normalizedInputTitle} ${cleanArtist || artist}`.trim();
+      const r = await fetchWithTimeout(`https://discoveryprovider.audius.co/v1/tracks/search?query=${encodeURIComponent(q)}&app_name=MIADO`, {}, 2600);
+      if (!r.ok) return null;
+      const d = (await r.json()) as any;
+      const list: any[] = Array.isArray(d?.data) ? d.data : [];
+      for (const item of list) {
+        const itemTitle = String(item.title || "");
+        const itemUser = String(item.user?.name || "");
+        const dur = Number(item.duration || 0);
+        if (dur < 60 || dur > 720) continue;
+        if (hasExactStudioDuration && Math.abs(dur - expectedSec) > 22) continue;
+        const rawLow = `${itemTitle} ${itemUser}`.toLowerCase();
+        if (HARD_REJECT_WORDS.some(w => rawLow.includes(w) && !tNorm.includes(w))) continue;
+        if (!isOriginalStudioTrack(itemTitle, itemUser, "", dur)) continue;
+        const normT = normalizeSongTitleKey(itemTitle);
+        if (normT === tNorm || normT.includes(tNorm) || tNorm.includes(normT)) {
+          return {
+            url: `https://discoveryprovider.audius.co/v1/tracks/${item.id}/stream?app_name=MIADO`,
+            source: "Miado Audius Lossless Studio Stream",
+            durationSec: dur
+          };
         }
       }
     } catch (_e) {}
@@ -1653,15 +1693,16 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
     return null;
   };
 
-  // Executa todos os resolvedores em paralelo para resposta rápida (< 3s)
-  const [saavnRes, scRes, pipedRes, archRes] = await Promise.allSettled([
+  // Executa todos os resolvedores em paralelo para resposta rápida (< 2.8s)
+  const [saavnRes, audiusRes, scRes, pipedRes, archRes] = await Promise.allSettled([
     trySaavn(),
+    tryAudius(),
     trySoundCloud(),
     tryAllPiped(),
     tryInternetArchive()
   ]);
 
-  for (const resCandidate of [saavnRes, scRes, pipedRes, archRes]) {
+  for (const resCandidate of [saavnRes, audiusRes, scRes, pipedRes, archRes]) {
     if (
       resCandidate.status === "fulfilled" &&
       resCandidate.value?.url &&
@@ -2679,6 +2720,7 @@ async function startServer() {
   // 3. Proxy e Resolvedor de Foto Oficial de Artista 1000x1000 (/api/artist-image)
   app.get("/api/artist-image", async (req: Request, res: Response) => {
     const name = String(req.query.name || "Lady Gaga").trim();
+    const explicitUrl = String(req.query.url || "").trim();
     const key = normalizeStr(name);
 
     if (artistImageCache.has(key)) {
@@ -2690,38 +2732,44 @@ async function startServer() {
     }
 
     let imageUrl = "";
-    try {
-      const dzRes = await fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=10`, {}, 4000);
-      if (dzRes.ok) {
-        const dzData = (await dzRes.json()) as any;
-        const list: any[] = Array.isArray(dzData?.data) ? dzData.data : [];
-        const sorted = [...list].sort((a, b) => {
-          const aNorm = normalizeStr(a?.name || "");
-          const bNorm = normalizeStr(b?.name || "");
-          const aExact = aNorm === key ? 1 : 0;
-          const bExact = bNorm === key ? 1 : 0;
-          if (aExact !== bExact) return bExact - aExact;
-          return (Number(b?.nb_fan) || 0) - (Number(a?.nb_fan) || 0);
-        });
-        const match =
-          sorted.find(a => normalizeStr(a.name) === key) ||
-          sorted.find(a => normalizeStr(a.name).includes(key) || key.includes(normalizeStr(a.name))) ||
-          sorted[0];
-        if (match) {
-          let candidate = match.picture_xl || match.picture_big || match.picture_medium || "";
-          if ((!candidate || candidate.includes("/images/artist//")) && match.id) {
-            const artDetailRes = await fetchWithTimeout(`https://api.deezer.com/artist/${match.id}`, {}, 3000);
-            if (artDetailRes.ok) {
-              const artDetail = (await artDetailRes.json()) as any;
-              candidate = artDetail?.picture_xl || artDetail?.picture_big || artDetail?.picture_medium || "";
+    if (explicitUrl && explicitUrl.startsWith("http") && !explicitUrl.includes("/images/artist//")) {
+      imageUrl = upgradeArtwork(explicitUrl);
+    }
+
+    if (!imageUrl) {
+      try {
+        const dzRes = await fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=10`, {}, 4000);
+        if (dzRes.ok) {
+          const dzData = (await dzRes.json()) as any;
+          const list: any[] = Array.isArray(dzData?.data) ? dzData.data : [];
+          const sorted = [...list].sort((a, b) => {
+            const aNorm = normalizeStr(a?.name || "");
+            const bNorm = normalizeStr(b?.name || "");
+            const aExact = aNorm === key ? 1 : 0;
+            const bExact = bNorm === key ? 1 : 0;
+            if (aExact !== bExact) return bExact - aExact;
+            return (Number(b?.nb_fan) || 0) - (Number(a?.nb_fan) || 0);
+          });
+          const match =
+            sorted.find(a => normalizeStr(a.name) === key) ||
+            sorted.find(a => normalizeStr(a.name).includes(key) || key.includes(normalizeStr(a.name))) ||
+            sorted[0];
+          if (match) {
+            let candidate = match.picture_xl || match.picture_big || match.picture_medium || "";
+            if ((!candidate || candidate.includes("/images/artist//")) && match.id) {
+              const artDetailRes = await fetchWithTimeout(`https://api.deezer.com/artist/${match.id}`, {}, 3000);
+              if (artDetailRes.ok) {
+                const artDetail = (await artDetailRes.json()) as any;
+                candidate = artDetail?.picture_xl || artDetail?.picture_big || artDetail?.picture_medium || "";
+              }
+            }
+            if (candidate && !candidate.includes("/images/artist//")) {
+              imageUrl = upgradeArtwork(candidate);
             }
           }
-          if (candidate && !candidate.includes("/images/artist//")) {
-            imageUrl = upgradeArtwork(candidate);
-          }
         }
-      }
-    } catch (_e) {}
+      } catch (_e) {}
+    }
 
     if (imageUrl) {
       try {
@@ -2747,9 +2795,15 @@ async function startServer() {
       .map(w => w[0]?.toUpperCase() || "")
       .join("");
     const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-      <rect width="600" height="600" fill="#130f22"/>
-      <circle cx="300" cy="300" r="260" fill="#07060b" stroke="#a855f7" stroke-width="6"/>
-      <text x="300" y="335" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="130" font-weight="800">${initials || "M"}</text>
+      <defs>
+        <radialGradient id="artBg" cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#2d1d52"/>
+          <stop offset="100%" stop-color="#0b0816"/>
+        </radialGradient>
+      </defs>
+      <rect width="600" height="600" rx="300" fill="url(#artBg)"/>
+      <circle cx="300" cy="300" r="290" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
+      <text x="300" y="340" text-anchor="middle" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="160" font-weight="800" letter-spacing="-2">${initials || "M"}</text>
     </svg>`;
     res.setHeader("Content-Type", "image/svg+xml");
     res.setHeader("Cache-Control", "public, max-age=3600");
@@ -2947,47 +3001,72 @@ async function startServer() {
               popular: idx < 3
             });
           });
+          if (rawTracks.length < 5 && (dzAlbumId || title || artist)) {
+            rawTracks.length = 0;
+          }
         }
       } catch (_e) {}
     }
 
-    // 2. Tenta Deezer Album pelo dzAlbumId (ordenando por disk_number e track_position)
-    if (rawTracks.length === 0 && dzAlbumId) {
+    // 2. Tenta Deezer Album pelo dzAlbumId ou por busca do álbum oficial no Deezer
+    if (rawTracks.length === 0 && (dzAlbumId || (title && artist))) {
       try {
-        const r = await fetchWithTimeout(`https://api.deezer.com/album/${dzAlbumId}`, {}, 4000);
-        if (r.ok) {
-          const albData = (await r.json()) as any;
-          const rawAlbArt = upgradeArtwork(albData?.cover_xl || albData?.cover_big || albData?.cover_medium || "");
-          albumCover = toCoverProxyUrl(rawAlbArt, albData?.title || title, albData?.artist?.name || artist);
-          const trList: any[] = Array.isArray(albData?.tracks?.data) ? albData.tracks.data : [];
-          trList
-            .filter(item => Number(item.duration || 210) >= 95 && isOriginalStudioTrack(item.title || "", item.artist?.name || artist, albData?.title || title, item.duration))
-            .sort((a, b) => {
-              const discDiff = (Number(a.disk_number) || 1) - (Number(b.disk_number) || 1);
-              if (discDiff !== 0) return discDiff;
-              return (Number(a.track_position) || 0) - (Number(b.track_position) || 0);
-            })
-            .forEach((item, idx) => {
-              const artName = item.artist?.name || albData?.artist?.name || artist;
-              const trackCover = toCoverProxyUrl(rawAlbArt, item.title || "", artName);
-              const proxyUrl = buildFullStreamProxyUrl(item.title || "", artName);
-              rawTracks.push({
-                id: `dz_${item.id}`,
-                title: item.title,
-                artist: artName,
-                albumTitle: albData?.title || title || "Álbum",
-                duration: formatDurationSec(item.duration || 210),
-                durationSec: Number(item.duration || 210),
-                trackNumber: Number(item.track_position) || idx + 1,
-                discNumber: Number(item.disk_number) || 1,
-                genre: "Lossless Master",
-                year: albData?.release_date ? new Date(albData.release_date).getFullYear() : 2024,
-                coverUrl: trackCover,
-                previewUrl: proxyUrl,
-                streamUrl: proxyUrl,
-                popular: idx < 3
+        let targetDzId = dzAlbumId;
+        if (!targetDzId && (title || artist)) {
+          try {
+            const dzSearchRes = await fetchWithTimeout(
+              `https://api.deezer.com/search/album?q=${encodeURIComponent(`${artist} ${title}`.trim())}&limit=5`,
+              {},
+              3200
+            );
+            if (dzSearchRes.ok) {
+              const dzSearchJson = (await dzSearchRes.json()) as any;
+              const foundAlb = (dzSearchJson?.data || []).find((a: any) => {
+                const aT = normalizeStr(a.title || "");
+                const reqT = normalizeStr(title);
+                return aT.includes(reqT) || reqT.includes(aT);
+              }) || dzSearchJson?.data?.[0];
+              if (foundAlb?.id) targetDzId = String(foundAlb.id);
+            }
+          } catch (_e) {}
+        }
+
+        if (targetDzId) {
+          const r = await fetchWithTimeout(`https://api.deezer.com/album/${targetDzId}`, {}, 4000);
+          if (r.ok) {
+            const albData = (await r.json()) as any;
+            const rawAlbArt = upgradeArtwork(albData?.cover_xl || albData?.cover_big || albData?.cover_medium || "");
+            albumCover = toCoverProxyUrl(rawAlbArt, albData?.title || title, albData?.artist?.name || artist);
+            const trList: any[] = Array.isArray(albData?.tracks?.data) ? albData.tracks.data : [];
+            trList
+              .filter(item => Number(item.duration || 210) >= 60 && isOriginalStudioTrack(item.title || "", item.artist?.name || artist, albData?.title || title, item.duration))
+              .sort((a, b) => {
+                const discDiff = (Number(a.disk_number) || 1) - (Number(b.disk_number) || 1);
+                if (discDiff !== 0) return discDiff;
+                return (Number(a.track_position) || 0) - (Number(b.track_position) || 0);
+              })
+              .forEach((item, idx) => {
+                const artName = item.artist?.name || albData?.artist?.name || artist;
+                const trackCover = toCoverProxyUrl(rawAlbArt, item.title || "", artName);
+                const proxyUrl = buildFullStreamProxyUrl(item.title || "", artName);
+                rawTracks.push({
+                  id: `dz_${item.id}`,
+                  title: item.title,
+                  artist: artName,
+                  albumTitle: albData?.title || title || "Álbum",
+                  duration: formatDurationSec(item.duration || 210),
+                  durationSec: Number(item.duration || 210),
+                  trackNumber: Number(item.track_position) || idx + 1,
+                  discNumber: Number(item.disk_number) || 1,
+                  genre: "Lossless Master",
+                  year: albData?.release_date ? new Date(albData.release_date).getFullYear() : 2024,
+                  coverUrl: trackCover,
+                  previewUrl: proxyUrl,
+                  streamUrl: proxyUrl,
+                  popular: idx < 3
+                });
               });
-            });
+          }
         }
       } catch (_e) {}
     }
@@ -3375,7 +3454,7 @@ async function startServer() {
           dzArtistId: art.id,
           name: art.name,
           role: "Artista",
-          coverUrl: rawPic && !rawPic.includes("/images/artist//") ? upgradeArtwork(rawPic) : `/api/artist-image?name=${encodeURIComponent(art.name)}`,
+          coverUrl: `/api/artist-image?name=${encodeURIComponent(art.name)}&url=${encodeURIComponent(rawPic && !rawPic.includes("/images/artist//") ? upgradeArtwork(rawPic) : "")}`,
           nbFan: art.nb_fan || 0
         });
       }

@@ -86,21 +86,78 @@ export function initMiadoClient() {
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
       }
 
+      function createSolidArtistSvg(artistName = "Artista") {
+        const clean = String(artistName || "Artista").trim();
+        const initials = clean
+          .split(/\s+/)
+          .slice(0, 2)
+          .map(w => w[0]?.toUpperCase() || "")
+          .join("") || "A";
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+          <defs>
+            <radialGradient id="artGrad" cx="50%" cy="30%" r="70%">
+              <stop offset="0%" stop-color="#3b1d6e"/>
+              <stop offset="60%" stop-color="#190e32"/>
+              <stop offset="100%" stop-color="#0a0614"/>
+            </radialGradient>
+          </defs>
+          <rect width="600" height="600" rx="300" fill="url(#artGrad)"/>
+          <circle cx="300" cy="300" r="290" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="3"/>
+          <text x="300" y="348" text-anchor="middle" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="160" font-weight="800" letter-spacing="-2">${initials}</text>
+        </svg>`;
+        return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+      }
+
       window.handleImgError = function(imgEl, title, artist) {
         if (!imgEl) return;
         const safeTitle = String(title || imgEl.getAttribute("alt") || imgEl.dataset.title || "Miado").trim();
         const safeArtist = String(artist || imgEl.dataset.artist || "").trim();
-        if (!imgEl.dataset.retriedCover && safeTitle && safeArtist && safeArtist !== "Playlist" && safeArtist !== "Artista") {
+
+        // 1. Trata imagem de Artista (NUNCA exibe disco de vinil com furo no meio)
+        const isArtist = safeArtist === "Artista" || imgEl.classList.contains("artist-bubble-img") || imgEl.classList.contains("artist-avatar-img") || imgEl.hasAttribute("data-artist-bubble-img");
+        if (isArtist) {
+          if (!imgEl.dataset.retriedArtist && safeTitle) {
+            imgEl.dataset.retriedArtist = "1";
+            imgEl.onerror = function() {
+              this.onerror = null;
+              this.src = createSolidArtistSvg(safeTitle);
+              this.classList.add("loaded");
+              if (this.parentElement) this.parentElement.classList.remove("shimmer");
+            };
+            imgEl.onload = function() {
+              this.classList.add("loaded");
+              if (this.parentElement) this.parentElement.classList.remove("shimmer");
+            };
+            imgEl.src = `/api/artist-image?name=${encodeURIComponent(safeTitle)}`;
+            return;
+          }
+          imgEl.onerror = null;
+          imgEl.src = createSolidArtistSvg(safeTitle);
+          imgEl.classList.add("loaded");
+          if (imgEl.parentElement) imgEl.parentElement.classList.remove("shimmer");
+          return;
+        }
+
+        // 2. Trata capa de Música / Álbum
+        if (!imgEl.dataset.retriedCover && safeTitle && safeArtist && safeArtist !== "Playlist") {
           imgEl.dataset.retriedCover = "1";
           imgEl.onerror = function() {
             this.onerror = null;
             this.src = createSolidAlbumSvg(safeTitle, safeArtist);
+            this.classList.add("loaded");
+            if (this.parentElement) this.parentElement.classList.remove("shimmer");
+          };
+          imgEl.onload = function() {
+            this.classList.add("loaded");
+            if (this.parentElement) this.parentElement.classList.remove("shimmer");
           };
           imgEl.src = `/api/cover?title=${encodeURIComponent(safeTitle)}&artist=${encodeURIComponent(safeArtist)}`;
           return;
         }
         imgEl.onerror = null;
         imgEl.src = createSolidAlbumSvg(safeTitle, safeArtist);
+        imgEl.classList.add("loaded");
+        if (imgEl.parentElement) imgEl.parentElement.classList.remove("shimmer");
       };
 
       // Verificação e substituição global automática para qualquer imagem com falha
@@ -111,6 +168,8 @@ export function initMiadoClient() {
           target.dataset.errorHandled = "done";
           if ((target.classList && target.classList.contains("user-pill-avatar")) || target.id === "top-user-avatar" || target.id === "prof-hero-avatar") {
             window.handleCatAvatarError(target);
+          } else if (target.classList && (target.classList.contains("artist-bubble-img") || target.classList.contains("artist-avatar-img"))) {
+            window.handleImgError(target, target.getAttribute("alt") || target.dataset.title || "Artista", "Artista");
           } else {
             window.handleImgError(target, target.getAttribute("alt") || target.dataset.title || "Miado", target.dataset.artist || "");
           }
@@ -127,6 +186,16 @@ export function initMiadoClient() {
         imgEl.onerror = null;
         imgEl.src = buildCuteCatSvg({});
       };
+
+      function ensureArtistAvatarUrl(art) {
+        if (!art) return "/api/artist-image?name=Artista";
+        const name = typeof art === "string" ? art : (art.name || "");
+        const rawCover = typeof art === "object" ? (art.coverUrl || art.pictureUrl || "") : "";
+        if (!rawCover || rawCover.startsWith("data:") || rawCover.includes("dzcdn.net") || rawCover.includes("deezer.com")) {
+          return `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(rawCover.startsWith("data:") ? "" : rawCover)}`;
+        }
+        return rawCover;
+      }
 
       function showToast(message) {
         const toast = document.getElementById("miado-toast");
@@ -149,6 +218,36 @@ export function initMiadoClient() {
         if (!artworkUrl) return "";
         return String(artworkUrl).replace(/100x100bb/g, "1000x1000bb").replace(/60x60bb/g, "1000x1000bb");
       }
+
+      function applySpotifyMarquee(el) {
+        if (!el) return;
+        el.classList.remove("is-marquee");
+        const parent = el.parentElement;
+        if (parent) parent.classList.remove("has-overflow");
+        el.style.removeProperty("--marquee-distance");
+        el.style.removeProperty("--marquee-duration");
+
+        setTimeout(() => {
+          if (!el || !el.parentElement) return;
+          const containerWidth = el.parentElement.clientWidth;
+          const contentWidth = el.scrollWidth;
+          if (containerWidth > 0 && contentWidth > containerWidth + 6) {
+            const distance = contentWidth - containerWidth + 24;
+            const duration = Math.max(7, Math.round(distance / 18));
+            el.style.setProperty("--marquee-distance", `-${distance}px`);
+            el.style.setProperty("--marquee-duration", `${duration}s`);
+            if (el.parentElement) el.parentElement.classList.add("has-overflow");
+            el.classList.add("is-marquee");
+          }
+        }, 50);
+      }
+      window.applySpotifyMarquee = applySpotifyMarquee;
+
+      window.addEventListener("resize", () => {
+        ["fs-track-title", "mobile-track-title", "player-track-name"].forEach(id => {
+          applySpotifyMarquee(document.getElementById(id));
+        });
+      });
 
       /**
        * Garante que qualquer música individual ou álbum tenha sempre uma capa 1000x1000 HD válida
@@ -582,13 +681,18 @@ export function initMiadoClient() {
         PRELOADED_SEED.sabrina_sns = {
           coverUrl: sabrinaCover,
           tracks: [
-            { id: "1750300100", title: "Manchild", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet (Deluxe)", albumId: "sabrina_sns", duration: "3:33", durationSec: 213, trackNumber: 1, genre: "Pop", year: 2025, coverUrl: "/api/cover?title=Manchild&artist=Sabrina+Carpenter", previewUrl: "/api/stream?title=Manchild&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Manchild&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
-            { id: "1750300105", title: "Espresso", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:55", durationSec: 175, trackNumber: 2, genre: "Disco-Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Espresso&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Espresso&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
-            { id: "1750300106", title: "Tears", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:40", durationSec: 160, trackNumber: 3, genre: "Pop", year: 2025, coverUrl: "/api/cover?title=Tears&artist=Sabrina+Carpenter", previewUrl: "/api/stream?title=Tears&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Tears&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
-            { id: "1750300102", title: "Please Please Please", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "3:06", durationSec: 186, trackNumber: 4, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Please%20Please%20Please&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Please%20Please%20Please&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
-            { id: "1750300101", title: "Taste", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:37", durationSec: 157, trackNumber: 5, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Taste&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Taste&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
-            { id: "1750300108", title: "Bed Chem", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:51", durationSec: 171, trackNumber: 6, genre: "Pop / R&B", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Bed%20Chem&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Bed%20Chem&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
-            { id: "1750300110", title: "Juno", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "3:43", durationSec: 223, trackNumber: 7, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Juno&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Juno&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: false }
+            { id: "sns_1", title: "Taste", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:37", durationSec: 157, trackNumber: 1, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Taste&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Taste&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
+            { id: "sns_2", title: "Please Please Please", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "3:06", durationSec: 186, trackNumber: 2, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Please%20Please%20Please&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Please%20Please%20Please&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
+            { id: "sns_3", title: "Good Graces", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "3:05", durationSec: 185, trackNumber: 3, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Good%20Graces&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Good%20Graces&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
+            { id: "sns_4", title: "Sharpest Tool", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "3:38", durationSec: 218, trackNumber: 4, genre: "Pop / Indie", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Sharpest%20Tool&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Sharpest%20Tool&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: false },
+            { id: "sns_5", title: "Coincidence", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:44", durationSec: 164, trackNumber: 5, genre: "Acoustic Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Coincidence&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Coincidence&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: false },
+            { id: "sns_6", title: "Bed Chem", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:51", durationSec: 171, trackNumber: 6, genre: "Pop / R&B", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Bed%20Chem&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Bed%20Chem&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
+            { id: "sns_7", title: "Espresso", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:55", durationSec: 175, trackNumber: 7, genre: "Disco-Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Espresso&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Espresso&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
+            { id: "sns_8", title: "Dumb & Poetic", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:13", durationSec: 133, trackNumber: 8, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Dumb%20%26%20Poetic&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Dumb%20%26%20Poetic&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: false },
+            { id: "sns_9", title: "Slim Pickins", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "2:32", durationSec: 152, trackNumber: 9, genre: "Country Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Slim%20Pickins&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Slim%20Pickins&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: false },
+            { id: "sns_10", title: "Juno", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "3:43", durationSec: 223, trackNumber: 10, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Juno&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Juno&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: true },
+            { id: "sns_11", title: "Lie To Girls", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "3:22", durationSec: 202, trackNumber: 11, genre: "Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Lie%20To%20Girls&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Lie%20To%20Girls&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: false },
+            { id: "sns_12", title: "Don’t Smile", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", albumId: "sabrina_sns", duration: "3:26", durationSec: 206, trackNumber: 12, genre: "R&B / Pop", year: 2024, coverUrl: sabrinaCover, previewUrl: "/api/stream?title=Don%E2%80%99t%20Smile&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", streamUrl: "/api/stream?title=Don%E2%80%99t%20Smile&artist=Sabrina%20Carpenter&preferFull=1&studioOnly=1", popular: false }
           ]
         };
 
@@ -667,7 +771,8 @@ export function initMiadoClient() {
         },
         {
           id: "sabrina_sns",
-          collectionId: 1750300100,
+          collectionId: 1752214909,
+          dzAlbumId: 631839161,
           category: "global",
           filterTags: ["all", "new", "pop"],
           searchQuery: "Sabrina Carpenter Short n Sweet",
@@ -678,7 +783,7 @@ export function initMiadoClient() {
           genre: "Pop / Disco-Pop",
           label: "Island Records",
           coverUrl: PRELOADED_SEED.sabrina_sns.coverUrl,
-          synopsis: "O fenômeno pop mundial com Espresso, Please Please Please, Taste e Bed Chem em versão original de estúdio.",
+          synopsis: "O fenômeno pop mundial com Espresso, Please Please Please, Taste, Bed Chem e Juno em versão original completa de estúdio com 12 faixas.",
           badges: ["Lossless", "Master", "Hit Global"],
           tracks: PRELOADED_SEED.sabrina_sns.tracks
         },
@@ -932,28 +1037,133 @@ export function initMiadoClient() {
       });
 
       // Diretório base de sugestões para o Onboarding (sem Yung Lixo nos charts gerais e com subtítulo limpo "Artista")
+      // Diretório base completo de artistas categorizados para Onboarding e Descoberta
       const POPULAR_ARTISTS_DIRECTORY = [
-        { name: "Billie Eilish", role: "Artista", coverUrl: "/api/artist-image?name=Billie%20Eilish" },
-        { name: "Lady Gaga", role: "Artista", coverUrl: "/api/artist-image?name=Lady%20Gaga" },
-        { name: "The Weeknd", role: "Artista", coverUrl: "/api/artist-image?name=The%20Weeknd" },
-        { name: "Sabrina Carpenter", role: "Artista", coverUrl: "/api/artist-image?name=Sabrina%20Carpenter" },
-        { name: "Bruno Mars", role: "Artista", coverUrl: "/api/artist-image?name=Bruno%20Mars" },
-        { name: "Dua Lipa", role: "Artista", coverUrl: "/api/artist-image?name=Dua%20Lipa" },
-        { name: "Ariana Grande", role: "Artista", coverUrl: "/api/artist-image?name=Ariana%20Grande" },
-        { name: "Ghost", role: "Artista", coverUrl: "/api/artist-image?name=Ghost" },
-        { name: "Paramore", role: "Artista", coverUrl: "/api/artist-image?name=Paramore" },
-        { name: "Linkin Park", role: "Artista", coverUrl: "/api/artist-image?name=Linkin%20Park" },
-        { name: "Lana Del Rey", role: "Artista", coverUrl: "/api/artist-image?name=Lana%20Del%20Rey" },
-        { name: "Taylor Swift", role: "Artista", coverUrl: "/api/artist-image?name=Taylor%20Swift" },
-        { name: "Charli xcx", role: "Artista", coverUrl: "/api/artist-image?name=Charli%20xcx" },
-        { name: "Chappell Roan", role: "Artista", coverUrl: "/api/artist-image?name=Chappell%20Roan" },
-        { name: "Kendrick Lamar", role: "Artista", coverUrl: "/api/artist-image?name=Kendrick%20Lamar" },
-        { name: "Arctic Monkeys", role: "Artista", coverUrl: "/api/artist-image?name=Arctic%20Monkeys" },
-        { name: "Jão", role: "Artista", coverUrl: "/api/artist-image?name=J%C3%A3o" },
-        { name: "Anitta", role: "Artista", coverUrl: "/api/artist-image?name=Anitta" },
-        { name: "Liniker", role: "Artista", coverUrl: "/api/artist-image?name=Liniker" },
-        { name: "Matuê", role: "Artista", coverUrl: "/api/artist-image?name=Matu%C3%AA" }
+        // Pop Internacional
+        { name: "Taylor Swift", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Taylor%20Swift" },
+        { name: "Billie Eilish", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Billie%20Eilish" },
+        { name: "Sabrina Carpenter", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Sabrina%20Carpenter" },
+        { name: "Lady Gaga", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Lady%20Gaga" },
+        { name: "Olivia Rodrigo", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Olivia%20Rodrigo" },
+        { name: "Ariana Grande", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Ariana%20Grande" },
+        { name: "Dua Lipa", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Dua%20Lipa" },
+        { name: "Bruno Mars", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Bruno%20Mars" },
+        { name: "Chappell Roan", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Chappell%20Roan" },
+        { name: "Charli xcx", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Charli%20xcx" },
+        { name: "Katy Perry", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Katy%20Perry" },
+        { name: "Harry Styles", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Harry%20Styles" },
+        { name: "Rihanna", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Rihanna" },
+        { name: "Beyoncé", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Beyonce" },
+        { name: "Justin Bieber", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Justin%20Bieber" },
+        { name: "Ed Sheeran", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Ed%20Sheeran" },
+        { name: "Selena Gomez", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Selena%20Gomez" },
+        { name: "Tate McRae", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Tate%20McRae" },
+
+        // Rock & Metal
+        { name: "Ghost", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Ghost" },
+        { name: "Linkin Park", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Linkin%20Park" },
+        { name: "Queen", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Queen" },
+        { name: "Arctic Monkeys", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Arctic%20Monkeys" },
+        { name: "Red Hot Chili Peppers", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Red%20Hot%20Chili%20Peppers" },
+        { name: "Nirvana", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Nirvana" },
+        { name: "Paramore", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Paramore" },
+        { name: "Metallica", genre: "Metal", role: "Artista", coverUrl: "/api/artist-image?name=Metallica" },
+        { name: "Iron Maiden", genre: "Metal", role: "Artista", coverUrl: "/api/artist-image?name=Iron%20Maiden" },
+        { name: "Slipknot", genre: "Metal", role: "Artista", coverUrl: "/api/artist-image?name=Slipknot" },
+        { name: "System of a Down", genre: "Metal", role: "Artista", coverUrl: "/api/artist-image?name=System%20of%20a%20Down" },
+        { name: "Black Sabbath", genre: "Metal", role: "Artista", coverUrl: "/api/artist-image?name=Black%20Sabbath" },
+        { name: "Bring Me The Horizon", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Bring%20Me%20The%20Horizon" },
+        { name: "AC/DC", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=AC%2FDC" },
+        { name: "Guns N' Roses", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Guns%20N%20Roses" },
+        { name: "Green Day", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Green%20Day" },
+        { name: "Måneskin", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Maneskin" },
+
+        // Hip-Hop / Rap
+        { name: "Kanye West", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Kanye%20West" },
+        { name: "Drake", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Drake" },
+        { name: "Kendrick Lamar", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Kendrick%20Lamar" },
+        { name: "Travis Scott", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Travis%20Scott" },
+        { name: "Eminem", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Eminem" },
+        { name: "Post Malone", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Post%20Malone" },
+        { name: "21 Savage", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=21%20Savage" },
+        { name: "Tyler, The Creator", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Tyler%20The%20Creator" },
+        { name: "Playboi Carti", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Playboi%20Carti" },
+        { name: "Future", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Future" },
+        { name: "J. Cole", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=J%20Cole" },
+        { name: "A$AP Rocky", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=ASAP%20Rocky" },
+
+        // R&B & Soul
+        { name: "The Weeknd", genre: "R&B", role: "Artista", coverUrl: "/api/artist-image?name=The%20Weeknd" },
+        { name: "SZA", genre: "R&B", role: "Artista", coverUrl: "/api/artist-image?name=SZA" },
+        { name: "Frank Ocean", genre: "R&B", role: "Artista", coverUrl: "/api/artist-image?name=Frank%20Ocean" },
+        { name: "Daniel Caesar", genre: "R&B", role: "Artista", coverUrl: "/api/artist-image?name=Daniel%20Caesar" },
+        { name: "Steve Lacy", genre: "R&B", role: "Artista", coverUrl: "/api/artist-image?name=Steve%20Lacy" },
+        { name: "Brent Faiyaz", genre: "R&B", role: "Artista", coverUrl: "/api/artist-image?name=Brent%20Faiyaz" },
+        { name: "Giveon", genre: "R&B", role: "Artista", coverUrl: "/api/artist-image?name=Giveon" },
+
+        // Pop Brasil & MPB
+        { name: "Jão", genre: "Pop Brasil", role: "Artista", coverUrl: "/api/artist-image?name=J%C3%A3o" },
+        { name: "Anitta", genre: "Pop Brasil", role: "Artista", coverUrl: "/api/artist-image?name=Anitta" },
+        { name: "Liniker", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Liniker" },
+        { name: "Matuê", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Matu%C3%AA" },
+        { name: "Luísa Sonza", genre: "Pop Brasil", role: "Artista", coverUrl: "/api/artist-image?name=Luisa%20Sonza" },
+        { name: "Marina Sena", genre: "Pop Brasil", role: "Artista", coverUrl: "/api/artist-image?name=Marina%20Sena" },
+        { name: "Gloria Groove", genre: "Pop Brasil", role: "Artista", coverUrl: "/api/artist-image?name=Gloria%20Groove" },
+        { name: "Pabllo Vittar", genre: "Pop Brasil", role: "Artista", coverUrl: "/api/artist-image?name=Pabllo%20Vittar" },
+        { name: "Duda Beat", genre: "Pop Brasil", role: "Artista", coverUrl: "/api/artist-image?name=Duda%20Beat" },
+        { name: "Silva", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Silva" },
+        { name: "Rubel", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Rubel" },
+        { name: "Caetano Veloso", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Caetano%20Veloso" },
+        { name: "Gilberto Gil", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Gilberto%20Gil" },
+        { name: "Tim Maia", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Tim%20Maia" },
+        { name: "Djavan", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Djavan" },
+        { name: "Baco Exu do Blues", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Baco%20Exu%20do%20Blues" },
+        { name: "Filipe Ret", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Filipe%20Ret" },
+        { name: "Teto", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Teto" },
+
+        // Indie & Alternativo
+        { name: "Lana Del Rey", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=Lana%20Del%20Rey" },
+        { name: "The Neighbourhood", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=The%20Neighbourhood" },
+        { name: "Cigarettes After Sex", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=Cigarettes%20After%20Sex" },
+        { name: "The Marías", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=The%20Marias" },
+        { name: "Wallows", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=Wallows" },
+        { name: "Clairo", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=Clairo" },
+        { name: "Mitski", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=Mitski" },
+        { name: "Tame Impala", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=Tame%20Impala" },
+        { name: "Beach House", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=Beach%20House" },
+        { name: "Lorde", genre: "Indie", role: "Artista", coverUrl: "/api/artist-image?name=Lorde" },
+
+        // Eletrônica
+        { name: "Daft Punk", genre: "Eletrônica", role: "Artista", coverUrl: "/api/artist-image?name=Daft%20Punk" },
+        { name: "Calvin Harris", genre: "Eletrônica", role: "Artista", coverUrl: "/api/artist-image?name=Calvin%20Harris" },
+        { name: "David Guetta", genre: "Eletrônica", role: "Artista", coverUrl: "/api/artist-image?name=David%20Guetta" },
+        { name: "Avicii", genre: "Eletrônica", role: "Artista", coverUrl: "/api/artist-image?name=Avicii" },
+        { name: "Alok", genre: "Eletrônica", role: "Artista", coverUrl: "/api/artist-image?name=Alok" },
+        { name: "Vintage Culture", genre: "Eletrônica", role: "Artista", coverUrl: "/api/artist-image?name=Vintage%20Culture" }
       ];
+
+      // Mapeamento de 3 artistas relacionados automáticos ao clicar
+      const ARTIST_SIMILAR_MAP = {
+        "ghost": ["Metallica", "Iron Maiden", "Slipknot"],
+        "sabrina carpenter": ["Olivia Rodrigo", "Chappell Roan", "Tate McRae"],
+        "billie eilish": ["Lana Del Rey", "Lorde", "Olivia Rodrigo"],
+        "lady gaga": ["Beyoncé", "Katy Perry", "Ariana Grande"],
+        "the weeknd": ["Bruno Mars", "Frank Ocean", "Post Malone"],
+        "drake": ["Kendrick Lamar", "Travis Scott", "21 Savage"],
+        "kanye west": ["Travis Scott", "Kendrick Lamar", "Tyler, The Creator"],
+        "taylor swift": ["Sabrina Carpenter", "Olivia Rodrigo", "Lana Del Rey"],
+        "jão": ["Rubel", "Silva", "Liniker"],
+        "linkin park": ["Bring Me The Horizon", "System of a Down", "Paramore"],
+        "yung lixo": ["Matuê", "Baco Exu do Blues", "Teto"],
+        "kendrick lamar": ["J. Cole", "Kanye West", "Travis Scott"],
+        "arctic monkeys": ["The Neighbourhood", "Wallows", "Tame Impala"],
+        "daft punk": ["Calvin Harris", "Avicii", "David Guetta"],
+        "metallica": ["Iron Maiden", "Slipknot", "Black Sabbath"],
+        "lana del rey": ["Billie Eilish", "Lorde", "Cigarettes After Sex"],
+        "sza": ["Frank Ocean", "Daniel Caesar", "The Weeknd"],
+        "dua lipa": ["Katy Perry", "Ariana Grande", "Olivia Rodrigo"],
+        "travis scott": ["Playboi Carti", "Future", "21 Savage"]
+      };
 
       // ------------------------------------------------------------------------
       // 3. GERENCIAMENTO DE ESTADO LOCAL E PERSISTÊNCIA (LOCALSTORAGE)
@@ -2897,6 +3107,7 @@ export function initMiadoClient() {
             trackNameEl.textContent = track.title;
             trackNameEl.style.filter = "none";
             trackNameEl.style.webkitFilter = "none";
+            applySpotifyMarquee(trackNameEl);
           }
           const trackArtistEl = document.getElementById("player-track-artist");
           if (trackArtistEl) {
@@ -2920,6 +3131,7 @@ export function initMiadoClient() {
             mobTitleEl.textContent = track.title;
             mobTitleEl.style.filter = "none";
             mobTitleEl.style.webkitFilter = "none";
+            applySpotifyMarquee(mobTitleEl);
           }
           const mobArtistEl = document.getElementById("mobile-track-artist");
           if (mobArtistEl) {
@@ -2941,6 +3153,7 @@ export function initMiadoClient() {
             fsTitleEl.textContent = track.title;
             fsTitleEl.style.filter = "none";
             fsTitleEl.style.webkitFilter = "none";
+            applySpotifyMarquee(fsTitleEl);
           }
           const fsArtistEl = document.getElementById("fs-track-artist");
           if (fsArtistEl) {
@@ -3038,35 +3251,32 @@ export function initMiadoClient() {
             window.miadoUI.renderRightSidebarBodyOnly();
           }
 
-          const rawCandidate = track.rawPreviewUrl || track.previewUrl || track.streamUrl || "";
-          const primaryProxyStreamUrl = toProxyStreamUrl(rawCandidate, track.title, track.artist, true);
+          const tKey = normalizeTrackKey(track);
+          const cachedStream = sessionStorage.getItem("miado_stream_" + tKey);
+          let started = false;
 
-          // 1. Tentativa Primária: Proxy Stream URL com resolução de faixa completa (320kbps MP4 / 3-5 min)
-          let started = await this.attemptPlayUrl(primaryProxyStreamUrl, currentReq, 11500);
+          // 1. Tenta carregar do cache local de áudio da sessão (0ms de latência)
+          if (cachedStream) {
+            started = await this.attemptPlayUrl(cachedStream, currentReq, 3500);
+          }
 
-          // 2. Auto-Retry em Cascata pelas 6 Instâncias Piped/Invidious caso o stream primário falhe
+          // 2. Tentativa Primária: Proxy Stream URL com resolução paralela ultrarrápida no backend
           if (!started && currentReq === this.playRequestId) {
-            for (let idx = 0; idx < MiadoMusicResolver.INSTANCES.length; idx++) {
-              if (currentReq !== this.playRequestId) return;
-              const resolved = await MiadoMusicResolver.resolveFullAudioStream(track.title, track.artist, "", idx);
-              if (resolved && resolved.url) {
-                started = await this.attemptPlayUrl(resolved.url, currentReq, 5000);
-                if (started) {
-                  if (resolved.durationFormatted) {
-                    track.duration = resolved.durationFormatted;
-                    const totEl = document.getElementById("player-total-time");
-                    if (totEl) totEl.textContent = resolved.durationFormatted;
-                  }
-                  break;
-                }
-              }
+            const rawCandidate = track.rawPreviewUrl || track.previewUrl || track.streamUrl || "";
+            const primaryProxyStreamUrl = toProxyStreamUrl(rawCandidate, track.title, track.artist, true);
+            started = await this.attemptPlayUrl(primaryProxyStreamUrl, currentReq, 6000);
+            if (started) {
+              try { sessionStorage.setItem("miado_stream_" + tKey, primaryProxyStreamUrl); } catch (_e) {}
             }
           }
 
-          // 3. Regra de Contingência: tenta nova resolução completa sem preview de 30s
+          // 3. Contingência rápida pelo servidor (otimizada sem loop de 6 instâncias que esquentava o celular)
           if (!started && currentReq === this.playRequestId) {
             const contingencyUrl = `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&retry=1`;
-            started = await this.attemptPlayUrl(contingencyUrl, currentReq, 8500);
+            started = await this.attemptPlayUrl(contingencyUrl, currentReq, 5500);
+            if (started) {
+              try { sessionStorage.setItem("miado_stream_" + tKey, contingencyUrl); } catch (_e) {}
+            }
           }
 
           if ( currentReq === this.playRequestId) {
@@ -3194,7 +3404,7 @@ export function initMiadoClient() {
             window.miadoUI.renderRightSidebarBodyOnly();
             window.miadoUI.renderFullscreenUpNext();
           }
-          showToast(`"${cleanTrack.title}" tocará a seguir! 🐾`);
+          showToast(`"${cleanTrack.title}" tocará a seguir`);
         }
 
         addToQueueEnd(track) {
@@ -3219,7 +3429,7 @@ export function initMiadoClient() {
             window.miadoUI.renderRightSidebarBodyOnly();
             window.miadoUI.renderFullscreenUpNext();
           }
-          showToast(`"${cleanTrack.title}" adicionada à fila de reprodução 🐾`);
+          showToast(`"${cleanTrack.title}" adicionada à fila de reprodução`);
         }
 
         setVolume(val, showFeedback = false) {
@@ -3513,10 +3723,10 @@ export function initMiadoClient() {
                 const card = document.createElement("div");
                 card.className = "artist-bubble-card";
                 card.setAttribute("data-open-artist", art.name);
-                const cover = art.coverUrl || `/api/artist-image?name=${encodeURIComponent(art.name)}`;
+                const cover = ensureArtistAvatarUrl(art);
                 card.innerHTML = `
-                  <div class="artist-avatar-wrap">
-                    <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${cover}" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                  <div class="artist-avatar-wrap shimmer">
+                    <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${cover}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                     <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
                     </button>
@@ -3747,7 +3957,7 @@ export function initMiadoClient() {
               engine.addToQueueEnd(this.contextMenuTrack);
             } else if (this.contextMenuAlbum?.tracks?.length) {
               this.contextMenuAlbum.tracks.forEach(t => engine.addToQueueEnd(t));
-              showToast(`Álbum "${this.contextMenuAlbum.title}" enfileirado! 🐾`);
+              showToast(`Álbum "${this.contextMenuAlbum.title}" enfileirado`);
             }
             this.closeContextMenu();
           });
@@ -4087,16 +4297,6 @@ export function initMiadoClient() {
 
           this.setActiveNav(view);
           this.navigateTo(view, true);
-
-          if (view === "search") {
-            setTimeout(() => {
-              const inp = document.getElementById("view-search-input") || document.getElementById("global-search-input");
-              if (inp) {
-                inp.focus();
-                if (inp.select) inp.select();
-              }
-            }, 60);
-          }
         }
 
         setupNavigation() {
@@ -4415,32 +4615,82 @@ export function initMiadoClient() {
             const seekTrack = document.getElementById(trackId);
             if (!seekTrack) return;
             let isSeeking = false;
-            const applySeekFromEvent = (clientX) => {
-              if (!engine.audio.duration || isNaN(engine.audio.duration)) return;
+            let pendingSeekRatio = 0;
+
+            const updateVisualProgress = (clientX) => {
               const rect = seekTrack.getBoundingClientRect();
               if (!rect.width) return;
-              const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-              engine.audio.currentTime = pos * engine.audio.duration;
-              const pctStr = `${pos * 100}%`;
+              pendingSeekRatio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+              const pctStr = `${pendingSeekRatio * 100}%`;
               const fillEl = document.getElementById("player-seek-fill");
               if (fillEl) fillEl.style.width = pctStr;
               const fsFillEl = document.getElementById("fs-seek-fill");
               if (fsFillEl) fsFillEl.style.width = pctStr;
               const mobFillEl = document.getElementById("mobile-seek-fill");
               if (mobFillEl) mobFillEl.style.width = pctStr;
+              if (engine.audio.duration && !isNaN(engine.audio.duration)) {
+                const curSec = Math.floor(pendingSeekRatio * engine.audio.duration);
+                const curM = Math.floor(curSec / 60);
+                const curS = curSec % 60;
+                const fmt = `${curM}:${curS < 10 ? '0' : ''}${curS}`;
+                const curEl = document.getElementById("player-current-time");
+                if (curEl) curEl.textContent = fmt;
+                const fsCurEl = document.getElementById("fs-current-time");
+                if (fsCurEl) fsCurEl.textContent = fmt;
+              }
             };
+
+            const commitSeek = () => {
+              if (!isSeeking) return;
+              isSeeking = false;
+              if (engine.audio.duration && !isNaN(engine.audio.duration)) {
+                engine.audio.currentTime = pendingSeekRatio * engine.audio.duration;
+              }
+            };
+
+            // Touch events dedicados para celular com prevenção de scroll vertical
+            seekTrack.addEventListener("touchstart", (e) => {
+              if (e.touches && e.touches[0]) {
+                isSeeking = true;
+                updateVisualProgress(e.touches[0].clientX);
+              }
+            }, { passive: true });
+
+            seekTrack.addEventListener("touchmove", (e) => {
+              if (!isSeeking) return;
+              if (e.touches && e.touches[0]) {
+                if (e.cancelable) e.preventDefault();
+                updateVisualProgress(e.touches[0].clientX);
+              }
+            }, { passive: false });
+
+            seekTrack.addEventListener("touchend", () => {
+              commitSeek();
+            }, { passive: true });
+
+            seekTrack.addEventListener("touchcancel", () => {
+              isSeeking = false;
+            }, { passive: true });
+
+            // Pointer / Mouse events para Desktop e dispositivos mistos
             seekTrack.addEventListener("pointerdown", (e) => {
               isSeeking = true;
               if (seekTrack.setPointerCapture) {
                 try { seekTrack.setPointerCapture(e.pointerId); } catch (err) {}
               }
-              applySeekFromEvent(e.clientX);
+              updateVisualProgress(e.clientX);
             });
+
             seekTrack.addEventListener("pointermove", (e) => {
               if (!isSeeking) return;
-              applySeekFromEvent(e.clientX);
+              updateVisualProgress(e.clientX);
             });
+
             seekTrack.addEventListener("pointerup", () => {
+              commitSeek();
+            });
+
+            seekTrack.addEventListener("pointercancel", () => {
               isSeeking = false;
             });
           });
@@ -4502,6 +4752,9 @@ export function initMiadoClient() {
             this.renderFullscreenUpNext();
             document.getElementById("modal-fullscreen-player").classList.add("active");
             engine.startVisualizerLoop();
+            setTimeout(() => {
+              applySpotifyMarquee(document.getElementById("fs-track-title"));
+            }, 100);
           };
 
           ["player-btn-fullscreen", "spectrum-open-fs", "player-thumb-btn", "mobile-track-trigger", "mobile-thumb-img"].forEach(id => {
@@ -4646,25 +4899,102 @@ export function initMiadoClient() {
             });
           }
 
+          // Seção de 3 Artistas Relacionados automáticos ao clicar em um artista
+          const relatedWrap = document.getElementById("onboard-related-artists-wrap");
+          if (relatedWrap) {
+            if (this.lastClickedArtist) {
+              const lowerTarget = this.lastClickedArtist.toLowerCase().trim();
+              let similarNames = ARTIST_SIMILAR_MAP[lowerTarget] || [];
+              if (!similarNames || similarNames.length === 0) {
+                const foundInDir = POPULAR_ARTISTS_DIRECTORY.find(a => a.name.toLowerCase() === lowerTarget);
+                const g = foundInDir ? foundInDir.genre : "Pop";
+                similarNames = POPULAR_ARTISTS_DIRECTORY
+                  .filter(a => a.genre === g && a.name.toLowerCase() !== lowerTarget)
+                  .slice(0, 3)
+                  .map(a => a.name);
+              }
+              if (similarNames.length > 0) {
+                relatedWrap.innerHTML = `
+                  <div style="background:rgba(168,85,247,0.08); border:1px solid rgba(168,85,247,0.25); border-radius:12px; padding:10px 12px; margin-bottom:12px;">
+                    <div style="font-size:0.78rem; font-weight:600; color:#e9d5ff; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+                      <span>Artistas recomendados para quem curte <strong>${this.lastClickedArtist}</strong>:</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+                      ${similarNames.map(simName => {
+                        const isAdded = this.selectedFavoriteArtists.has(simName);
+                        const simDir = POPULAR_ARTISTS_DIRECTORY.find(a => a.name.toLowerCase() === simName.toLowerCase());
+                        const simCover = simDir ? simDir.coverUrl : `/api/artist-image?name=${encodeURIComponent(simName)}`;
+                        return `
+                          <div style="background:rgba(255,255,255,0.05); border:1px solid ${isAdded ? '#a855f7' : 'rgba(255,255,255,0.08)'}; border-radius:8px; padding:6px; text-align:center;">
+                            <img src="${simCover}" alt="${simName}" referrerpolicy="no-referrer" style="width:38px; height:38px; border-radius:50%; object-fit:cover; margin:0 auto 4px auto; display:block;" onerror="window.handleImgError(this, '${simName.replace(/'/g, "")}', 'Artista')" />
+                            <div style="font-size:0.7rem; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${simName}</div>
+                            <button type="button" class="btn-onboard-add-rel" data-add-rel-artist="${simName}" data-add-rel-cover="${simCover}" style="margin-top:4px; width:100%; font-size:0.64rem; padding:3px 0; border-radius:6px; background:${isAdded ? '#a855f7' : 'rgba(255,255,255,0.1)'}; color:#fff; border:none; cursor:pointer;">
+                              ${isAdded ? '✓ Adicionado' : '+ Adicionar'}
+                            </button>
+                          </div>
+                        `;
+                      }).join("")}
+                    </div>
+                  </div>
+                `;
+                relatedWrap.querySelectorAll("[data-add-rel-artist]").forEach(btn => {
+                  btn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    const name = btn.dataset.addRelArtist;
+                    const cover = btn.dataset.addRelCover;
+                    if (this.selectedFavoriteArtists.has(name)) {
+                      this.selectedFavoriteArtists.delete(name);
+                    } else {
+                      this.selectedFavoriteArtists.add(name);
+                      if (!this.onboardingCustomArtists) this.onboardingCustomArtists = [];
+                      if (!this.onboardingCustomArtists.some(a => a.name.toLowerCase() === name.toLowerCase())) {
+                        this.onboardingCustomArtists.unshift({ name, coverUrl: cover });
+                      }
+                    }
+                    this.renderOnboardingArtistsGrid(customPool);
+                  });
+                });
+              } else {
+                relatedWrap.innerHTML = "";
+              }
+            } else {
+              relatedWrap.innerHTML = "";
+            }
+          }
+
           const basePool = Array.isArray(customPool) && customPool.length > 0
             ? customPool
             : [
                 ...(this.onboardingCustomArtists || []),
+                ...POPULAR_ARTISTS_DIRECTORY,
                 ...((state.charts && Array.isArray(state.charts.top100Artists) && state.charts.top100Artists.length > 0)
                   ? state.charts.top100Artists
-                  : []),
-                ...POPULAR_ARTISTS_DIRECTORY
+                  : [])
               ];
 
           const seen = new Set();
           const displayArtists = [];
+          const hasGenreFilter = this.selectedFavoriteGenres && this.selectedFavoriteGenres.size > 0;
+
           basePool.forEach(art => {
             if (!art || !art.name) return;
             const k = art.name.toLowerCase().trim();
             if (seen.has(k)) return;
             seen.add(k);
+
+            // Filtragem por Gênero: se houver gêneros selecionados, inclui se bater com o gênero ou se já foi selecionado pelo usuário
+            if (hasGenreFilter) {
+              const artGenre = art.genre || (POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k)?.genre) || "";
+              const matchesGenre = this.selectedFavoriteGenres.has(artGenre) ||
+                (this.selectedFavoriteGenres.has("Alternativo") && (artGenre === "Indie" || artGenre === "Rock")) ||
+                (this.selectedFavoriteGenres.has("Indie") && artGenre === "Alternativo");
+              const isAlreadySelected = this.selectedFavoriteArtists.has(art.name);
+              if (!matchesGenre && !isAlreadySelected) return;
+            }
+
             displayArtists.push({
               name: art.name,
+              genre: art.genre || (POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k)?.genre) || "Artista",
               coverUrl: art.coverUrl || `/api/artist-image?name=${encodeURIComponent(art.name)}`
             });
           });
@@ -4678,7 +5008,7 @@ export function initMiadoClient() {
                 </div>
                 <img src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                 <div class="artist-name">${art.name}</div>
-                <div class="artist-genre">Artista</div>
+                <div class="artist-genre">${art.genre || "Artista"}</div>
               </div>
             `;
           }).join("");
@@ -4694,6 +5024,7 @@ export function initMiadoClient() {
             card.addEventListener("click", () => {
               const name = card.dataset.pickArtist;
               const cover = card.dataset.pickCover;
+              this.lastClickedArtist = name;
               if (this.selectedFavoriteArtists.has(name)) {
                 this.selectedFavoriteArtists.delete(name);
               } else {
@@ -4748,6 +5079,9 @@ export function initMiadoClient() {
           document.querySelectorAll(".modal-overlay").forEach(overlay => {
             overlay.addEventListener("click", (e) => {
               if (e.target === overlay) {
+                if (overlay.id === "modal-fullscreen-player" && window.innerWidth <= 900) {
+                  return;
+                }
                 overlay.classList.remove("active");
                 if (overlay.id === "modal-auth") {
                   this.enforceWelcomeScreenGate();
@@ -6166,7 +6500,7 @@ export function initMiadoClient() {
             homeArtistsList.push({
               name: art.name,
               role: art.role || "Artista",
-              coverUrl: art.coverUrl || `/api/artist-image?name=${encodeURIComponent(art.name)}`
+              coverUrl: ensureArtistAvatarUrl(art)
             });
           });
 
@@ -6183,6 +6517,15 @@ export function initMiadoClient() {
 
           this.homeGlobalTopTracks = globalTopTracks;
           this.homeAlgoTracks = algoTracks;
+
+          this.homeTopTracksLimit = this.homeTopTracksLimit || 30;
+          this.homeAlgoTracksLimit = this.homeAlgoTracksLimit || 30;
+
+          const visibleTopTracks = globalTopTracks.slice(0, this.homeTopTracksLimit);
+          const hasMoreTopTracks = globalTopTracks.length > this.homeTopTracksLimit;
+
+          const visibleAlgoTracks = algoTracks.slice(0, this.homeAlgoTracksLimit);
+          const hasMoreAlgoTracks = algoTracks.length > this.homeAlgoTracksLimit;
 
           const showArtistsSection = activeFilter === "all" || activeFilter === "artists";
           const showAlbumsSection = activeFilter === "all" || activeFilter === "albums";
@@ -6231,8 +6574,8 @@ export function initMiadoClient() {
                 <div class="artist-bubbles-grid" id="home-artists-infinite-grid">
                   ${homeArtistsList.slice(0, activeFilter === "artists" ? Math.max(24, homeArtistsList.length) : Math.max(12, Math.min(24, homeArtistsList.length))).map(art => `
                     <div class="artist-bubble-card" data-open-artist="${art.name}">
-                      <div class="artist-avatar-wrap">
-                        <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                      <div class="artist-avatar-wrap shimmer">
+                        <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                         <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
                         </button>
@@ -6252,7 +6595,7 @@ export function initMiadoClient() {
                 <div class="section-head">
                   <h2 class="section-title">Álbuns em Alta</h2>
                 </div>
-                <div class="cards-row-scroll" id="home-albums-infinite-grid" style="margin-bottom:18px; display:grid; grid-template-columns:repeat(auto-fill, minmax(172px, 1fr)); gap:16px;">
+                <div class="cards-grid-albums home-albums-grid-3rows" id="home-albums-infinite-grid">
                   ${newReleasesAlbums.concat(globalAlbums.filter(g => !newReleasesAlbums.includes(g))).map(album => `
                     <div class="album-card" data-album-id="${album.id}">
                       <div class="album-cover-wrap">
@@ -6275,7 +6618,7 @@ export function initMiadoClient() {
                   <h2 class="section-title">Músicas em Alta</h2>
                 </div>
                 <div class="tracklist-table" id="home-songs-infinite-table">
-                  ${globalTopTracks.map((track, idx) => {
+                  ${visibleTopTracks.map((track, idx) => {
                     const isLiked = state.isLiked(track);
                     const tKey = normalizeTrackKey(track);
                     const safeTitle = String(track.title || "").replace(/"/g, "&quot;");
@@ -6310,6 +6653,13 @@ export function initMiadoClient() {
                   `;
                   }).join("")}
                 </div>
+                ${hasMoreTopTracks ? `
+                  <div style="text-align:center; padding:14px 0 22px 0;">
+                    <button type="button" id="btn-load-more-top-tracks" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:24px; padding:10px 24px; font-size:0.84rem; font-weight:600; cursor:pointer;">
+                      + Carregar Mais Músicas (${Math.min(30, globalTopTracks.length - this.homeTopTracksLimit)} restantes)
+                    </button>
+                  </div>
+                ` : ""}
               </section>
             ` : ""}
 
@@ -6320,7 +6670,7 @@ export function initMiadoClient() {
                   <button class="btn-see-all" id="btn-refresh-recommendations">Atualizar</button>
                 </div>
                 <div class="tracklist-table">
-                  ${algoTracks.slice(0, 8).map((track, idx) => {
+                  ${visibleAlgoTracks.map((track, idx) => {
                     const isLiked = state.isLiked(track);
                     const tKey = normalizeTrackKey(track);
                     const safeTitle = String(track.title || "").replace(/"/g, "&quot;");
@@ -6355,6 +6705,13 @@ export function initMiadoClient() {
                   `;
                   }).join("")}
                 </div>
+                ${hasMoreAlgoTracks ? `
+                  <div style="text-align:center; padding:14px 0 22px 0;">
+                    <button type="button" id="btn-load-more-algo-tracks" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:24px; padding:10px 24px; font-size:0.84rem; font-weight:600; cursor:pointer;">
+                      + Carregar Mais Recomendações (${Math.min(30, algoTracks.length - this.homeAlgoTracksLimit)} restantes)
+                    </button>
+                  </div>
+                ` : ""}
               </section>
             ` : ""}
 
@@ -6393,6 +6750,22 @@ export function initMiadoClient() {
             btnRefreshRecs.addEventListener("click", async () => {
               btnRefreshRecs.textContent = "Atualizando...";
               await state.fetchRecommendations();
+              this.renderHomeView();
+            });
+          }
+
+          const btnLoadMoreTop = document.getElementById("btn-load-more-top-tracks");
+          if (btnLoadMoreTop) {
+            btnLoadMoreTop.addEventListener("click", () => {
+              this.homeTopTracksLimit = (this.homeTopTracksLimit || 30) + 30;
+              this.renderHomeView();
+            });
+          }
+
+          const btnLoadMoreAlgo = document.getElementById("btn-load-more-algo-tracks");
+          if (btnLoadMoreAlgo) {
+            btnLoadMoreAlgo.addEventListener("click", () => {
+              this.homeAlgoTracksLimit = (this.homeAlgoTracksLimit || 30) + 30;
               this.renderHomeView();
             });
           }
@@ -6881,18 +7254,18 @@ export function initMiadoClient() {
             const container = document.getElementById("search-results-container");
             if (!container) return;
             const browseArtists = (state.charts && Array.isArray(state.charts.top100Artists) && state.charts.top100Artists.length > 0)
-              ? state.charts.top100Artists.slice(0, 12)
-              : POPULAR_ARTISTS_DIRECTORY.slice(0, 12);
+              ? state.charts.top100Artists
+              : POPULAR_ARTISTS_DIRECTORY;
             container.innerHTML = `
               <div class="showcase-section">
                 <div class="section-head">
                   <h2 class="section-title">Artistas em Destaque</h2>
                 </div>
-                <div class="artist-bubbles-grid">
+                <div class="artist-bubbles-grid search-artists-grid-3rows">
                   ${browseArtists.map(art => `
                     <div class="artist-bubble-card" data-search-artist-name="${art.name}">
-                      <div class="artist-avatar-wrap">
-                        <img class="artist-bubble-img" src="${art.coverUrl || `/api/artist-image?name=${encodeURIComponent(art.name)}`}" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                      <div class="artist-avatar-wrap shimmer">
+                        <img class="artist-bubble-img" src="${ensureArtistAvatarUrl(art)}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                       </div>
                       <div class="artist-bubble-info">
                         <div class="artist-bubble-name">${art.name}</div>
@@ -6960,11 +7333,11 @@ export function initMiadoClient() {
                     <div class="section-head">
                       <h2 class="section-title">Artistas</h2>
                     </div>
-                    <div class="artist-bubbles-grid">
+                    <div class="artist-bubbles-grid search-artists-grid-3rows">
                       ${artists.map(art => `
                         <div class="artist-bubble-card" data-search-artist-name="${art.name}">
-                          <div class="artist-avatar-wrap">
-                            <img class="artist-bubble-img" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                          <div class="artist-avatar-wrap shimmer">
+                            <img class="artist-bubble-img" src="${ensureArtistAvatarUrl(art)}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                           </div>
                           <div class="artist-bubble-info">
                             <div class="artist-bubble-name">${art.name}</div>
