@@ -1,103 +1,314 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAuthenticated() {
-      return request.auth != null;
+
+    // ----------------------------- auxiliares -----------------------------
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function isStr(v, minLen, maxLen) {
+      return v is string && v.size() >= minLen && v.size() <= maxLen;
+    }
+    function optStr(d, k, maxLen) {
+      return !(k in d) || (d[k] is string && d[k].size() <= maxLen);
+    }
+    function optList(d, k, maxLen) {
+      return !(k in d) || (d[k] is list && d[k].size() <= maxLen);
+    }
+    function isVisibility(v) {
+      return v is string && v in ['public', 'followers_only', 'private'];
+    }
+    function isHandle(h) {
+      return h is string && h.matches('^[a-z0-9_.]{2,28}$');
+    }
+    function isTrackKey(k) {
+      return k is string && k.matches('^[a-z0-9_.:-]{1,120}$');
+    }
+    function isImageRef(v, maxLen) {
+      return v is string && v.size() <= maxLen
+        && (v == ''
+            || v.matches('^/api/cat-avatar\\?id=[a-z0-9_]{1,40}$')
+            || v.matches('^https://[A-Za-z0-9._~:/?#@!$&()*+,;=%-]+$')
+            || v.matches('^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$'));
+    }
+    function isCoverRef(v) {
+      return v is string && v.size() >= 10 && v.size() <= 2000
+        && (v.matches('^/api/cover\\?.+$') || v.matches('^https://.+$'));
+    }
+    function isTrackFields(d) {
+      return isStr(d.title, 1, 200)
+        && isStr(d.artist, 1, 200)
+        && optStr(d, 'albumTitle', 200)
+        && (!('coverUrl' in d) || isCoverRef(d.coverUrl))
+        && d.durationSec is int && d.durationSec >= 0 && d.durationSec <= 7200;
+    }
+    function isPresenceTrack(t) {
+      return t is map
+        && t.keys().hasAll(['trackKey', 'title', 'artist', 'durationSec'])
+        && t.keys().hasOnly(['trackKey', 'title', 'artist', 'coverUrl', 'durationSec'])
+        && isTrackKey(t.trackKey)
+        && isStr(t.title, 1, 200)
+        && isStr(t.artist, 1, 200)
+        && (!('coverUrl' in t) || isCoverRef(t.coverUrl))
+        && t.durationSec is int && t.durationSec >= 0 && t.durationSec <= 7200;
+    }
+    function follows(followerUid, followeeUid) {
+      return exists(/databases/$(database)/documents/follows/$(followerUid + '_' + followeeUid));
+    }
+    function canSee(ownerId, visibility) {
+      return isSelf(ownerId)
+        || (signedIn()
+            && (visibility == 'public'
+                || (visibility == 'followers_only' && follows(request.auth.uid, ownerId))));
+    }
+    function privacyAfter(uid) {
+      return getAfter(/databases/$(database)/documents/users/$(uid)).data.privacy;
+    }
+    function playlistDoc(pid) {
+      return get(/databases/$(database)/documents/playlists/$(pid)).data;
+    }
+    function isCollaborator(p) {
+      return signedIn() && request.auth.uid in p.collaboratorIds;
+    }
+    function canSeePlaylist(p) {
+      return isSelf(p.ownerId) || isCollaborator(p) || canSee(p.ownerId, p.visibility);
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // ------------------------------- users --------------------------------
+    function isValidUser(d) {
+      return d.keys().hasAll(['uid', 'email', 'name', 'handle', 'catId', 'privacy',
+                              'onboardingCompleted', 'createdAt', 'updatedAt'])
+        && d.keys().hasOnly(['uid', 'email', 'name', 'handle', 'bio', 'catId', 'avatarUrl',
+                             'bannerUrl', 'favoriteArtists', 'favoriteGenres',
+                             'followedArtists', 'privacy', 'onboardingCompleted',
+                             'createdAt', 'updatedAt'])
+        && d.uid == request.auth.uid
+        && 'email' in request.auth.token
+        && d.email is string
+        && d.email.lower() == request.auth.token.email.lower()
+        && isStr(d.name, 1, 80)
+        && isHandle(d.handle)
+        && optStr(d, 'bio', 300)
+        && isStr(d.catId, 1, 40)
+        && (!('avatarUrl' in d) || isImageRef(d.avatarUrl, 100000))
+        && (!('bannerUrl' in d) || isImageRef(d.bannerUrl, 150000))
+        && optList(d, 'favoriteArtists', 60)
+        && optList(d, 'favoriteGenres', 30)
+        && optList(d, 'followedArtists', 200)
+        && d.privacy is map
+        && d.privacy.keys().hasAll(['presence', 'activity'])
+        && d.privacy.keys().hasOnly(['presence', 'activity'])
+        && isVisibility(d.privacy.presence)
+        && isVisibility(d.privacy.activity)
+        && d.onboardingCompleted is bool
+        && d.createdAt is timestamp
+        && d.updatedAt == request.time;
+    }
+    function isValidLike(d, key) {
+      return d.keys().hasAll(['trackKey', 'title', 'artist', 'durationSec', 'likedAt'])
+        && d.keys().hasOnly(['trackKey', 'title', 'artist', 'albumTitle', 'coverUrl',
+                             'durationSec', 'likedAt'])
+        && d.trackKey == key
+        && isTrackFields(d)
+        && d.likedAt == request.time;
+    }
+    function isValidHistory(d) {
+      return d.keys().hasAll(['trackKey', 'title', 'artist', 'durationSec', 'playedAt'])
+        && d.keys().hasOnly(['trackKey', 'title', 'artist', 'albumTitle', 'coverUrl',
+                             'durationSec', 'playedAt', 'completed'])
+        && isTrackKey(d.trackKey)
+        && isTrackFields(d)
+        && (!('completed' in d) || d.completed is bool)
+        && d.playedAt == request.time;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-@\\.]+$');
+    match /users/{uid} {
+      allow read: if isSelf(uid);
+      allow create: if isSelf(uid)
+        && isValidUser(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+      allow update: if isSelf(uid)
+        && isValidUser(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.email == resource.data.email;
+      allow delete: if isSelf(uid);
+
+      match /likes/{trackKey} {
+        allow read, delete: if isSelf(uid);
+        allow create: if isSelf(uid) && isTrackKey(trackKey)
+          && isValidLike(request.resource.data, trackKey);
+        allow update: if false;
+      }
+      match /history/{eventId} {
+        allow read, delete: if isSelf(uid);
+        allow create: if isSelf(uid)
+          && eventId.matches('^[A-Za-z0-9_-]{1,40}$')
+          && isValidHistory(request.resource.data);
+        allow update: if false;
+      }
     }
 
-    function isValidEmail(email) {
-      return email is string && email.size() >= 3 && email.size() <= 254;
+    // ------------------------------ handles -------------------------------
+    match /handles/{handle} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && isHandle(handle)
+        && request.resource.data.keys().hasAll(['uid', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && existsAfter(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.handle == handle;
+      allow update: if false;
+      allow delete: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && (!existsAfter(/databases/$(database)/documents/profiles/$(request.auth.uid))
+            || getAfter(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.handle != handle);
     }
 
-    function isValidUserAccount(data) {
-      let allowedKeys = [
-        'uid', 'email', 'name', 'handle', 'bio', 'catId', 'avatarUrl', 'bannerUrl',
-        'favoriteArtists', 'favoriteGenres', 'followedArtists', 'followingProfiles',
-        'likedTracks', 'playlists', 'recentHistory', 'feedPosts', 'customAlbumCovers',
-        'onboardingCompleted', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(['uid', 'email', 'name', 'catId', 'createdAt'])
-        && data.keys().hasOnly(allowedKeys)
-        && data.uid is string && data.uid == request.auth.uid && data.uid.size() >= 1 && data.uid.size() <= 128
-        && isValidEmail(data.email)
-        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
-        && (!('handle' in data) || (data.handle is string && data.handle.size() <= 60))
-        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 300))
-        && (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 2000000))
-        && (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() <= 2000000))
-        && data.catId is string && data.catId.size() >= 1 && data.catId.size() <= 40
-        && (!('favoriteArtists' in data) || (data.favoriteArtists is list && data.favoriteArtists.size() <= 80))
-        && (!('favoriteGenres' in data) || (data.favoriteGenres is list && data.favoriteGenres.size() <= 40))
-        && (!('followedArtists' in data) || (data.followedArtists is list && data.followedArtists.size() <= 200))
-        && (!('followingProfiles' in data) || (data.followingProfiles is list && data.followingProfiles.size() <= 200))
-        && (!('likedTracks' in data) || (data.likedTracks is list && data.likedTracks.size() <= 500))
-        && (!('playlists' in data) || (data.playlists is list && data.playlists.size() <= 100))
-        && (!('recentHistory' in data) || (data.recentHistory is list && data.recentHistory.size() <= 100))
-        && (!('feedPosts' in data) || (data.feedPosts is list && data.feedPosts.size() <= 100))
-        && (!('customAlbumCovers' in data) || (data.customAlbumCovers is map))
-        && (!('onboardingCompleted' in data) || (data.onboardingCompleted is bool))
-        && data.createdAt is string && data.createdAt.size() <= 40
-        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 40));
+    // ------------------------------ profiles ------------------------------
+    function isValidProfile(d) {
+      return d.keys().hasAll(['uid', 'name', 'handle', 'updatedAt'])
+        && d.keys().hasOnly(['uid', 'name', 'handle', 'bio', 'avatarUrl', 'bannerUrl',
+                             'favoriteArtists', 'updatedAt'])
+        && d.uid == request.auth.uid
+        && isStr(d.name, 1, 80)
+        && isHandle(d.handle)
+        && optStr(d, 'bio', 300)
+        && (!('avatarUrl' in d) || isImageRef(d.avatarUrl, 100000))
+        && (!('bannerUrl' in d) || isImageRef(d.bannerUrl, 150000))
+        && optList(d, 'favoriteArtists', 60)
+        && d.updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/handles/$(d.handle))
+        && getAfter(/databases/$(database)/documents/handles/$(d.handle)).data.uid == request.auth.uid;
     }
 
-    function isValidProfile(data) {
-      let allowedKeys = [
-        'uid', 'name', 'username', 'bio', 'avatarUrl', 'bannerUrl', 'favoriteArtists',
-        'currentTrack', 'trackObj', 'albumId', 'isSelf', 'updatedAt', 'createdAt'
-      ];
-      return data.keys().hasAll(['uid', 'name'])
-        && data.keys().hasOnly(allowedKeys)
-        && data.uid is string && data.uid == request.auth.uid && data.uid.size() >= 1 && data.uid.size() <= 128
-        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
-        && (!('username' in data) || (data.username is string && data.username.size() <= 60))
-        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 300))
-        && (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 2000000))
-        && (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() <= 2000000))
-        && (!('favoriteArtists' in data) || (data.favoriteArtists is list && data.favoriteArtists.size() <= 60))
-        && (!('currentTrack' in data) || (data.currentTrack is string && data.currentTrack.size() <= 200))
-        && (!('albumId' in data) || (data.albumId is string && data.albumId.size() <= 100))
-        && (!('isSelf' in data) || (data.isSelf is bool))
-        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50))
-        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50));
+    match /profiles/{uid} {
+      allow get: if signedIn();
+      allow list: if signedIn() && request.query.limit <= 100;
+      allow create, update: if isSelf(uid) && isValidProfile(request.resource.data);
+      allow delete: if isSelf(uid);
     }
 
-    match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId)
-        && isValidId(userId)
-        && isValidUserAccount(request.resource.data)
-        && request.resource.data.uid == request.auth.uid;
-      allow update: if isOwner(userId)
-        && isValidId(userId)
-        && isValidUserAccount(request.resource.data)
-        && request.resource.data.uid == resource.data.uid;
-      allow delete: if isOwner(userId);
+    // ------------------------------- follows ------------------------------
+    match /follows/{followId} {
+      allow read: if signedIn()
+        && (resource.data.followerId == request.auth.uid
+            || resource.data.followeeId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['followerId', 'followeeId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['followerId', 'followeeId', 'createdAt'])
+        && request.resource.data.followerId == request.auth.uid
+        && isStr(request.resource.data.followeeId, 1, 128)
+        && request.resource.data.followeeId != request.auth.uid
+        && followId == request.auth.uid + '_' + request.resource.data.followeeId
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/profiles/$(request.resource.data.followeeId));
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.followerId == request.auth.uid;
     }
 
-    match /profiles/{profileId} {
-      allow read: if isAuthenticated();
-      allow create: if isOwner(profileId)
-        && isValidId(profileId)
-        && isValidProfile(request.resource.data);
-      allow update: if isOwner(profileId)
-        && isValidId(profileId)
-        && isValidProfile(request.resource.data)
-        && request.resource.data.uid == resource.data.uid;
-      allow delete: if isOwner(profileId);
+    // ------------------------------- presence -----------------------------
+    function isValidPresence(d, uid) {
+      return d.keys().hasAll(['uid', 'visibility', 'state', 'updatedAt'])
+        && d.keys().hasOnly(['uid', 'visibility', 'state', 'track', 'updatedAt'])
+        && d.uid == uid
+        && isVisibility(d.visibility)
+        && d.visibility == privacyAfter(uid).presence
+        && d.state in ['playing', 'paused', 'idle']
+        && (d.visibility == 'private'
+            ? !('track' in d)
+            : (!('track' in d) || isPresenceTrack(d.track)))
+        && d.updatedAt == request.time;
     }
 
-    match /test/{docId} {
-      allow read: if true;
+    match /presence/{uid} {
+      allow get: if canSee(uid, resource.data.visibility);
+      allow list: if canSee(uid, resource.data.visibility) && request.query.limit <= 100;
+      allow create, update: if isSelf(uid) && isValidPresence(request.resource.data, uid);
+      allow delete: if isSelf(uid);
     }
 
+    // ------------------------------- activity -----------------------------
+    match /activity/{activityId} {
+      allow get: if canSee(resource.data.actorId, resource.data.visibility);
+      allow list: if canSee(resource.data.actorId, resource.data.visibility)
+        && request.query.limit <= 50;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['actorId', 'type', 'visibility', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['actorId', 'type', 'visibility', 'track',
+                                                 'playlistId', 'targetUid', 'createdAt'])
+        && request.resource.data.actorId == request.auth.uid
+        && request.resource.data.type in ['track_play', 'like', 'playlist_create', 'follow']
+        && request.resource.data.visibility == privacyAfter(request.auth.uid).activity
+        && request.resource.data.visibility != 'private'
+        && (!('track' in request.resource.data) || isPresenceTrack(request.resource.data.track))
+        && optStr(request.resource.data, 'playlistId', 40)
+        && optStr(request.resource.data, 'targetUid', 128)
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.actorId == request.auth.uid;
+    }
+
+    // ------------------------------- playlists ----------------------------
+    function isValidPlaylist(d) {
+      return d.keys().hasAll(['ownerId', 'collaboratorIds', 'visibility', 'name',
+                              'createdAt', 'updatedAt'])
+        && d.keys().hasOnly(['ownerId', 'collaboratorIds', 'visibility', 'name', 'description',
+                             'coverUrl', 'createdAt', 'updatedAt'])
+        && isStr(d.ownerId, 1, 128)
+        && d.collaboratorIds is list
+        && d.collaboratorIds.size() <= 20
+        && !(d.ownerId in d.collaboratorIds)
+        && isVisibility(d.visibility)
+        && isStr(d.name, 1, 80)
+        && optStr(d, 'description', 300)
+        && (!('coverUrl' in d) || isImageRef(d.coverUrl, 2000))
+        && d.updatedAt == request.time;
+    }
+
+    match /playlists/{playlistId} {
+      allow get: if signedIn() && canSeePlaylist(resource.data);
+      allow list: if signedIn() && canSeePlaylist(resource.data) && request.query.limit <= 50;
+      allow create: if isSelf(request.resource.data.ownerId)
+        && isValidPlaylist(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+      allow update: if signedIn()
+        && ((isSelf(resource.data.ownerId)
+             && isValidPlaylist(request.resource.data)
+             && request.resource.data.ownerId == resource.data.ownerId
+             && request.resource.data.createdAt == resource.data.createdAt)
+            || (isCollaborator(resource.data)
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
+                && request.resource.data.updatedAt == request.time));
+      allow delete: if isSelf(resource.data.ownerId);
+
+      match /tracks/{trackKey} {
+        allow read: if signedIn() && canSeePlaylist(playlistDoc(playlistId));
+        allow create: if signedIn()
+          && (isSelf(playlistDoc(playlistId).ownerId) || isCollaborator(playlistDoc(playlistId)))
+          && isTrackKey(trackKey)
+          && request.resource.data.keys().hasAll(['trackKey', 'title', 'artist', 'durationSec',
+                                                  'addedBy', 'addedAt'])
+          && request.resource.data.keys().hasOnly(['trackKey', 'title', 'artist', 'albumTitle',
+                                                   'coverUrl', 'durationSec', 'addedBy', 'addedAt'])
+          && request.resource.data.trackKey == trackKey
+          && request.resource.data.addedBy == request.auth.uid
+          && request.resource.data.addedAt == request.time
+          && isTrackFields(request.resource.data);
+        allow update: if false;
+        allow delete: if signedIn()
+          && (isSelf(playlistDoc(playlistId).ownerId)
+              || (isCollaborator(playlistDoc(playlistId))
+                  && resource.data.addedBy == request.auth.uid));
+      }
+    }
+
+    // ------------------------- negacao padrao -----------------------------
     match /{document=**} {
       allow read, write: if false;
     }

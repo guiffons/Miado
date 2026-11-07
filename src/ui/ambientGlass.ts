@@ -2,11 +2,91 @@
  * Dynamic Ambient Color Extraction, MediaSession API, Swipe-Down & Keyboard Shortcuts (Fases 1 & 3)
  */
 
+let ambientAnimFrame: number | null = null;
+let currentAmbientColors: [[number, number, number], [number, number, number], [number, number, number]] = [
+  [139, 92, 246],
+  [59, 130, 246],
+  [236, 72, 153]
+];
+
+function animateAmbientRgbTransition(
+  target1: [number, number, number],
+  target2: [number, number, number],
+  target3: [number, number, number]
+): void {
+  if (ambientAnimFrame) {
+    cancelAnimationFrame(ambientAnimFrame);
+    ambientAnimFrame = null;
+  }
+  const startColors: [[number, number, number], [number, number, number], [number, number, number]] = [
+    [...currentAmbientColors[0]],
+    [...currentAmbientColors[1]],
+    [...currentAmbientColors[2]]
+  ];
+  const duration = 680;
+  const startTime = performance.now();
+
+  const step = (now: number) => {
+    const t = Math.min(1, (now - startTime) / duration);
+    const ease = 1 - Math.pow(1 - t, 3); // cubic-out
+
+    const lerp = (a: number, b: number) => Math.round(a + (b - a) * ease);
+
+    const c1: [number, number, number] = [
+      lerp(startColors[0][0], target1[0]),
+      lerp(startColors[0][1], target1[1]),
+      lerp(startColors[0][2], target1[2])
+    ];
+    const c2: [number, number, number] = [
+      lerp(startColors[1][0], target2[0]),
+      lerp(startColors[1][1], target2[1]),
+      lerp(startColors[1][2], target2[2])
+    ];
+    const c3: [number, number, number] = [
+      lerp(startColors[2][0], target3[0]),
+      lerp(startColors[2][1], target3[1]),
+      lerp(startColors[2][2], target3[2])
+    ];
+
+    currentAmbientColors = [c1, c2, c3];
+    document.documentElement.style.setProperty("--ambient-c1", `${c1[0]}, ${c1[1]}, ${c1[2]}`);
+    document.documentElement.style.setProperty("--ambient-c2", `${c2[0]}, ${c2[1]}, ${c2[2]}`);
+    document.documentElement.style.setProperty("--ambient-c3", `${c3[0]}, ${c3[1]}, ${c3[2]}`);
+
+    if (t < 1) {
+      ambientAnimFrame = requestAnimationFrame(step);
+    } else {
+      ambientAnimFrame = null;
+    }
+  };
+
+  ambientAnimFrame = requestAnimationFrame(step);
+}
+
+export function triggerLiquidGlassTrackTransition(): void {
+  const targets = [
+    document.getElementById("player-cover-img"),
+    document.getElementById("mobile-thumb-img"),
+    document.getElementById("fs-cover-img"),
+    document.querySelector(".player-track-meta"),
+    document.querySelector(".mobile-player-meta"),
+    document.querySelector(".fs-track-meta"),
+    document.querySelector(".player-footer"),
+    document.getElementById("mobile-floating-player")
+  ];
+
+  for (const el of targets) {
+    if (!el) continue;
+    el.classList.remove("liquid-glass-switching");
+    // Force reflow so rapid track changes re-trigger the animation smoothly
+    void (el as HTMLElement).offsetWidth;
+    el.classList.add("liquid-glass-switching");
+  }
+}
+
 export function updateAmbientColorsFromCover(coverUrl: string): void {
   if (!coverUrl || coverUrl.startsWith("data:image/svg+xml")) {
-    document.documentElement.style.setProperty("--ambient-c1", "139, 92, 246");
-    document.documentElement.style.setProperty("--ambient-c2", "192, 132, 252");
-    document.documentElement.style.setProperty("--ambient-c3", "79, 70, 229");
+    animateAmbientRgbTransition([147, 51, 234], [88, 28, 135], [180, 180, 200]);
     return;
   }
 
@@ -45,24 +125,14 @@ export function updateAmbientColorsFromCover(coverUrl: string): void {
         }
       }
 
-      if (c1 > 0) {
-        document.documentElement.style.setProperty(
-          "--ambient-c1",
-          `${Math.round(r1 / c1)}, ${Math.round(g1 / c1)}, ${Math.round(b1 / c1)}`
-        );
-      }
-      if (c2 > 0) {
-        document.documentElement.style.setProperty(
-          "--ambient-c2",
-          `${Math.round(r2 / c2)}, ${Math.round(g2 / c2)}, ${Math.round(b2 / c2)}`
-        );
-      }
-      if (c3 > 0) {
-        document.documentElement.style.setProperty(
-          "--ambient-c3",
-          `${Math.round(r3 / c3)}, ${Math.round(g3 / c3)}, ${Math.round(b3 / c3)}`
-        );
-      }
+      const next1: [number, number, number] =
+        c1 > 0 ? [Math.round(r1 / c1), Math.round(g1 / c1), Math.round(b1 / c1)] : [147, 51, 234];
+      const next2: [number, number, number] =
+        c2 > 0 ? [Math.round(r2 / c2), Math.round(g2 / c2), Math.round(b2 / c2)] : [88, 28, 135];
+      const next3: [number, number, number] =
+        c3 > 0 ? [Math.round(r3 / c3), Math.round(g3 / c3), Math.round(b3 / c3)] : [180, 180, 200];
+
+      animateAmbientRgbTransition(next1, next2, next3);
     } catch {
       // Fallback to default Miado palette if canvas is tainted
     }
@@ -72,12 +142,16 @@ export function updateAmbientColorsFromCover(coverUrl: string): void {
 
 export function initEnhancements(): void {
   const w = window as any;
+  w.triggerLiquidGlassTrackTransition = triggerLiquidGlassTrackTransition;
 
   // Watch player cover image changes to update dynamic ambient Liquid Glass colors & MediaSession
   const coverImg = document.getElementById("player-cover-img") as HTMLImageElement | null;
   if (coverImg) {
+    let lastCoverSrc = coverImg.src || "";
     const obs = new MutationObserver(() => {
-      if (coverImg.src) {
+      if (coverImg.src && coverImg.src !== lastCoverSrc) {
+        lastCoverSrc = coverImg.src;
+        triggerLiquidGlassTrackTransition();
         updateAmbientColorsFromCover(coverImg.src);
       }
       syncMediaSession();

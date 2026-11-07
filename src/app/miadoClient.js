@@ -72,40 +72,98 @@ export function initMiadoClient() {
         { id: "cat_10", name: "Gatinho Peludo", url: "/api/cat-avatar?id=cat_10" }
       ];
 
+      function escapeHtml(val) {
+        if (window.miadoDom && typeof window.miadoDom.escapeHtml === "function") {
+          return window.miadoDom.escapeHtml(val);
+        }
+        return String(val ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function safeImgUrl(url, fallback = "/api/cat-avatar?id=cat_1") {
+        if (window.miadoDom && typeof window.miadoDom.safeUrl === "function") {
+          return window.miadoDom.safeUrl(url, { allowDataImage: true }) || fallback;
+        }
+        return String(url || fallback);
+      }
+
+      function getAuthHeaders(extra = {}) {
+        const token = localStorage.getItem("miado_auth_token") || "";
+        const headers = { "Content-Type": "application/json", ...extra };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        return headers;
+      }
+
+      const ICON_CHECK_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:3px;"><polyline points="20 6 9 17 4 12"/></svg>`;
+
       function createSolidAlbumSvg(title = "Miado", artist = "") {
-        const safeT = String(title || "Miado").slice(0, 18).replace(/[<>&"']/g, "");
-        const safeA = String(artist || "").slice(0, 22).replace(/[<>&"']/g, "");
+        if (typeof window.miadoPlaceholder === "function") {
+          return window.miadoPlaceholder("album", title || "Miado", artist || "");
+        }
+        // Fallback visual moderno Section 4.4 (Blurry Modern Gradient edge-to-edge com noise e nota musical translúcida)
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-          <rect width="600" height="600" fill="#130f22"/>
-          <rect x="28" y="28" width="544" height="544" rx="24" fill="#07060b" stroke="#8b5cf6" stroke-width="2"/>
-          <circle cx="300" cy="245" r="84" fill="#130f22" stroke="#a855f7" stroke-width="4"/>
-          <circle cx="300" cy="245" r="24" fill="#8b5cf6"/>
-          <text x="300" y="420" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="32" font-weight="bold">${safeT}</text>
-          <text x="300" y="462" text-anchor="middle" fill="#94a3b8" font-family="sans-serif" font-size="22">${safeA}</text>
+          <defs>
+            <radialGradient id="blurGradMain" cx="18%" cy="18%" r="92%" fx="12%" fy="12%">
+              <stop offset="0%" stop-color="rgb(147, 51, 234)" stop-opacity="0.92"/>
+              <stop offset="45%" stop-color="rgb(88, 28, 135)" stop-opacity="0.95"/>
+              <stop offset="72%" stop-color="rgb(180, 180, 200)" stop-opacity="0.65"/>
+              <stop offset="100%" stop-color="rgb(255, 255, 255)" stop-opacity="0.38"/>
+            </radialGradient>
+            <radialGradient id="blurGlowTopRight" cx="76%" cy="22%" r="58%">
+              <stop offset="0%" stop-color="rgb(255, 255, 255)" stop-opacity="0.72"/>
+              <stop offset="48%" stop-color="rgb(200, 195, 220)" stop-opacity="0.38"/>
+              <stop offset="100%" stop-color="rgb(88, 28, 135)" stop-opacity="0"/>
+            </radialGradient>
+            <filter id="noiseFilter">
+              <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+            </filter>
+          </defs>
+          <rect width="600" height="600" fill="#170b2c"/>
+          <rect width="600" height="600" fill="url(#blurGradMain)"/>
+          <rect width="600" height="600" fill="url(#blurGlowTopRight)"/>
+          <rect width="600" height="600" filter="url(#noiseFilter)" opacity="0.08"/>
+          <g transform="translate(225, 225) scale(6.25)" fill="none" stroke="rgba(255, 255, 255, 0.42)" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3" fill="rgba(255, 255, 255, 0.2)"/>
+            <circle cx="18" cy="16" r="3" fill="rgba(255, 255, 255, 0.2)"/>
+          </g>
         </svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
       }
 
       function createSolidArtistSvg(artistName = "Artista") {
+        if (typeof window.miadoPlaceholder === "function") {
+          return window.miadoPlaceholder("artist", artistName || "Artista", "Artista");
+        }
         const clean = String(artistName || "Artista").trim();
-        const initials = clean
-          .split(/\s+/)
-          .slice(0, 2)
-          .map(w => w[0]?.toUpperCase() || "")
-          .join("") || "A";
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-          <defs>
-            <radialGradient id="artGrad" cx="50%" cy="30%" r="70%">
-              <stop offset="0%" stop-color="#3b1d6e"/>
-              <stop offset="60%" stop-color="#190e32"/>
-              <stop offset="100%" stop-color="#0a0614"/>
-            </radialGradient>
-          </defs>
-          <rect width="600" height="600" rx="300" fill="url(#artGrad)"/>
-          <circle cx="300" cy="300" r="290" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="3"/>
-          <text x="300" y="348" text-anchor="middle" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="160" font-weight="800" letter-spacing="-2">${initials}</text>
-        </svg>`;
+        const initials = escapeHtml(clean.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "A");
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600"><rect width="600" height="600" rx="300" fill="#190e32"/><text x="300" y="348" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="160" font-weight="800">${initials}</text></svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+      }
+
+      function applyAlbumFallbackBlurToElement(imgEl, safeTitle, safeArtist) {
+        if (!imgEl) return;
+        imgEl.onerror = null;
+        imgEl.src = createSolidAlbumSvg(safeTitle, safeArtist);
+        imgEl.classList.add("loaded", "album-fallback-blur");
+        imgEl.style.border = "none";
+        imgEl.style.outline = "none";
+        imgEl.style.boxShadow = "none";
+        if (imgEl.parentElement) {
+          imgEl.parentElement.classList.remove("shimmer");
+          const pClass = String(imgEl.parentElement.className || "");
+          if (
+            pClass.includes("album-cover-wrap") ||
+            pClass.includes("player-cover-wrap") ||
+            pClass.includes("fs-artwork-wrap")
+          ) {
+            imgEl.parentElement.classList.add("album-fallback-blur");
+          }
+        }
       }
 
       window.handleImgError = function(imgEl, title, artist) {
@@ -138,26 +196,23 @@ export function initMiadoClient() {
           return;
         }
 
-        // 2. Trata capa de Música / Álbum
+        // 2. Trata capa de Música / Álbum com fallback visual .album-fallback-blur
         if (!imgEl.dataset.retriedCover && safeTitle && safeArtist && safeArtist !== "Playlist") {
           imgEl.dataset.retriedCover = "1";
           imgEl.onerror = function() {
-            this.onerror = null;
-            this.src = createSolidAlbumSvg(safeTitle, safeArtist);
-            this.classList.add("loaded");
-            if (this.parentElement) this.parentElement.classList.remove("shimmer");
+            applyAlbumFallbackBlurToElement(this, safeTitle, safeArtist);
           };
           imgEl.onload = function() {
             this.classList.add("loaded");
-            if (this.parentElement) this.parentElement.classList.remove("shimmer");
+            this.classList.remove("album-fallback-blur");
+            if (this.parentElement) {
+              this.parentElement.classList.remove("shimmer", "album-fallback-blur");
+            }
           };
           imgEl.src = `/api/cover?title=${encodeURIComponent(safeTitle)}&artist=${encodeURIComponent(safeArtist)}`;
           return;
         }
-        imgEl.onerror = null;
-        imgEl.src = createSolidAlbumSvg(safeTitle, safeArtist);
-        imgEl.classList.add("loaded");
-        if (imgEl.parentElement) imgEl.parentElement.classList.remove("shimmer");
+        applyAlbumFallbackBlurToElement(imgEl, safeTitle, safeArtist);
       };
 
       // Verificação e substituição global automática para qualquer imagem com falha
@@ -403,38 +458,12 @@ export function initMiadoClient() {
       async function fetchItunesJson(url) {
         try {
           const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 3500);
+          const timer = setTimeout(() => controller.abort(), 4000);
           const res = await fetch(url, { signal: controller.signal });
           clearTimeout(timer);
           if (res.ok) return await res.json();
-        } catch (e) {}
-
-        return new Promise((resolve, reject) => {
-          const cbName = `__miadoItunesCb_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-          const script = document.createElement("script");
-          const timeout = setTimeout(() => {
-            cleanup();
-            reject(new Error("Timeout iTunes"));
-          }, 4500);
-
-          function cleanup() {
-            clearTimeout(timeout);
-            delete window[cbName];
-            if (script.parentNode) script.parentNode.removeChild(script);
-          }
-
-          window[cbName] = (data) => {
-            cleanup();
-            resolve(data);
-          };
-          script.onerror = () => {
-            cleanup();
-            reject(new Error("JSONP Error"));
-          };
-          const sep = url.includes("?") ? "&" : "?";
-          script.src = `${url}${sep}callback=${cbName}`;
-          document.head.appendChild(script);
-        });
+        } catch (_e) {}
+        return { results: [] };
       }
 
       // ------------------------------------------------------------------------
@@ -442,33 +471,18 @@ export function initMiadoClient() {
       // ------------------------------------------------------------------------
       const PRELOADED_SEED = {"gaga_chromatica":{"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1500952424","title":"Rain On Me","artist":"Lady Gaga & Ariana Grande","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"3:02","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1500952423","title":"Stupid Love","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"3:13","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1500952435","title":"911","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"2:52","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1500952438","title":"Sour Candy","artist":"Lady Gaga & BLACKPINK","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"2:37","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1500952422","title":"Alice","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"2:57","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1500952429","title":"Free Woman","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"3:11","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1500952430","title":"Fun Tonight","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"2:53","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1500952436","title":"Plastic Doll","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"3:41","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1500952441","title":"Enigma","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"2:59","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1500952442","title":"Replay","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"3:06","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1500952421","title":"Chromatica I","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"1:00","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1500952433","title":"Chromatica II","artist":"Lady Gaga","albumTitle":"Chromatica","albumId":"gaga_chromatica","duration":"0:41","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5d/4d/f9/5d4df96a-e95e-2fe9-404a-5d570513762d/20UMGIM15390.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"gaga_fame_monster":{"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1476727670","title":"Bad Romance","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"4:54","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1476727671","title":"Alejandro","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"4:34","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1476727672","title":"Monster","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"4:09","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1476727673","title":"Speechless","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"4:30","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1476727674","title":"Dance In The Dark","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"4:48","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1476727675","title":"Telephone (feat. Beyoncé)","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"3:40","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1476727858","title":"So Happy I Could Die","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"3:54","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1476727859","title":"Teeth","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"3:40","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1476727860","title":"Bad Romance (Starsmith Remix)","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"4:55","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1476727861","title":"Just Dance (feat. Colby O'Donis)","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"4:02","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1476727862","title":"LoveGame","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"3:36","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1476727863","title":"Paparazzi","artist":"Lady Gaga","albumTitle":"The Fame Monster","albumId":"gaga_fame_monster","duration":"3:28","genre":"Pop","year":2009,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/1b/98/88/1b9888da-6a1f-bff0-ec03-518f445019f6/19UMGIM73435.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"gaga_born_this_way":{"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1440824262","title":"Marry The Night","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:24","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1440824264","title":"Born This Way","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:20","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1440824265","title":"Government Hooker","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:14","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1440824266","title":"Judas","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:09","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1440824268","title":"Americano","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:06","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1440824269","title":"Hair","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"5:08","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1440824271","title":"Scheiße","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"3:45","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1440824272","title":"Bloody Mary","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:04","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1440824274","title":"Bad Kids","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"3:50","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1440824276","title":"Highway Unicorn (Road To Love)","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:15","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1440824277","title":"Heavy Metal Lover","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:12","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1440824279","title":"Electric Chapel","artist":"Lady Gaga","albumTitle":"Born This Way","albumId":"gaga_born_this_way","duration":"4:12","genre":"Pop","year":2011,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/53/00/7f/53007fa9-9b02-1fdb-290a-b0ca791a8c98/11UMGIM12477.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"gaga_artpop":{"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1451767864","title":"Aura","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"3:55","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1451767865","title":"Venus","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"3:53","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1451767866","title":"G.U.Y.","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"3:52","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1451767867","title":"Sexxx Dreams","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"3:34","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1451767869","title":"Jewels N' Drugs (feat. T.I., Too $hort & Twista)","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"3:48","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1451767870","title":"MANiCURE","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"3:19","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1451767871","title":"ARTPOP","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"4:07","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1451767872","title":"Swine","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"4:28","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1451767874","title":"Donatella","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"4:24","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1451767875","title":"Fashion!","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"3:59","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1451767876","title":"Mary Jane Holland","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"4:37","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1451767877","title":"Dope","artist":"Lady Gaga","albumTitle":"ARTPOP","albumId":"gaga_artpop","duration":"3:41","genre":"Pop","year":2013,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/0c/33/64/0c336478-aaa9-95dc-d373-f6fb8510b170/13UAAIM69752.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"jao_super":{"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1701857317","title":"Escorpião","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"2:28","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1701857320","title":"Me Lambe","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"2:55","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1701857447","title":"Gameboy","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"2:58","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1701857454","title":"Alinhamento Milenar","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"3:21","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1701857455","title":"Lábia","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"2:51","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1701857458","title":"Maria","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"1:58","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1701857462","title":"Julho","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"3:07","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1701857466","title":"Eu Posso Ser Como Você","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"2:31","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1701857472","title":"Sinais","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"3:03","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1701857596","title":"Se O Problema Era Você, Por Que Doeu Em Mim?","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"2:37","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1701857605","title":"Locadora","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"3:09","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1701857619","title":"Rádio","artist":"Jão","albumTitle":"SUPER","albumId":"jao_super","duration":"3:47","genre":"Pop","year":2023,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ab/0f/f6/ab0ff604-6b3f-490c-faaf-5ad97324ef41/23UMGIM90082.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"jao_pirata":{"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1589525782","title":"Clarão","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"3:09","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1589525785","title":"Não Te Amo","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"3:00","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1589525787","title":"Idiota","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"3:01","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1589525788","title":"Santo","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"2:42","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1589525790","title":"Acontece","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"2:41","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1589525792","title":"Você Me Perdeu","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"2:33","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1589526007","title":"Meninos e Meninas","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"2:41","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1589526020","title":"Coringa","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"3:07","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1589526021","title":"Doce","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"3:15","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1589526023","title":"Tempos de Glória","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"2:26","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1589526025","title":"Olhos Vermelhos","artist":"Jão","albumTitle":"Pirata","albumId":"jao_pirata","duration":"5:04","genre":"Pop","year":2021,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/f5/f9/63/f5f963a3-096b-214a-9e5a-b4d446ef728f/21UM1IM26599.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"jao_anti_heroi":{"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1482213603","title":"A Última Noite","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"4:15","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1482213605","title":"Triste pra Sempre","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"2:59","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1482213606","title":"Enquanto Me Beija","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"3:39","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1482213607","title":"Essa Eu Fiz pro Nosso Amor","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"3:14","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1482213608","title":"Fim de Festa","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"2:50","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1482213609","title":"Barcelona","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"3:24","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1482213610","title":"Você Vai Me Destruir","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"3:04","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1482213611","title":"Vsf","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"3:56","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1482213613","title":"Hotel San Diego","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"3:31","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1482213614","title":":( (Nota de Voz 8)","artist":"Jão","albumTitle":"Anti-Herói","albumId":"jao_anti_heroi","duration":"2:25","genre":"Pop","year":2019,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/eb/f6/d9/ebf6d984-0efb-2a9c-04e8-ffc43b594aa2/19UMGIM89335.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"jao_lobos":{"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1450308334","title":"Vou Morrer Sozinho","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"2:54","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1450308337","title":"Me Beija Com Raiva","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"3:16","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1450308338","title":"Lindo Demais","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"3:00","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1450308339","title":"Imaturo","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"2:58","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1450308340","title":"Ainda Te Amo","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"3:10","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1450308341","title":"A Rua","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"2:36","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1450308342","title":"Lobos","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"3:43","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1450308343","title":"Eu Quero Ser Como Você","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"3:09","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1450308344","title":"Aqui","artist":"Jão & Diogo Piçarra","albumTitle":"Lobos","albumId":"jao_lobos","duration":"2:51","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1450308345","title":"Monstros","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"4:15","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1450308346","title":"Fim do Mundo (Bonus Track)","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"3:46","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1450308347","title":"Ressaca (Bonus Track)","artist":"Jão","albumTitle":"Lobos","albumId":"jao_lobos","duration":"3:00","genre":"Pop","year":2018,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/b7/9b/81/b79b8138-b95e-bf0d-1e7c-92a28bbf71a1/19UMGIM02269.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"weeknd_after_hours":{"id":"weeknd_after_hours","q":"The Weeknd After Hours","category":"global","title":"After Hours","artist":"The Weeknd","year":2020,"genre":"R&B / Synthwave","label":"XO / Republic Records","coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/6f/bc/e6/6fbce6c4-c38c-72d8-4fd0-66cfff32f679/20UMGIM12176.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1499378615","title":"After Hours","artist":"The Weeknd","albumTitle":"After Hours","albumId":"weeknd_after_hours","duration":"6:01","genre":"R&B/soul","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/6f/bc/e6/6fbce6c4-c38c-72d8-4fd0-66cfff32f679/20UMGIM12176.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1674298561","title":"After Hours (Live)","artist":"The Weeknd","albumTitle":"Live At SoFi Stadium","albumId":"weeknd_after_hours","duration":"4:27","genre":"R&B/soul","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/ad/8e/da/ad8eda90-c2f5-7488-042d-4b09bd2c9c05/23UMGIM20832.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1505683459","title":"After Hours (The Blaze Remix)","artist":"The Weeknd","albumTitle":"After Hours (Remixes) - EP","albumId":"weeknd_after_hours","duration":"3:58","genre":"R&B/soul","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/71/12/03/711203e0-f7b9-9f4e-caff-540736fda45c/20UMGIM25005.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1499386375","title":"After Hours","artist":"The Weeknd","albumTitle":"After Hours","albumId":"weeknd_after_hours","duration":"6:01","genre":"R&B/soul","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/2b/b9/fe/2bb9fef5-d7f3-8345-25a9-db0e79fde4e4/20UMGIM11048.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1676306932","title":"After Hours (Live)","artist":"The Weeknd","albumTitle":"Live At SoFi Stadium","albumId":"weeknd_after_hours","duration":"4:27","genre":"R&B/soul","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/03/2d/c1/032dc13a-dce4-672a-b501-d16d3b31be07/23UMGIM20988.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1615103346","title":"After Hours","artist":"The Weeknd","albumTitle":"After Hours (Deluxe)","albumId":"weeknd_after_hours","duration":"6:01","genre":"R&B/soul","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/9a/a1/6b/9aa16bf2-4518-6760-88d3-5e6b6d3d2bc1/20UMGIM21166.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1505683998","title":"After Hours","artist":"The Weeknd","albumTitle":"After Hours (Deluxe)","albumId":"weeknd_after_hours","duration":"6:01","genre":"R&B/soul","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/03/e1/67/03e167d6-ee05-eb32-55e9-c5040f55a8bf/20UMGIM21166.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1505683983","title":"After Hours","artist":"The Weeknd","albumTitle":"After Hours (Deluxe)","albumId":"weeknd_after_hours","duration":"6:01","genre":"R&B/soul","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/83/3a/f7/833af71b-2e0c-3303-24f5-8f5c546c073b/20UMGIM21167.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"billie_hmhas":{"id":"billie_hmhas","q":"Billie Eilish HIT ME HARD AND SOFT","category":"global","title":"HIT ME HARD AND SOFT","artist":"Billie Eilish","year":2024,"genre":"Alt-Pop / Indie","label":"Darkroom / Interscope","coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1739659142","title":"BIRDS OF A FEATHER","artist":"Billie Eilish","albumTitle":"HIT ME HARD AND SOFT","albumId":"billie_hmhas","duration":"3:30","genre":"Alternativo","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1739659141","title":"CHIHIRO","artist":"Billie Eilish","albumTitle":"HIT ME HARD AND SOFT","albumId":"billie_hmhas","duration":"5:03","genre":"Alternativo","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1739659278","title":"BLUE","artist":"Billie Eilish","albumTitle":"HIT ME HARD AND SOFT","albumId":"billie_hmhas","duration":"5:43","genre":"Alternativo","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1739659137","title":"SKINNY","artist":"Billie Eilish","albumTitle":"HIT ME HARD AND SOFT","albumId":"billie_hmhas","duration":"3:39","genre":"Alternativo","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1739659149","title":"L’AMOUR DE MA VIE","artist":"Billie Eilish","albumTitle":"HIT ME HARD AND SOFT","albumId":"billie_hmhas","duration":"5:33","genre":"Alternativo","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1739659277","title":"BITTERSUITE","artist":"Billie Eilish","albumTitle":"HIT ME HARD AND SOFT","albumId":"billie_hmhas","duration":"4:58","genre":"Alternativo","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1739659150","title":"THE DINER","artist":"Billie Eilish","albumTitle":"HIT ME HARD AND SOFT","albumId":"billie_hmhas","duration":"3:06","genre":"Alternativo","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1739659140","title":"LUNCH","artist":"Billie Eilish","albumTitle":"HIT ME HARD AND SOFT","albumId":"billie_hmhas","duration":"2:59","genre":"Alternativo","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/92/9f/69/929f69f1-9977-3a44-d674-11f70c852d1b/24UMGIM36186.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"dua_future_nostalgia":{"id":"dua_future_nostalgia","q":"Dua Lipa Future Nostalgia","category":"global","title":"Future Nostalgia","artist":"Dua Lipa","year":2020,"genre":"Disco-Pop / Dance","label":"Warner Records","coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/6c/11/d6/6c11d681-aa3a-d59e-4c2e-f77e181026ab/190295092665.jpg/1000x1000bb.jpg","tracks":[{"id":"1538003626","title":"Future Nostalgia","artist":"Dua Lipa","albumTitle":"Future Nostalgia","albumId":"dua_future_nostalgia","duration":"3:04","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/6c/11/d6/6c11d681-aa3a-d59e-4c2e-f77e181026ab/190295092665.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1552269068","title":"Future Nostalgia","artist":"Dua Lipa","albumTitle":"Future Nostalgia (The Moonlight Edition)","albumId":"dua_future_nostalgia","duration":"3:04","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/25/cd/d4/25cdd423-4a23-1913-04ed-921a58cccb7d/190295000639.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1489975832","title":"Future Nostalgia","artist":"Dua Lipa","albumTitle":"Future Nostalgia - Single","albumId":"dua_future_nostalgia","duration":"3:04","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/e9/c5/a8/e9c5a8a0-d698-137b-2e85-cf3a8d9548f8/190295303372.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1551179220","title":"Future Nostalgia","artist":"Dua Lipa","albumTitle":"Future Nostalgia (The Moonlight Edition)","albumId":"dua_future_nostalgia","duration":"3:04","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/96/93/54/969354a7-8985-7833-7160-93e38110b745/190295042998.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1530404368","title":"Future Nostalgia (Joe Goddard Remix)","artist":"Dua Lipa","albumTitle":"Club Future Nostalgia","albumId":"dua_future_nostalgia","duration":"4:48","genre":"Dance","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/87/73/21/877321b1-e967-b29a-c097-1fd9f19f3410/190295145316.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1528380271","title":"Future Nostalgia (Joe Goddard Remix) [Mixed]","artist":"Dua Lipa & The Blessed Madonna","albumTitle":"Club Future Nostalgia (DJ Mix)","albumId":"dua_future_nostalgia","duration":"2:54","genre":"Dance","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/d1/fb/aa/d1fbaa5b-76df-b645-93c9-8571a06670ad/190295162962.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1538004012","title":"Break My Heart","artist":"Dua Lipa","albumTitle":"Future Nostalgia","albumId":"dua_future_nostalgia","duration":"3:41","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/6c/11/d6/6c11d681-aa3a-d59e-4c2e-f77e181026ab/190295092665.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1538003644","title":"Physical","artist":"Dua Lipa","albumTitle":"Future Nostalgia","albumId":"dua_future_nostalgia","duration":"3:13","genre":"Pop","year":2020,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/6c/11/d6/6c11d681-aa3a-d59e-4c2e-f77e181026ab/190295092665.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"lana_born_to_die":{"id":"lana_born_to_die","q":"Lana Del Rey Born to Die","category":"global","title":"Born to Die","artist":"Lana Del Rey","year":2012,"genre":"Indie Pop / Sadcore","label":"Polydor / Interscope","coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b8/42/39/b8423909-3abd-4b5f-8ebe-709c95e500bc/12UMGIM51209.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1440829978","title":"Born to Die","artist":"Lana Del Rey","albumTitle":"Born to Die - The Paradise Edition","albumId":"lana_born_to_die","duration":"4:45","genre":"Alternativo","year":2012,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b8/42/39/b8423909-3abd-4b5f-8ebe-709c95e500bc/12UMGIM51209.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1440830261","title":"Summertime Sadness","artist":"Lana Del Rey","albumTitle":"Born to Die - The Paradise Edition","albumId":"lana_born_to_die","duration":"4:25","genre":"Alternativo","year":2012,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b8/42/39/b8423909-3abd-4b5f-8ebe-709c95e500bc/12UMGIM51209.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1779781768","title":"Born To Die","artist":"Lana Del Rey","albumTitle":"Born To Die","albumId":"lana_born_to_die","duration":"4:46","genre":"Alternativo","year":2012,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/59/10/66/591066ea-3c85-3dfe-ef82-ffdbbcdfc8b9/12UMGIM00033.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1440809795","title":"Born to Die","artist":"Lana Del Rey","albumTitle":"Born to Die","albumId":"lana_born_to_die","duration":"4:46","genre":"Alternativo","year":2012,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/37/ae/95/37ae95a0-2e1c-bf03-4900-983686da9292/12UMGIM00033.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1442452466","title":"Born to Die","artist":"Lana Del Rey","albumTitle":"Born to Die – Paradise Edition (Special Version)","albumId":"lana_born_to_die","duration":"4:46","genre":"Pop","year":2012,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/c5/df/dd/c5dfdd9c-24f2-de01-246c-fcc5e028f705/12UMGIM53864.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"889869525","title":"Born To Die","artist":"Lana Del Rey","albumTitle":"Em Família - Internacional","albumId":"lana_born_to_die","duration":"4:45","genre":"Música do mundo","year":2012,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music4/v4/7a/67/fc/7a67fc33-882f-7392-9a3e-bbe0a37ca928/7891430340827.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1452380485","title":"Born To Die","artist":"Lana Del Rey","albumTitle":"As 100 Mais da Antena 1, Vol. 3 (Álbum 1)","albumId":"lana_born_to_die","duration":"4:45","genre":"Pop","year":2012,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music114/v4/27/82/2b/27822b88-2180-8aee-9878-5f889e9d7dcb/12UMGIM64312.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1765618828","title":"Born To Die","artist":"Marina Viotti & Melankhôlia","albumTitle":"Melankhôlia: In Darkness Through The Light","albumId":"lana_born_to_die","duration":"4:15","genre":"Música clássica","year":2012,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/35/63/c9/3563c9ce-05af-8a27-1e11-e12f54c1f538/cover.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"anitta_funk_gen":{"id":"anitta_funk_gen","q":"Anitta Funk Generation","category":"brasil","title":"Funk Generation","artist":"Anitta","year":2024,"genre":"Funk Brasileiro / Pop","label":"Republic Records","coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","tracks":[{"id":"1741470749","title":"Lose Ya Breath","artist":"Anitta","albumTitle":"Funk Generation","albumId":"anitta_funk_gen","duration":"2:16","genre":"Música Latina","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1741471044","title":"Cria De Favela","artist":"Anitta","albumTitle":"Funk Generation","albumId":"anitta_funk_gen","duration":"2:57","genre":"Música Latina","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1741470763","title":"Fria","artist":"Anitta","albumTitle":"Funk Generation","albumId":"anitta_funk_gen","duration":"2:07","genre":"Música Latina","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1741471043","title":"Joga Pra Lua","artist":"Anitta, Dennis & PEDRO SAMPAIO","albumTitle":"Funk Generation","albumId":"anitta_funk_gen","duration":"2:05","genre":"Pop em espanhol","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1741471056","title":"Mil Veces","artist":"Anitta","albumTitle":"Funk Generation","albumId":"anitta_funk_gen","duration":"2:34","genre":"Pop em espanhol","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1741471050","title":"Sabana","artist":"Anitta","albumTitle":"Funk Generation","albumId":"anitta_funk_gen","duration":"1:54","genre":"Pop em espanhol","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1741470766","title":"Aceita","artist":"Anitta","albumTitle":"Funk Generation","albumId":"anitta_funk_gen","duration":"2:07","genre":"Música Latina","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1741470765","title":"Love In Common","artist":"Anitta","albumTitle":"Funk Generation","albumId":"anitta_funk_gen","duration":"2:29","genre":"Música Latina","year":2024,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/d2/0b/0d/d20b0db9-5a9f-124f-7839-9258de17c3bd/24UMGIM41374.rgb.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]},"bruno_24k":{"id":"bruno_24k","q":"Bruno Mars 24K Magic","category":"global","title":"24K Magic","artist":"Bruno Mars","year":2016,"genre":"Funk / R&B / Pop","label":"Atlantic Records","coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e3/47/a0/e347a0cc-87ce-5d05-d560-176c7d48f66e/075679904119.jpg/1000x1000bb.jpg","tracks":[{"id":"1161504024","title":"24K Magic","artist":"Bruno Mars","albumTitle":"24K Magic","albumId":"bruno_24k","duration":"3:46","genre":"Pop","year":2016,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e3/47/a0/e347a0cc-87ce-5d05-d560-176c7d48f66e/075679904119.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1238456104","title":"24K Magic (R3hab Remix)","artist":"Bruno Mars","albumTitle":"24K Magic (R3hab Remix) - Single","albumId":"bruno_24k","duration":"2:38","genre":"Dance","year":2016,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/8a/33/2f/8a332f0c-503f-08ca-b3e6-06550cf973c1/075679894229.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1161504043","title":"That's What I Like","artist":"Bruno Mars","albumTitle":"24K Magic","albumId":"bruno_24k","duration":"3:26","genre":"Pop","year":2016,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e3/47/a0/e347a0cc-87ce-5d05-d560-176c7d48f66e/075679904119.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":true},{"id":"1161504065","title":"Finesse","artist":"Bruno Mars","albumTitle":"24K Magic","albumId":"bruno_24k","duration":"3:10","genre":"Pop","year":2016,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e3/47/a0/e347a0cc-87ce-5d05-d560-176c7d48f66e/075679904119.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1161504045","title":"Versace On The Floor","artist":"Bruno Mars","albumTitle":"24K Magic","albumId":"bruno_24k","duration":"4:21","genre":"Pop","year":2016,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e3/47/a0/e347a0cc-87ce-5d05-d560-176c7d48f66e/075679904119.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1161504066","title":"Too Good to Say Goodbye","artist":"Bruno Mars","albumTitle":"24K Magic","albumId":"bruno_24k","duration":"4:41","genre":"Pop","year":2016,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e3/47/a0/e347a0cc-87ce-5d05-d560-176c7d48f66e/075679904119.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1161504064","title":"Calling All My Lovelies","artist":"Bruno Mars","albumTitle":"24K Magic","albumId":"bruno_24k","duration":"4:10","genre":"Pop","year":2016,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e3/47/a0/e347a0cc-87ce-5d05-d560-176c7d48f66e/075679904119.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false},{"id":"1161504026","title":"Chunky","artist":"Bruno Mars","albumTitle":"24K Magic","albumId":"bruno_24k","duration":"3:06","genre":"Pop","year":2016,"coverUrl":"https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/e3/47/a0/e347a0cc-87ce-5d05-d560-176c7d48f66e/075679904119.jpg/1000x1000bb.jpg","previewUrl":"","streamUrl":"","popular":false}]}};
 
-      // Helper para buscar JSONP na API pública da Deezer (100% CORS-free, capas 1000x1000 e MP3 direto)
-      function fetchDeezerJsonp(query, limit = 25) {
-        return new Promise((resolve) => {
-          const cbName = "miado_dz_cb_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
-          const script = document.createElement("script");
-          const timeout = setTimeout(() => {
-            cleanup();
-            resolve([]);
-          }, 5500);
-
-          function cleanup() {
-            clearTimeout(timeout);
-            try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
-            if (script.parentNode) script.parentNode.removeChild(script);
+      async function fetchDeezerJsonp(query, limit = 25) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 4000);
+          const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=${limit}`, { signal: controller.signal });
+          clearTimeout(timer);
+          if (res.ok) {
+            const data = await res.json();
+            return Array.isArray(data?.songs) ? data.songs : [];
           }
-
-          window[cbName] = (res) => {
-            cleanup();
-            resolve((res && Array.isArray(res.data)) ? res.data : []);
-          };
-          script.onerror = () => {
-            cleanup();
-            resolve([]);
-          };
-          script.src = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}&output=jsonp&callback=${cbName}`;
-          document.head.appendChild(script);
-        });
+        } catch (_e) {}
+        return [];
       }
 
       // Remove músicas repetidas normalizando título (sem sufixos de versão/parênteses duplicados) + artista
@@ -1176,6 +1190,14 @@ export function initMiadoClient() {
       // ------------------------------------------------------------------------
       function toProxyStreamUrl(rawUrl, title = "", artist = "", preferFull = true) {
         const cleanUrl = String(rawUrl || "").trim();
+        if (title || artist) {
+          const params = new URLSearchParams();
+          if (title) params.set("title", String(title));
+          if (artist) params.set("artist", String(artist));
+          if (preferFull) params.set("preferFull", "1");
+          params.set("studioOnly", "1");
+          return `/api/stream?${params.toString()}`;
+        }
         const isSnippet =
           cleanUrl.includes("dzcdn.net") ||
           cleanUrl.includes("cdns-preview") ||
@@ -1185,8 +1207,6 @@ export function initMiadoClient() {
           return cleanUrl;
         }
         const params = new URLSearchParams();
-        if (title) params.set("title", String(title));
-        if (artist) params.set("artist", String(artist));
         if (preferFull) params.set("preferFull", "1");
         params.set("studioOnly", "1");
         return `/api/stream?${params.toString()}`;
@@ -1484,28 +1504,260 @@ export function initMiadoClient() {
           return nowFollowing;
         }
 
+        applyLiveCommunityUpdate(incomingProfiles = []) {
+          if (!Array.isArray(incomingProfiles)) return;
+          const byUid = new Map();
+          const uidByHandle = new Map();
+          const myUid = String(
+            (this.user && this.user.uid) || localStorage.getItem("miado_user_uid") || ""
+          ).trim();
+          const myTrackTitle =
+            this.currentTrack && this.currentTrack.title
+              ? `${this.currentTrack.title} - ${this.currentTrack.artist || "Artista"}`
+              : "";
+
+          for (const existing of this.communityProfiles || []) {
+            if (!existing || !existing.username || MiadoState.isLegacyFakeHandle(existing.username)) continue;
+            const hKey = String(existing.username).toLowerCase().trim();
+            const uidKey = String(existing.uid || existing.id || hKey).trim();
+            if (!uidKey) continue;
+            byUid.set(uidKey, { ...existing, uid: existing.uid || uidKey });
+            uidByHandle.set(hKey, uidKey);
+          }
+
+          for (const inc of incomingProfiles) {
+            if (!inc || !inc.username || MiadoState.isLegacyFakeHandle(inc.username)) continue;
+            const hKey = String(inc.username).toLowerCase().trim();
+            const incUid = String(inc.uid || "").trim();
+            const existingKeyForHandle = uidByHandle.get(hKey);
+            const targetKey = incUid || existingKeyForHandle || String(inc.id || hKey).trim();
+            if (!targetKey) continue;
+
+            if (incUid && existingKeyForHandle && existingKeyForHandle !== incUid) {
+              const oldEntry = byUid.get(existingKeyForHandle);
+              if (oldEntry && !oldEntry.uid) {
+                byUid.delete(existingKeyForHandle);
+              }
+            }
+
+            const prev = byUid.get(targetKey) || {};
+            // Strict UID check: only treat as self if both UIDs exist and match
+            const isSelfProfile = Boolean(myUid && incUid && incUid === myUid);
+
+            const isOnlineNow = isSelfProfile
+              ? Boolean(this.isPlaying && myTrackTitle)
+              : Boolean(
+                  inc.online &&
+                  typeof inc.currentTrack === "string" &&
+                  inc.currentTrack.trim() !== "" &&
+                  inc.currentTrack !== "Silencioso no momento" &&
+                  inc.currentTrack !== "Ouvindo no Miado"
+                );
+            const nextTrackStr = isSelfProfile
+              ? (this.isPlaying && myTrackTitle ? myTrackTitle : "")
+              : (isOnlineNow ? String(inc.currentTrack).trim() : "");
+            const nextTrackObj = isSelfProfile
+              ? (this.isPlaying && this.currentTrack ? this.currentTrack : null)
+              : (isOnlineNow ? (inc.trackObj || null) : null);
+
+            const mergedProfile = {
+              ...prev,
+              ...inc,
+              uid: incUid || prev.uid || targetKey,
+              isSelf: isSelfProfile,
+              online: isOnlineNow,
+              currentTrack: nextTrackStr,
+              trackObj: nextTrackObj,
+              avatarUrl: inc.avatarUrl || prev.avatarUrl || "/api/cat-avatar?id=cat_1",
+              favoriteArtists: Array.isArray(inc.favoriteArtists)
+                ? inc.favoriteArtists
+                : prev.favoriteArtists || [],
+              followedArtists: Array.isArray(inc.followedArtists)
+                ? inc.followedArtists
+                : prev.followedArtists || [],
+              likedTracks: Array.isArray(inc.likedTracks)
+                ? inc.likedTracks
+                : prev.likedTracks || [],
+              playlists: Array.isArray(inc.playlists)
+                ? inc.playlists
+                : prev.playlists || [],
+              recentHistory: Array.isArray(inc.recentHistory)
+                ? inc.recentHistory
+                : prev.recentHistory || []
+            };
+
+            byUid.set(targetKey, mergedProfile);
+            uidByHandle.set(hKey, targetKey);
+          }
+
+          this.communityProfiles = Array.from(byUid.values());
+
+          const updatedFriends = [];
+          const seenFriendUids = new Set();
+          for (const f of this.friends || []) {
+            if (!f || !f.username || MiadoState.isLegacyFakeHandle(f.username)) continue;
+            const fHandle = String(f.username).toLowerCase().trim();
+            const resolvedUid = String(f.uid || uidByHandle.get(fHandle) || "").trim();
+            // Never include the logged-in user inside their own friends list
+            if (myUid && resolvedUid && resolvedUid === myUid) continue;
+
+            const dedupKey = resolvedUid || fHandle;
+            if (seenFriendUids.has(dedupKey)) continue;
+            seenFriendUids.add(dedupKey);
+
+            // Inject 'escutando agora' strictly by the friend's UID record
+            const live = resolvedUid ? byUid.get(resolvedUid) : null;
+            if (live && (!myUid || live.uid !== myUid)) {
+              const isFriendPlaying = Boolean(
+                live.online &&
+                live.currentTrack &&
+                live.currentTrack !== "Silencioso no momento" &&
+                live.currentTrack !== "Ouvindo no Miado"
+              );
+              const liveTrackStr = isFriendPlaying ? live.currentTrack : "Silencioso no momento";
+              const liveTrackObj = isFriendPlaying ? (live.trackObj || null) : null;
+              updatedFriends.push({
+                ...f,
+                ...live,
+                uid: live.uid || resolvedUid,
+                online: isFriendPlaying,
+                avatar: live.avatarUrl || f.avatar || f.avatarUrl || "/api/cat-avatar?id=cat_1",
+                currentTrack: liveTrackStr,
+                trackObj: liveTrackObj
+              });
+            } else {
+              updatedFriends.push({
+                ...f,
+                uid: resolvedUid || f.uid || "",
+                online: false,
+                currentTrack: "Silencioso no momento",
+                trackObj: null
+              });
+            }
+          }
+          this.friends = updatedFriends;
+          try {
+            localStorage.setItem("miado_real_friends_v1", JSON.stringify(this.friends));
+          } catch (_e) {}
+
+          if (window.miadoUI) {
+            window.miadoUI.renderRightSidebarBodyOnly();
+            if (this.currentView === "social") {
+              const activeEl = document.activeElement;
+              const isTypingInSocial =
+                activeEl &&
+                (activeEl.id === "social-profile-search-input" ||
+                  activeEl.id === "social-post-textarea" ||
+                  activeEl.id === "social-custom-post-comment");
+              if (!isTypingInSocial) {
+                const scrollWrap = document.getElementById("main-content-scroll");
+                const prevScroll = scrollWrap ? scrollWrap.scrollTop : 0;
+                window.miadoUI.renderSocialView();
+                if (scrollWrap) scrollWrap.scrollTop = prevScroll;
+              }
+            }
+          }
+        }
+
+        broadcastLivePlaybackState(track = this.currentTrack, isPlaying = this.isPlaying) {
+          try {
+            const activeTrack = track || this.currentTrack;
+            const uid = (this.user && this.user.uid) || localStorage.getItem("miado_user_uid");
+            if (
+              this.isAuthenticatedAccount() &&
+              this.user &&
+              this.user.username &&
+              this.user.username !== "@visitante"
+            ) {
+              fetch("/api/profiles", {
+                method: "POST",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                  name: this.user.name,
+                  username: this.user.username,
+                  bio: this.user.bio || "",
+                  avatarUrl: this.user.avatarUrl,
+                  bannerUrl: this.user.bannerUrl || "",
+                  favoriteArtists: this.user.favoriteArtists || [],
+                  currentTrack:
+                    activeTrack && activeTrack.title
+                      ? `${activeTrack.title} - ${activeTrack.artist || "Artista"}`
+                      : "",
+                  trackObj:
+                    activeTrack && activeTrack.title
+                      ? {
+                          id: activeTrack.id,
+                          title: activeTrack.title,
+                          artist: activeTrack.artist,
+                          albumTitle: activeTrack.albumTitle || "",
+                          duration: activeTrack.duration || "3:30",
+                          durationSec: activeTrack.durationSec || 180,
+                          coverUrl: activeTrack.coverUrl || ""
+                        }
+                      : null,
+                  albumId: (this.currentAlbum && this.currentAlbum.id) || "billie_hmhas",
+                  online: Boolean(isPlaying),
+                  isSelf: true
+                })
+              }).catch(() => {});
+            }
+
+            if (
+              window.miadoFirestore &&
+              typeof window.miadoFirestore.updatePresence === "function" &&
+              uid &&
+              uid !== "usr_guest"
+            ) {
+              if (isPlaying && activeTrack && activeTrack.title) {
+                window.miadoFirestore.updatePresence("playing", {
+                  title: String(activeTrack.title || ""),
+                  artist: String(activeTrack.artist || ""),
+                  coverUrl: String(activeTrack.coverUrl || ""),
+                  durationSec: Number(activeTrack.durationSec || 180)
+                });
+              } else {
+                window.miadoFirestore.updatePresence("idle");
+              }
+            }
+          } catch (_e) {}
+        }
+
+        startLiveCommunitySyncLoop() {
+          if (this._liveSyncInterval) clearInterval(this._liveSyncInterval);
+          this._liveSyncInterval = setInterval(() => {
+            if (document.hidden) return;
+            this.fetchCommunityProfiles();
+            if (this.isPlaying && this.currentTrack) {
+              this.broadcastLivePlaybackState(this.currentTrack, true);
+            }
+          }, 7000);
+        }
+
         async fetchCommunityProfiles(searchQuery = "") {
           try {
             const url = searchQuery
               ? `/api/profiles?q=${encodeURIComponent(searchQuery)}`
               : `/api/profiles`;
-            const res = await fetch(url);
-            if (!res.ok) return this.communityProfiles;
-            const data = await res.json();
-            if (data && Array.isArray(data.profiles)) {
-              this.communityProfiles = data.profiles.filter(p => p && p.username && !MiadoState.isLegacyFakeHandle(p.username));
-              // Atualiza dados dos amigos seguidos com o estado mais recente do servidor
-              const updatedFriends = [];
-              for (const f of this.friends) {
-                if (MiadoState.isLegacyFakeHandle(f.username)) continue;
-                const live = this.communityProfiles.find(p => p.username.toLowerCase() === f.username.toLowerCase());
-                updatedFriends.push(live ? { ...f, ...live } : f);
-              }
-              this.friends = updatedFriends;
-              localStorage.setItem("miado_real_friends_v1", JSON.stringify(this.friends));
-              if (window.miadoUI) {
-                window.miadoUI.renderRightSidebarBodyOnly();
-              }
+            const [apiSettled, fbSettled] = await Promise.allSettled([
+              fetch(url).then(r => (r.ok ? r.json() : null)),
+              window.miadoFirestore && typeof window.miadoFirestore.fetchCommunityProfiles === "function"
+                ? window.miadoFirestore.fetchCommunityProfiles(100)
+                : Promise.resolve([])
+            ]);
+
+            const combined = [];
+            if (apiSettled.status === "fulfilled" && apiSettled.value && Array.isArray(apiSettled.value.profiles)) {
+              combined.push(...apiSettled.value.profiles);
+            }
+            if (fbSettled.status === "fulfilled" && Array.isArray(fbSettled.value)) {
+              combined.push(...fbSettled.value);
+            }
+
+            const cleanList = combined.filter(
+              p => p && p.username && !MiadoState.isLegacyFakeHandle(p.username)
+            );
+            if (cleanList.length > 0) {
+              this.applyLiveCommunityUpdate(cleanList);
             }
           } catch (e) {}
           return this.communityProfiles;
@@ -1515,7 +1767,7 @@ export function initMiadoClient() {
           try {
             const res = await fetch("/api/profiles", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: getAuthHeaders(),
               body: JSON.stringify(profileInput)
             });
             const data = await res.json();
@@ -1527,19 +1779,28 @@ export function initMiadoClient() {
           return null;
         }
 
-        isProfileFollowed(username = "") {
-          const clean = String(username || "").trim().toLowerCase();
+        isProfileFollowed(usernameOrUid = "") {
+          const clean = String(usernameOrUid || "").trim().toLowerCase();
           if (!clean) return false;
           const formatted = clean.startsWith("@") ? clean : `@${clean}`;
-          return (this.friends || []).some(f => String(f.username || "").trim().toLowerCase() === formatted);
+          return (this.friends || []).some(
+            f =>
+              (f.uid && String(f.uid).trim().toLowerCase() === clean) ||
+              String(f.username || "").trim().toLowerCase() === formatted
+          );
         }
 
         toggleFollowProfile(profileObj) {
           if (!profileObj || !profileObj.username) return false;
           const formatted = profileObj.username.startsWith("@") ? profileObj.username : `@${profileObj.username}`;
           if (MiadoState.isLegacyFakeHandle(formatted)) return false;
+          const targetUid = String(profileObj.uid || "").trim();
 
-          const idx = (this.friends || []).findIndex(f => String(f.username || "").toLowerCase() === formatted.toLowerCase());
+          const idx = (this.friends || []).findIndex(
+            f =>
+              (targetUid && f.uid && String(f.uid).trim() === targetUid) ||
+              String(f.username || "").toLowerCase() === formatted.toLowerCase()
+          );
           let nowFollowing = false;
 
           if (idx > -1) {
@@ -1547,21 +1808,39 @@ export function initMiadoClient() {
             nowFollowing = false;
             showToast(`Você deixou de seguir ${formatted}`);
           } else {
-            const trackObj = profileObj.trackObj || this.currentTrack || INITIAL_ALBUMS[0].tracks[0];
+            const liveMatch = (this.communityProfiles || []).find(
+              p =>
+                p &&
+                ((targetUid && p.uid && String(p.uid).trim() === targetUid) ||
+                  String(p.username || "").toLowerCase() === formatted.toLowerCase())
+            );
+            const srcProf = liveMatch ? { ...profileObj, ...liveMatch } : profileObj;
+            const trackObj = srcProf.online && srcProf.trackObj ? srcProf.trackObj : null;
+            const friendTrackStr =
+              srcProf.online && srcProf.currentTrack && srcProf.currentTrack.trim() !== ""
+                ? srcProf.currentTrack
+                : "Silencioso no momento";
             this.friends.unshift({
-              id: profileObj.id || `prof_${formatted.replace(/[^a-z0-9_]/gi, "")}`,
-              name: profileObj.name || formatted.slice(1),
+              uid: srcProf.uid || targetUid || "",
+              id: srcProf.id || `prof_${srcProf.uid || formatted.replace(/[^a-z0-9_]/gi, "")}`,
+              name: srcProf.name || formatted.slice(1),
               username: formatted,
-              bio: profileObj.bio || "Ouvindo música original de estúdio no Miado.",
-              avatar: profileObj.avatar || profileObj.avatarUrl || CAT_AVATAR_PRESETS[1].url,
-              currentTrack: profileObj.currentTrack || `${trackObj.title} - ${trackObj.artist}`,
+              bio: srcProf.bio || "Ouvindo música original de estúdio no Miado.",
+              avatar: srcProf.avatar || srcProf.avatarUrl || CAT_AVATAR_PRESETS[1].url,
+              avatarUrl: srcProf.avatarUrl || srcProf.avatar || CAT_AVATAR_PRESETS[1].url,
+              bannerUrl: srcProf.bannerUrl || "",
+              favoriteArtists: Array.isArray(srcProf.favoriteArtists) ? srcProf.favoriteArtists : [],
+              followedArtists: Array.isArray(srcProf.followedArtists) ? srcProf.followedArtists : [],
+              likedTracks: Array.isArray(srcProf.likedTracks) ? srcProf.likedTracks : [],
+              playlists: Array.isArray(srcProf.playlists) ? srcProf.playlists : [],
+              currentTrack: friendTrackStr,
               trackObj,
-              albumId: profileObj.albumId || trackObj.albumId || INITIAL_ALBUMS[0].id,
-              online: true,
+              albumId: srcProf.albumId || (trackObj && trackObj.albumId) || INITIAL_ALBUMS[0].id,
+              online: Boolean(srcProf.online && friendTrackStr !== "Silencioso no momento"),
               likedByMe: false
             });
             nowFollowing = true;
-            showToast(`Agora você segue ${profileObj.name || formatted}!`);
+            showToast(`Agora você segue ${srcProf.name || formatted}!`);
           }
 
           localStorage.setItem("miado_real_friends_v1", JSON.stringify(this.friends));
@@ -1619,7 +1898,7 @@ export function initMiadoClient() {
           try {
             await fetch("/api/user/preferences", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: getAuthHeaders(),
               body: JSON.stringify({
                 email: this.user.email || "",
                 name: this.user.name,
@@ -1744,8 +2023,22 @@ export function initMiadoClient() {
           }
           const acc = payload.account || payload;
           const incomingUser = acc.user || payload.user;
+          const incomingEmail = String(incomingUser?.email || acc?.email || "").toLowerCase().trim();
+          const prevEmail = String(this.user?.email || "").toLowerCase().trim();
+          if (incomingEmail && prevEmail && incomingEmail !== prevEmail) {
+            this.followedArtists = [];
+            this.friends = [];
+            this.recentHistory = [];
+            this.playlists = [];
+            this.feedPosts = [];
+            this.currentTrack = null;
+            this.isPlaying = false;
+            if (window.miadoEngine && typeof window.miadoEngine.pause === "function") {
+              try { window.miadoEngine.pause(); } catch (_e) {}
+            }
+          }
 
-          // Restaura artistas seguidos salvos na conta
+          // Restaura exclusivamente os artistas seguidos salvos nesta conta (sem herdar de sessão anterior)
           const rawFollowed = Array.isArray(acc.followedArtists)
             ? acc.followedArtists
             : Array.isArray(payload.followedArtists)
@@ -1754,37 +2047,34 @@ export function initMiadoClient() {
             ? incomingUser.followedArtists
             : Array.isArray(incomingUser?.favoriteArtists)
             ? incomingUser.favoriteArtists
-            : null;
+            : [];
 
-          if (Array.isArray(rawFollowed) && rawFollowed.length > 0) {
-            const seenArt = new Set();
-            const hydratedFollowed = [];
-            rawFollowed.forEach(item => {
-              const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
-              if (!name) return;
-              const k = name.toLowerCase();
-              if (seenArt.has(k)) return;
-              seenArt.add(k);
-              const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
-              hydratedFollowed.push({
-                name,
-                role: (typeof item === "object" && item?.role) || (dirMatch && dirMatch.role) || "Artista Verificado",
-                coverUrl: ensureArtistAvatarUrl(typeof item === "object" && item?.coverUrl ? item : { name, coverUrl: dirMatch?.coverUrl }),
-                followedAt: (typeof item === "object" && item?.followedAt) || new Date().toISOString()
-              });
+          const seenArt = new Set();
+          const hydratedFollowed = [];
+          (Array.isArray(rawFollowed) ? rawFollowed : []).forEach(item => {
+            const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
+            if (!name) return;
+            const k = name.toLowerCase();
+            if (seenArt.has(k)) return;
+            seenArt.add(k);
+            const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
+            hydratedFollowed.push({
+              name,
+              role: (typeof item === "object" && item?.role) || (dirMatch && dirMatch.role) || "Artista Verificado",
+              coverUrl: ensureArtistAvatarUrl(typeof item === "object" && item?.coverUrl ? item : { name, coverUrl: dirMatch?.coverUrl }),
+              followedAt: (typeof item === "object" && item?.followedAt) || new Date().toISOString()
             });
-            if (hydratedFollowed.length > 0) {
-              this.followedArtists = hydratedFollowed;
-              localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
-            }
-          }
+          });
+          this.followedArtists = hydratedFollowed;
+          localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
+          localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
 
           if (incomingUser && (incomingUser.name || incomingUser.email)) {
             const incomingLiked = Array.isArray(acc.likedTracks)
               ? acc.likedTracks
               : Array.isArray(payload.likedTracks)
               ? payload.likedTracks
-              : (Array.isArray(incomingUser.likedTracks) ? incomingUser.likedTracks : this.user.likedTracks);
+              : (Array.isArray(incomingUser.likedTracks) ? incomingUser.likedTracks : []);
             const cleanName = String(incomingUser.name || this.user.name || "Ouvinte").trim();
             const cleanHandle = sanitizeCleanHandle(incomingUser.username || incomingUser.handle || this.user.username, cleanName);
             this.user = {
@@ -1794,6 +2084,11 @@ export function initMiadoClient() {
               username: cleanHandle,
               handle: cleanHandle,
               email: String(incomingUser.email || acc.email || this.user.email || "").toLowerCase().trim(),
+              favoriteArtists: Array.isArray(incomingUser.favoriteArtists)
+                ? incomingUser.favoriteArtists
+                : Array.isArray(acc.favoriteArtists)
+                ? acc.favoriteArtists
+                : (this.followedArtists || []).map(a => a.name),
               followedArtists: (this.followedArtists || []).map(a => a.name),
               followingCount: (this.friends?.length || 0) + (this.followedArtists?.length || 0),
               followersCount: incomingUser.followersCount === 1280 ? 0 : (incomingUser.followersCount || 0),
@@ -1810,41 +2105,52 @@ export function initMiadoClient() {
             }
             localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
           }
-          const incomingHistory = Array.isArray(acc.recentHistory) ? acc.recentHistory : payload.recentHistory;
-          if (Array.isArray(incomingHistory)) {
-            this.recentHistory = incomingHistory.slice(0, 50).map(tr => ({
-              ...tr,
-              coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
+          const incomingHistory = Array.isArray(acc.recentHistory)
+            ? acc.recentHistory
+            : Array.isArray(payload.recentHistory)
+            ? payload.recentHistory
+            : [];
+          this.recentHistory = incomingHistory.slice(0, 50).map(tr => ({
+            ...tr,
+            coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
+          }));
+          localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
+
+          const incomingPlaylists = Array.isArray(acc.playlists)
+            ? acc.playlists
+            : Array.isArray(payload.playlists)
+            ? payload.playlists
+            : [];
+          this.playlists = incomingPlaylists
+            .filter(pl => pl && !DEFAULT_LEGACY_PLAYLIST_IDS.has(String(pl.id || "")))
+            .map(pl => ({
+              ...pl,
+              collaborators: (pl.collaborators || [this.user.username]).filter(c => !MiadoState.isLegacyFakeHandle(c)),
+              tracks: (pl.tracks || []).map(tr => {
+                const plCover = pl.customCoverUrl || pl.coverUrl;
+                const hasInherited = tr.coverUrl && (tr.coverUrl === plCover || (typeof tr.coverUrl === "string" && tr.coverUrl.startsWith("data:image/")));
+                const cleanTr = hasInherited ? { ...tr, coverUrl: "" } : tr;
+                return {
+                  ...cleanTr,
+                  coverUrl: ensureTrackCoverUrl(cleanTr, cleanTr.title, cleanTr.artist),
+                  addedBy: tr.addedBy && MiadoState.isLegacyFakeHandle(tr.addedBy.username)
+                    ? { username: this.user.username || "@ouvinte", avatar: this.user.avatarUrl }
+                    : tr.addedBy
+                };
+              })
             }));
-            localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
-          }
-          const incomingPlaylists = Array.isArray(acc.playlists) ? acc.playlists : payload.playlists;
-          if (Array.isArray(incomingPlaylists)) {
-            this.playlists = incomingPlaylists
-              .filter(pl => pl && !DEFAULT_LEGACY_PLAYLIST_IDS.has(String(pl.id || "")))
-              .map(pl => ({
-                ...pl,
-                collaborators: (pl.collaborators || [this.user.username]).filter(c => !MiadoState.isLegacyFakeHandle(c)),
-                tracks: (pl.tracks || []).map(tr => {
-                  const plCover = pl.customCoverUrl || pl.coverUrl;
-                  const hasInherited = tr.coverUrl && (tr.coverUrl === plCover || (typeof tr.coverUrl === "string" && tr.coverUrl.startsWith("data:image/")));
-                  const cleanTr = hasInherited ? { ...tr, coverUrl: "" } : tr;
-                  return {
-                    ...cleanTr,
-                    coverUrl: ensureTrackCoverUrl(cleanTr, cleanTr.title, cleanTr.artist),
-                    addedBy: tr.addedBy && MiadoState.isLegacyFakeHandle(tr.addedBy.username)
-                      ? { username: this.user.username || "@ouvinte", avatar: this.user.avatarUrl }
-                      : tr.addedBy
-                  };
-                })
-              }));
-            localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
-          }
-          const incomingPosts = Array.isArray(acc.feedPosts) ? acc.feedPosts : payload.feedPosts;
-          if (Array.isArray(incomingPosts)) {
-            this.feedPosts = incomingPosts.filter(p => p && !MiadoState.isLegacyFakeHandle(p.username));
-            localStorage.setItem("miado_feed_posts_v6", JSON.stringify(this.feedPosts));
-          }
+          localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
+
+          const incomingPosts = Array.isArray(acc.feedPosts)
+            ? acc.feedPosts
+            : Array.isArray(payload.feedPosts)
+            ? payload.feedPosts
+            : [];
+          this.feedPosts = incomingPosts.filter(
+            p => p && !MiadoState.isLegacyFakeHandle(p.username) && p.actionText !== "acabou de ouvir"
+          );
+          localStorage.setItem("miado_feed_posts_v6", JSON.stringify(this.feedPosts));
+
           this.fetchRecommendations();
           if (window.miadoEngine) {
             window.miadoEngine.updateLikeButtonUI();
@@ -1861,7 +2167,6 @@ export function initMiadoClient() {
           try {
             const token = localStorage.getItem("miado_auth_token") || "";
             if (!token) {
-              // Modo Visitante isolado: não tenta carregar contas do servidor sem token legítimo
               return;
             }
             const headers = { "Authorization": `Bearer ${token}` };
@@ -1873,40 +2178,39 @@ export function initMiadoClient() {
             }
             let updated = false;
 
-            const rawFollowed = Array.isArray(db.followedArtists) && db.followedArtists.length > 0
+            const rawFollowed = Array.isArray(db.followedArtists)
               ? db.followedArtists
-              : Array.isArray(db.user.followedArtists) && db.user.followedArtists.length > 0
+              : Array.isArray(db.user.followedArtists)
               ? db.user.followedArtists
-              : Array.isArray(db.user.favoriteArtists) && db.user.favoriteArtists.length > 0 && (!this.followedArtists || this.followedArtists.length === 0)
+              : Array.isArray(db.user.favoriteArtists)
               ? db.user.favoriteArtists
-              : null;
+              : [];
 
-            if (Array.isArray(rawFollowed) && rawFollowed.length > 0) {
-              const seenArt = new Set();
-              const mergedFollowed = [];
-              [...rawFollowed, ...(this.followedArtists || [])].forEach(item => {
-                const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
-                if (!name) return;
-                const k = name.toLowerCase();
-                if (seenArt.has(k)) return;
-                seenArt.add(k);
-                const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
-                mergedFollowed.push({
-                  name,
-                  role: (typeof item === "object" && item?.role) || (dirMatch && dirMatch.role) || "Artista Verificado",
-                  coverUrl: ensureArtistAvatarUrl(typeof item === "object" && item?.coverUrl ? item : { name, coverUrl: dirMatch?.coverUrl }),
-                  followedAt: (typeof item === "object" && item?.followedAt) || new Date().toISOString()
-                });
+            const seenArt = new Set();
+            const mergedFollowed = [];
+            rawFollowed.forEach(item => {
+              const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
+              if (!name) return;
+              const k = name.toLowerCase();
+              if (seenArt.has(k)) return;
+              seenArt.add(k);
+              const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
+              mergedFollowed.push({
+                name,
+                role: (typeof item === "object" && item?.role) || (dirMatch && dirMatch.role) || "Artista Verificado",
+                coverUrl: ensureArtistAvatarUrl(typeof item === "object" && item?.coverUrl ? item : { name, coverUrl: dirMatch?.coverUrl }),
+                followedAt: (typeof item === "object" && item?.followedAt) || new Date().toISOString()
               });
-              if (mergedFollowed.length > 0) {
-                this.followedArtists = mergedFollowed;
-                localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
-              }
-            }
+            });
+            this.followedArtists = mergedFollowed;
+            localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
+            localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
 
-            const serverLikes = Array.isArray(db.likedTracks) && db.likedTracks.length > 0
+            const serverLikes = Array.isArray(db.likedTracks)
               ? db.likedTracks
-              : (Array.isArray(db.user.likedTracks) ? db.user.likedTracks : this.user.likedTracks);
+              : Array.isArray(db.user.likedTracks)
+              ? db.user.likedTracks
+              : [];
             const cleanName = String(db.user.name || this.user.name || "Ouvinte").trim();
             const cleanHandle = sanitizeCleanHandle(db.user.username || db.user.handle || this.user.username, cleanName);
             this.user = {
@@ -1930,7 +2234,7 @@ export function initMiadoClient() {
             localStorage.setItem("miado_active_session_v1", "true");
             updated = true;
 
-            if (Array.isArray(db.recentHistory) && db.recentHistory.length > 0 && this.recentHistory.length === 0) {
+            if (Array.isArray(db.recentHistory)) {
               this.recentHistory = db.recentHistory.slice(0, 50).map(tr => ({
                 ...tr,
                 coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
@@ -1951,11 +2255,9 @@ export function initMiadoClient() {
                       : tr.addedBy
                   }))
                 }));
-              if (filteredPlaylists.length > 0 && this.playlists.length === 0) {
-                this.playlists = filteredPlaylists;
-                localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
-                updated = true;
-              }
+              this.playlists = filteredPlaylists;
+              localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
+              updated = true;
             }
             if (db.customAlbumCovers && typeof db.customAlbumCovers === "object") {
               this.customAlbumCovers = { ...db.customAlbumCovers, ...(this.customAlbumCovers || {}) };
@@ -2016,12 +2318,13 @@ export function initMiadoClient() {
             }).catch(() => {});
           } catch (e) {}
 
-          // Sincroniza também o perfil público do usuário autenticado na comunidade Miau
+          // Sincroniza o perfil público do usuário autenticado na comunidade Miau APENAS com o estado real de reprodução
           try {
-            const curTrack = this.currentTrack;
+            const isActivelyPlaying = Boolean(this.isPlaying && this.currentTrack && this.currentTrack.title);
+            const curTrack = isActivelyPlaying ? this.currentTrack : null;
             fetch("/api/profiles", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: getAuthHeaders(),
               body: JSON.stringify({
                 name: this.user.name,
                 username: this.user.username,
@@ -2029,9 +2332,10 @@ export function initMiadoClient() {
                 avatarUrl: this.user.avatarUrl,
                 bannerUrl: this.user.bannerUrl,
                 favoriteArtists: this.user.favoriteArtists || [],
-                currentTrack: curTrack ? `${curTrack.title} - ${curTrack.artist}` : "Ouvindo no Miado",
+                currentTrack: curTrack ? `${curTrack.title} - ${curTrack.artist}` : "",
                 trackObj: curTrack,
                 albumId: (this.currentAlbum && this.currentAlbum.id) || "billie_hmhas",
+                online: isActivelyPlaying,
                 isSelf: true
               })
             }).catch(() => {});
@@ -2046,7 +2350,7 @@ export function initMiadoClient() {
             if (!uid || uid === "usr_guest") return;
             fetch("/api/user/firestore-sync", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: getAuthHeaders(),
               body: JSON.stringify({
                 uid,
                 email: this.user.email,
@@ -2067,13 +2371,81 @@ export function initMiadoClient() {
 
         hydrateFromFirestore(data) {
           if (!data || !data.email || data.email === "usr_guest@miado.app") return;
-          let changed = false;
-          if (Array.isArray(data.likedTracks) && data.likedTracks.length > 0) {
+          const incomingEmail = String(data.email || "").trim().toLowerCase();
+          const prevEmail = String(this.user?.email || "").trim().toLowerCase();
+          const incomingUid = String(data.uid || "").trim();
+          const prevUid = String(this.user?.uid || "").trim();
+          const isAccountSwitch =
+            Boolean((incomingEmail && prevEmail && incomingEmail !== prevEmail) || (incomingUid && prevUid && incomingUid !== prevUid));
+
+          if (isAccountSwitch) {
+            this.followedArtists = [];
+            this.friends = [];
+            this.recentHistory = [];
+            this.playlists = [];
+            this.feedPosts = [];
+            this.user.likedTracks = [];
+            this.user.favoriteArtists = [];
+            this.currentTrack = null;
+            this.isPlaying = false;
+            if (window.miadoEngine && typeof window.miadoEngine.pause === "function") {
+              try { window.miadoEngine.pause(); } catch (_e) {}
+            }
+          }
+
+          if (data.uid) {
+            this.user.uid = String(data.uid);
+            localStorage.setItem("miado_user_uid", String(data.uid));
+          }
+          if (data.email) {
+            this.user.email = incomingEmail;
+            localStorage.setItem("miado_active_session_v1", "true");
+          }
+          if (data.name && data.name !== "Visitante") {
+            this.user.name = String(data.name).trim();
+          }
+          if (data.username || data.handle) {
+            const rawHandle = String(data.username || data.handle).trim();
+            const cleanH = rawHandle.startsWith("@")
+              ? rawHandle
+              : sanitizeCleanHandle(rawHandle, this.user.name);
+            this.user.username = cleanH;
+            this.user.handle = cleanH;
+          }
+          if (typeof data.bio === "string") this.user.bio = data.bio;
+          if (data.avatarUrl) this.user.avatarUrl = data.avatarUrl;
+          if (data.bannerUrl) this.user.bannerUrl = data.bannerUrl;
+          if (typeof data.onboardingCompleted === "boolean") {
+            this.user.onboardingCompleted = data.onboardingCompleted;
+          }
+          this.user.favoriteArtists = Array.isArray(data.favoriteArtists) ? data.favoriteArtists : [];
+          if (Array.isArray(data.favoriteGenres)) {
+            this.user.favoriteGenres = data.favoriteGenres;
+          }
+          const rawFollowedSource =
+            Array.isArray(data.followedArtists) && data.followedArtists.length > 0
+              ? data.followedArtists
+              : Array.isArray(data.favoriteArtists)
+              ? data.favoriteArtists
+              : [];
+          this.followedArtists = rawFollowedSource.map(item =>
+            typeof item === "string"
+              ? {
+                  name: item,
+                  role: "Artista",
+                  coverUrl: `/api/artist-image?name=${encodeURIComponent(item)}`,
+                  followedAt: new Date().toISOString()
+                }
+              : item
+          );
+          localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
+          localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
+
+          if (Array.isArray(data.likedTracks)) {
             this.user.likedTracks = deduplicateTracks(data.likedTracks.map(t => ({
               ...t,
               coverUrl: ensureTrackCoverUrl(t, t.title, t.artist)
             })));
-            changed = true;
           }
           if (Array.isArray(data.playlists)) {
             this.playlists = data.playlists
@@ -2086,30 +2458,23 @@ export function initMiadoClient() {
                   coverUrl: ensureTrackCoverUrl(t, t.title, t.artist)
                 }))
               }));
-            changed = true;
           }
-          if (Array.isArray(data.recentHistory) && data.recentHistory.length > 0) {
+          if (Array.isArray(data.recentHistory)) {
             this.recentHistory = deduplicateTracks(data.recentHistory.map(t => ({
               ...t,
               coverUrl: ensureTrackCoverUrl(t, t.title, t.artist)
             })));
-            changed = true;
           }
-          if (data.name && data.name !== "Visitante") this.user.name = data.name;
-          if (data.username || data.handle) {
-            this.user.username = sanitizeCleanHandle(data.username || data.handle, this.user.name);
-          }
-          if (data.bio) this.user.bio = data.bio;
-          if (data.avatarUrl) this.user.avatarUrl = data.avatarUrl;
-          if (Array.isArray(data.favoriteArtists) && data.favoriteArtists.length > 0) {
-            this.user.favoriteArtists = data.favoriteArtists;
-          }
-          if (changed) {
-            localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
-            localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
-            localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
-            if (window.miadoEngine) window.miadoEngine.updateLikeButtonUI();
-            if (window.miadoUI) {
+
+          localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
+          localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
+          localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
+
+          if (window.miadoEngine) window.miadoEngine.updateLikeButtonUI();
+          if (window.miadoUI) {
+            if (typeof window.miadoUI.syncAccountStateAcrossApp === "function") {
+              window.miadoUI.syncAccountStateAcrossApp();
+            } else {
               window.miadoUI.syncHeaderUserUI();
               window.miadoUI.renderSidebarPlaylists();
               window.miadoUI.syncAllLikeButtonsInDOM();
@@ -2232,8 +2597,7 @@ export function initMiadoClient() {
           }
           localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
 
-          // Registra automaticamente na timeline do Feed Miau e atualiza recomendações
-          this.addAutomaticFeedPost(item);
+          // Não publica mais automaticamente no Feed Miau a cada música ouvida (apenas quando o usuário escolher publicar)
           this.syncServerDb();
           if (this.recentHistory.length % 2 === 1) {
             this.fetchRecommendations();
@@ -2253,7 +2617,13 @@ export function initMiadoClient() {
               const parsed = JSON.parse(saved);
               if (Array.isArray(parsed)) {
                 const realPosts = parsed
-                  .filter(post => post && post.track && !MiadoState.isLegacyFakeHandle(post.username))
+                  .filter(
+                    post =>
+                      post &&
+                      post.track &&
+                      !MiadoState.isLegacyFakeHandle(post.username) &&
+                      post.actionText !== "acabou de ouvir"
+                  )
                   .map((post, idx) => ({
                     ...post,
                     avatar: (!post.avatar || post.avatar.startsWith("data:image/svg"))
@@ -2281,22 +2651,13 @@ export function initMiadoClient() {
 
         addAutomaticFeedPost(trackItem, customComment = "") {
           if (!trackItem) return;
-          if (
-            this.feedPosts[0] &&
-            this.feedPosts[0].username === this.user.username &&
-            this.feedPosts[0].track &&
-            String(this.feedPosts[0].track.id) === String(trackItem.id) &&
-            !customComment
-          ) {
-            return;
-          }
           const newPost = {
             id: `post_${Date.now()}`,
             name: this.user.name,
             username: this.user.username,
             avatar: this.user.avatarUrl,
-            actionText: customComment ? "compartilhou no Feed Miau" : "acabou de ouvir",
-            comment: customComment || `Ouvindo ${trackItem.title} de ${trackItem.artist} (versão original de estúdio) no Miado.`,
+            actionText: "compartilhou no Feed Miau",
+            comment: customComment || "",
             time: "agora mesmo",
             likes: 1,
             likedByMe: true,
@@ -2311,8 +2672,34 @@ export function initMiadoClient() {
           this.saveFeedPosts();
         }
 
-        addUserActivityPost(trackItem, actionLabel = "compartilhou no Feed Miau") {
-          this.addAutomaticFeedPost(trackItem, `${this.user.name} ${actionLabel}: "${trackItem.title}" de ${trackItem.artist}!`);
+        addUserActivityPost(trackItem, actionLabel = "compartilhou no Feed Miau", customComment = "") {
+          if (!trackItem) return;
+          const cleanComment = String(customComment || "").trim();
+          const newPost = {
+            id: `post_${Date.now()}`,
+            name: this.user.name,
+            username: this.user.username,
+            avatar: this.user.avatarUrl,
+            actionText: actionLabel || "compartilhou no Feed Miau",
+            comment: cleanComment,
+            time: "agora mesmo",
+            likes: 1,
+            likedByMe: true,
+            track: {
+              ...trackItem,
+              coverUrl: ensureTrackCoverUrl(trackItem, trackItem.title, trackItem.artist)
+            },
+            albumId: trackItem.albumId || "billie_hmhas"
+          };
+          this.feedPosts.unshift(newPost);
+          if (this.feedPosts.length > 30) this.feedPosts = this.feedPosts.slice(0, 30);
+          this.saveFeedPosts();
+        }
+
+        deleteFeedPost(index) {
+          if (index < 0 || index >= this.feedPosts.length) return;
+          this.feedPosts.splice(index, 1);
+          this.saveFeedPosts();
         }
 
         buildDefaultPlaylists() {
@@ -3148,9 +3535,18 @@ export function initMiadoClient() {
             if (now - this.lastTimeUpdatePerf < 160) return;
             this.lastTimeUpdatePerf = now;
             if (!this.audio.duration || isNaN(this.audio.duration)) return;
-            const pct = Math.min(100, Math.max(0, (this.audio.currentTime / this.audio.duration) * 100));
+            const ratio = this.audio.currentTime / this.audio.duration;
+            const pct = Math.min(100, Math.max(0, ratio * 100));
             const curFormatted = this.formatTime(this.audio.currentTime);
             const totFormatted = this.formatTime(this.audio.duration);
+
+            if (ratio >= 0.8 && state.currentTrack) {
+              const curKey = normalizeTrackKey(state.currentTrack);
+              if (this._prefetchedForKey !== curKey) {
+                this._prefetchedForKey = curKey;
+                this.prefetchNextTrack();
+              }
+            }
 
             const fillEl = document.getElementById("player-seek-fill");
             if (fillEl) fillEl.style.width = `${pct}%`;
@@ -3204,6 +3600,10 @@ export function initMiadoClient() {
           const cover = ensureTrackCoverUrl(track, track.title, track.artist, album && album.coverUrl);
           track.coverUrl = cover;
 
+          if (typeof window.triggerLiquidGlassTrackTransition === "function") {
+            window.triggerLiquidGlassTrackTransition();
+          }
+
           const fsAmbientEl = document.getElementById("fs-ambient-bg");
           if (fsAmbientEl && cover) {
             fsAmbientEl.style.backgroundImage = `url('${cover}')`;
@@ -3223,6 +3623,9 @@ export function initMiadoClient() {
           const imgDesktop = document.getElementById("player-cover-img");
           if (imgDesktop) {
             delete imgDesktop.dataset.retriedCover;
+            delete imgDesktop.dataset.errorHandled;
+            imgDesktop.classList.remove("album-fallback-blur");
+            if (imgDesktop.parentElement) imgDesktop.parentElement.classList.remove("album-fallback-blur");
             imgDesktop.style.filter = "none";
             imgDesktop.style.webkitFilter = "none";
             imgDesktop.onerror = () => window.handleImgError(imgDesktop, track.title, track.artist);
@@ -3248,6 +3651,9 @@ export function initMiadoClient() {
           const imgMobile = document.getElementById("mobile-thumb-img");
           if (imgMobile) {
             delete imgMobile.dataset.retriedCover;
+            delete imgMobile.dataset.errorHandled;
+            imgMobile.classList.remove("album-fallback-blur");
+            if (imgMobile.parentElement) imgMobile.parentElement.classList.remove("album-fallback-blur");
             imgMobile.style.filter = "none";
             imgMobile.style.webkitFilter = "none";
             imgMobile.onerror = () => window.handleImgError(imgMobile, track.title, track.artist);
@@ -3270,6 +3676,9 @@ export function initMiadoClient() {
           const imgFs = document.getElementById("fs-cover-img");
           if (imgFs) {
             delete imgFs.dataset.retriedCover;
+            delete imgFs.dataset.errorHandled;
+            imgFs.classList.remove("album-fallback-blur");
+            if (imgFs.parentElement) imgFs.parentElement.classList.remove("album-fallback-blur");
             imgFs.style.filter = "none";
             imgFs.style.webkitFilter = "none";
             imgFs.onerror = () => window.handleImgError(imgFs, track.title, track.artist);
@@ -3372,6 +3781,7 @@ export function initMiadoClient() {
 
           state.recordTrackInHistory(track, album);
           this.syncPlayerMetadataUI(track, album);
+          state.broadcastLivePlaybackState(track, true);
 
           if (window.miadoUI) {
             window.miadoUI.highlightPlayingTrackInDOM();
@@ -3384,14 +3794,14 @@ export function initMiadoClient() {
 
           // 1. Tenta carregar do cache local de áudio da sessão (0ms de latência)
           if (cachedStream) {
-            started = await this.attemptPlayUrl(cachedStream, currentReq, 3500);
+            started = await this.attemptPlayUrl(cachedStream, currentReq, 4500);
           }
 
           // 2. Tentativa Primária: Proxy Stream URL com resolução paralela ultrarrápida no backend
           if (!started && currentReq === this.playRequestId) {
             const rawCandidate = track.rawPreviewUrl || track.previewUrl || track.streamUrl || "";
             const primaryProxyStreamUrl = toProxyStreamUrl(rawCandidate, track.title, track.artist, true);
-            started = await this.attemptPlayUrl(primaryProxyStreamUrl, currentReq, 6000);
+            started = await this.attemptPlayUrl(primaryProxyStreamUrl, currentReq, 11500);
             if (started) {
               try { sessionStorage.setItem("miado_stream_" + tKey, primaryProxyStreamUrl); } catch (_e) {}
             }
@@ -3400,19 +3810,19 @@ export function initMiadoClient() {
           // 3. Contingência rápida pelo servidor (otimizada sem loop de 6 instâncias que esquentava o celular)
           if (!started && currentReq === this.playRequestId) {
             const contingencyUrl = `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&retry=1`;
-            started = await this.attemptPlayUrl(contingencyUrl, currentReq, 5500);
+            started = await this.attemptPlayUrl(contingencyUrl, currentReq, 11500);
             if (started) {
               try { sessionStorage.setItem("miado_stream_" + tKey, contingencyUrl); } catch (_e) {}
             }
           }
 
-          if ( currentReq === this.playRequestId) {
+          if (currentReq === this.playRequestId) {
             this.isSwitchingTrack = false;
             if (started) {
               state.setIsPlaying(true);
               this.startVisualizerLoop();
               showToast(`Tocando agora: ${track.title} - ${track.artist}`);
-              this.prefetchNextTrack();
+              state.broadcastLivePlaybackState(track, true);
             } else {
               state.setIsPlaying(false);
             }
@@ -3425,8 +3835,12 @@ export function initMiadoClient() {
             const nextIdx = (state.queueIndex + 1) % state.queue.length;
             const nextTr = state.queue[nextIdx];
             if (!nextTr || !nextTr.title) return;
-            fetch(`/api/resolve-full?title=${encodeURIComponent(nextTr.title)}&artist=${encodeURIComponent(nextTr.artist || "")}&studioOnly=1`).catch(() => {});
-          } catch (e) {}
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 4000);
+            fetch(`/api/resolve-full?title=${encodeURIComponent(nextTr.title)}&artist=${encodeURIComponent(nextTr.artist || "")}&studioOnly=1`, {
+              signal: controller.signal
+            }).finally(() => clearTimeout(timer)).catch(() => {});
+          } catch (_e) {}
         }
 
         togglePlay() {
@@ -3731,33 +4145,28 @@ export function initMiadoClient() {
             state.user &&
             state.user.email &&
             state.user.email !== "usr_guest@miado.app" &&
+            state.user.onboardingCompleted !== false &&
             localStorage.getItem("miado_active_session_v1") === "true"
           );
         }
 
         enforceWelcomeScreenGate() {
           const welcomeEl = document.getElementById("miado-welcome-screen");
-          if (!welcomeEl) return;
-          const sessionActive = this.hasActiveAuthenticatedSession() || Boolean(window._miadoGuestSessionActive);
-          if (sessionActive) {
+          if (welcomeEl) {
             welcomeEl.classList.remove("active", "closing");
-          } else {
-            welcomeEl.classList.remove("closing");
-            welcomeEl.classList.add("active");
+          }
+          const sessionActive = this.hasActiveAuthenticatedSession();
+          if (!sessionActive && typeof window.miadoMountOnboarding === "function") {
+            window.miadoMountOnboarding();
           }
         }
 
         dismissWelcomeScreenAnimated(callback) {
           const welcomeEl = document.getElementById("miado-welcome-screen");
-          if (!welcomeEl) {
-            if (typeof callback === "function") callback();
-            return;
-          }
-          welcomeEl.classList.add("closing");
-          setTimeout(() => {
+          if (welcomeEl) {
             welcomeEl.classList.remove("active", "closing");
-            if (typeof callback === "function") callback();
-          }, 360);
+          }
+          if (typeof callback === "function") callback();
         }
 
         setupInfiniteScroll() {
@@ -3804,8 +4213,8 @@ export function initMiadoClient() {
           if ((this.discoverPage || 0) >= maxPages) {
             const s1 = document.getElementById("home-infinite-status");
             const s2 = document.getElementById("search-infinite-status");
-            if (s1) s1.innerHTML = `<span>Catálogo completo carregado para manter o app rápido</span>`;
-            if (s2) s2.innerHTML = `<span>Catálogo completo carregado para manter o app rápido</span>`;
+            if (s1) s1.innerHTML = "";
+            if (s2) s2.innerHTML = "";
             return;
           }
           if (typeof IntersectionObserver !== "undefined") {
@@ -3942,7 +4351,7 @@ export function initMiadoClient() {
           if ((this.discoverPage || 0) >= MAX_DISCOVER_PAGES) {
             const statusDone = document.getElementById("home-infinite-status") || document.getElementById("search-infinite-status");
             if (statusDone) {
-              statusDone.innerHTML = `<span>Catálogo completo carregado para manter o app rápido</span>`;
+              statusDone.innerHTML = "";
             }
             return;
           }
@@ -4058,9 +4467,7 @@ export function initMiadoClient() {
 
             const reachedLimit = this.discoverPage >= MAX_DISCOVER_PAGES || data?.hasMore === false;
             if (statusEl) {
-              statusEl.innerHTML = reachedLimit
-                ? `<span>Catálogo completo carregado para manter o app rápido</span>`
-                : `<span>Role para baixo ou toque aqui para descobrir mais artistas</span>`;
+              statusEl.innerHTML = reachedLimit ? "" : "";
             }
 
             // Se a página atual adicionou poucos artistas novos por sobreposição com o Top 100 e ainda há páginas, busca a próxima automaticamente
@@ -4071,7 +4478,7 @@ export function initMiadoClient() {
             }
           } catch (_e) {
             if (statusEl) {
-              statusEl.innerHTML = `<span>Toque ou role para carregar mais artistas</span>`;
+              statusEl.innerHTML = "";
             }
           } finally {
             this.isFetchingDiscover = false;
@@ -4281,24 +4688,52 @@ export function initMiadoClient() {
         }
 
         syncHeaderUserUI() {
+          const isLogged = Boolean(state.user && state.user.email && state.user.email !== "usr_guest@miado.app");
           const nameEl = document.getElementById("top-user-name");
           if (nameEl) nameEl.textContent = state.user.name || "Visitante";
           const handleEl = document.getElementById("top-user-handle");
-          if (handleEl) handleEl.textContent = state.user.username || "@novo_usuario";
+          if (handleEl) handleEl.textContent = state.user.username || (isLogged ? "@user" : "@visitante");
           const avatarEl = document.getElementById("top-user-avatar");
           if (avatarEl) {
             avatarEl.onerror = () => window.handleCatAvatarError(avatarEl);
             avatarEl.src = state.user.avatarUrl || CAT_AVATAR_PRESETS[0].url;
           }
           const authBtn = document.getElementById("btn-open-auth-modal");
-          const labelText = state.user.email ? "Minha Conta" : "Entrar / Criar Conta";
+          const labelText = isLogged ? "Minha Conta" : "Entrar / Criar Conta";
           ["top-auth-label", "top-auth-btn-label"].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = labelText;
           });
           if (authBtn) {
-            authBtn.style.display = state.user.email ? "none" : "inline-flex";
+            authBtn.style.display = "inline-flex";
+            authBtn.title = isLogged
+              ? `Conectado como ${state.user.name} (${state.user.username}) — clique para gerenciar conta`
+              : "Entrar ou criar sua conta";
           }
+          const statusBanner = document.getElementById("auth-logged-status-banner") || document.getElementById("auth-logged-banner");
+          const loggedEmailEl = document.getElementById("auth-logged-email") || document.getElementById("auth-logged-banner-email");
+          if (statusBanner) {
+            statusBanner.style.display = isLogged ? "flex" : "none";
+          }
+          if (loggedEmailEl && isLogged) {
+            loggedEmailEl.textContent = `${state.user.username || ""} • ${state.user.email}`;
+          }
+        }
+
+        syncAccountStateAcrossApp() {
+          this.syncHeaderUserUI();
+          this.renderSidebarPlaylists();
+          this.syncAllLikeButtonsInDOM();
+          this.renderRightSidebarBodyOnly();
+          const isLogged = Boolean(state.user && state.user.email && state.user.email !== "usr_guest@miado.app");
+          const welcomeEl = document.getElementById("miado-welcome-screen");
+          if (isLogged && welcomeEl) {
+            welcomeEl.classList.remove("active", "closing");
+          }
+          if (state.currentView === "home") this.renderHomeView();
+          else if (state.currentView === "profile") this.renderProfileView();
+          else if (state.currentView === "liked") this.renderLikedTracksView();
+          else if (state.currentView === "library") this.renderLibraryView();
         }
 
         syncAllLikeButtonsInDOM() {
@@ -4958,25 +5393,11 @@ export function initMiadoClient() {
           this.navigateTo("profile", true);
         }
 
-        openAuthModal(defaultMode = "login", step = 1) {
-          const modal = document.getElementById("modal-auth");
-          if (!modal) return;
-          this.setAuthModalMode(defaultMode);
-          this.renderOnboardingCatGrid();
-          this.renderOnboardingArtistsGrid();
-          this.setOnboardingStep(step);
-
-          const statusBanner = document.getElementById("auth-logged-status-banner") || document.getElementById("auth-logged-banner");
-          const emailSpan = document.getElementById("auth-logged-email");
-          if (statusBanner && emailSpan) {
-            if (state.user && state.user.email) {
-              statusBanner.style.display = "flex";
-              emailSpan.textContent = `${state.user.name} (${state.user.email})`;
-            } else {
-              statusBanner.style.display = "none";
-            }
+        openAuthModal(_defaultMode = "login", _step = 1) {
+          if (typeof window.miadoMountOnboarding === "function") {
+            window.miadoMountOnboarding();
+            return;
           }
-          modal.classList.add("active");
         }
 
         setOnboardingStep(step = 1) {
@@ -5094,8 +5515,8 @@ export function initMiadoClient() {
                           <div style="background:rgba(255,255,255,0.05); border:1px solid ${isAdded ? '#a855f7' : 'rgba(255,255,255,0.08)'}; border-radius:8px; padding:6px; text-align:center;">
                             <img src="${simCover}" alt="${simName}" referrerpolicy="no-referrer" style="width:38px; height:38px; border-radius:50%; object-fit:cover; margin:0 auto 4px auto; display:block;" onerror="window.handleImgError(this, '${simName.replace(/'/g, "")}', 'Artista')" />
                             <div style="font-size:0.7rem; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${simName}</div>
-                            <button type="button" class="btn-onboard-add-rel" data-add-rel-artist="${simName}" data-add-rel-cover="${simCover}" style="margin-top:4px; width:100%; font-size:0.64rem; padding:3px 0; border-radius:6px; background:${isAdded ? '#a855f7' : 'rgba(255,255,255,0.1)'}; color:#fff; border:none; cursor:pointer;">
-                              ${isAdded ? '✓ Adicionado' : '+ Adicionar'}
+                            <button type="button" class="btn-onboard-add-rel" data-add-rel-artist="${escapeHtml(simName)}" data-add-rel-cover="${escapeHtml(simCover)}" style="margin-top:4px; width:100%; font-size:0.64rem; padding:3px 0; border-radius:6px; background:${isAdded ? '#a855f7' : 'rgba(255,255,255,0.1)'}; color:#fff; border:none; cursor:pointer;">
+                              ${isAdded ? `${ICON_CHECK_SVG}Adicionado` : '+ Adicionar'}
                             </button>
                           </div>
                         `;
@@ -5406,43 +5827,79 @@ export function initMiadoClient() {
 
             const endpoint = mode === "register" ? "/api/auth/register" : "/api/auth/login";
             try {
+              let firebaseProfile = null;
+              let firebaseToken = "";
+              if (window.miadoFirestore) {
+                try {
+                  if (mode === "register" && typeof window.miadoFirestore.registerWithEmail === "function") {
+                    const fbRes = await window.miadoFirestore.registerWithEmail(email, password, {
+                      name: cleanName,
+                      handle: cleanUsername,
+                      avatarUrl: state.user.avatarUrl || "/api/cat-avatar?id=cat_1"
+                    });
+                    firebaseProfile = fbRes && fbRes.profile ? fbRes.profile : null;
+                    firebaseToken = fbRes && fbRes.token ? fbRes.token : "";
+                  } else if (mode === "login" && typeof window.miadoFirestore.loginWithEmail === "function") {
+                    const fbRes = await window.miadoFirestore.loginWithEmail(email, password);
+                    firebaseProfile = fbRes && fbRes.profile ? fbRes.profile : null;
+                    firebaseToken = fbRes && fbRes.token ? fbRes.token : "";
+                  }
+                } catch (fbErr) {
+                  const errMsg = String(fbErr && fbErr.message ? fbErr.message : "");
+                  if (errMsg.includes("já está em uso") || errMsg.includes("email-already-in-use")) {
+                    showAuthError(errMsg.includes("já está em uso") ? errMsg : "Este e-mail já está cadastrado. Use a aba Entrar.");
+                    return;
+                  }
+                  if (errMsg.includes("invalid-credential") || errMsg.includes("wrong-password")) {
+                    showAuthError("E-mail ou senha incorretos.");
+                    return;
+                  }
+                }
+              }
+
               const res = await fetch(endpoint, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(firebaseToken ? { "Authorization": `Bearer ${firebaseToken}` } : {})
+                },
                 body: JSON.stringify({
                   email,
                   password,
-                  name: cleanName,
-                  username: cleanUsername,
-                  handle: cleanUsername
+                  name: (firebaseProfile && firebaseProfile.name) || cleanName,
+                  username: (firebaseProfile && firebaseProfile.handle) || cleanUsername,
+                  handle: (firebaseProfile && firebaseProfile.handle) || cleanUsername
                 })
               });
-              const data = await res.json();
-              if (!res.ok || !data.ok) {
+              const data = await res.json().catch(() => ({}));
+              if ((!res.ok || !data.ok) && !firebaseProfile) {
                 showAuthError(data.error || "Não foi possível autenticar sua conta.");
                 return;
               }
               localStorage.setItem("miado_active_session_v1", "true");
-              state.applyAccountPayload(data);
+              if (data && data.ok) {
+                state.applyAccountPayload(data);
+              }
+              if (firebaseProfile) {
+                state.hydrateFromFirestore(firebaseProfile);
+              }
 
               if (mode === "register") {
-                state.user.name = cleanName;
-                state.user.username = cleanUsername;
+                state.user.name = (firebaseProfile && firebaseProfile.name) || cleanName;
+                state.user.username = (firebaseProfile && firebaseProfile.handle) || cleanUsername;
+                state.user.handle = state.user.username;
                 state.user.email = email;
                 state.playlists = [];
                 localStorage.setItem("miado_playlists_v5", JSON.stringify([]));
                 state.saveUser();
-                this.syncHeaderUserUI();
-                this.renderSidebarPlaylists();
-                showToast(`Conta criada como ${cleanUsername}! Escolha sua foto e artistas.`);
+                this.syncAccountStateAcrossApp();
+                showToast(`Conta criada como ${state.user.username}! Escolha sua foto e artistas.`);
                 this.setOnboardingStep(2);
               } else {
                 const welcomeEl = document.getElementById("miado-welcome-screen");
                 if (welcomeEl) welcomeEl.classList.remove("active", "closing");
                 document.getElementById("modal-auth")?.classList.remove("active");
-                this.syncHeaderUserUI();
-                this.renderSidebarPlaylists();
-                if (state.currentView === "home") this.renderHomeView();
+                this.syncAccountStateAcrossApp();
                 showToast(`Bem-vindo de volta, ${state.user.name} (${state.user.username})!`);
               }
             } catch (err) {
@@ -5462,44 +5919,72 @@ export function initMiadoClient() {
           const btnAuthGoogle = document.getElementById("btn-auth-google");
           if (btnAuthGoogle) {
             btnAuthGoogle.addEventListener("click", async () => {
+              const feedbackEl = document.getElementById("auth-feedback-msg");
+              const showGoogleAuthError = (msg) => {
+                if (!feedbackEl) return;
+                feedbackEl.style.display = "block";
+                feedbackEl.style.backgroundColor = "rgba(239, 68, 68, 0.14)";
+                feedbackEl.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                feedbackEl.style.color = "#fca5a5";
+                feedbackEl.textContent = msg;
+              };
               try {
                 if (window.miadoFirestore && typeof window.miadoFirestore.loginWithGoogle === "function") {
                   showToast("Conectando com o Google...");
-                  const { user, token } = await window.miadoFirestore.loginWithGoogle();
+                  const { user, token, profile } = await window.miadoFirestore.loginWithGoogle();
                   if (token) localStorage.setItem("miado_auth_token", token);
                   if (user) {
                     localStorage.setItem("miado_user_uid", user.uid);
                     localStorage.setItem("miado_active_session_v1", "true");
+                    const cleanEmail = ((profile && profile.email) || user.email || "").toLowerCase();
+                    const cleanName = (profile && profile.name) || user.displayName || cleanEmail.split("@")[0] || "Ouvinte Miado";
+                    const resolvedHandle =
+                      (profile && (profile.handle || profile.username)) ||
+                      (state.user.username && state.user.username.startsWith("@user") ? state.user.username : `@user${Math.floor(10000 + Math.random() * 90000)}`);
 
-                    // Gera @ com nome da conta e dígitos aleatórios caso ainda não tenha handle personalizado
-                    if (!state.user.username || state.user.username === "@visitante" || state.user.username === "@ouvinte") {
-                      const cleanEmail = (user.email || "").toLowerCase();
-                      const cleanName = user.displayName || cleanEmail.split("@")[0] || "Ouvinte Miado";
-                      const baseSlug = (user.displayName || cleanEmail.split("@")[0] || "ouvinte")
-                        .toLowerCase()
-                        .normalize("NFD")
-                        .replace(/[\u0300-\u036f]/g, "")
-                        .replace(/[^a-z0-9]/g, "")
-                        .slice(0, 14) || "ouvinte";
-                      const randomDigits = Math.floor(1000 + Math.random() * 9000);
-                      state.user.name = cleanName;
-                      state.user.username = `@${baseSlug}${randomDigits}`;
-                      state.user.handle = state.user.username;
-                      state.user.email = cleanEmail;
-                      state.user.avatarUrl = user.photoURL || "/api/cat-avatar?id=cat_1";
-                      state.saveUser();
+                    state.user.uid = user.uid;
+                    state.user.name = cleanName;
+                    state.user.username = resolvedHandle.startsWith("@") ? resolvedHandle : `@${resolvedHandle}`;
+                    state.user.handle = state.user.username;
+                    state.user.email = cleanEmail;
+                    state.user.avatarUrl = (profile && profile.avatarUrl) || user.photoURL || "/api/cat-avatar?id=cat_1";
+                    if (profile) {
+                      state.hydrateFromFirestore(profile);
                     }
+                    state.saveUser();
+
+                    try {
+                      await fetch("/api/user/firestore-sync", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                          uid: user.uid,
+                          email: cleanEmail,
+                          name: state.user.name,
+                          username: state.user.username,
+                          handle: state.user.username,
+                          bio: state.user.bio || "",
+                          avatarUrl: state.user.avatarUrl,
+                          bannerUrl: state.user.bannerUrl || "",
+                          favoriteArtists: state.user.favoriteArtists || [],
+                          likedTracks: state.user.likedTracks || [],
+                          playlists: state.playlists || [],
+                          recentHistory: state.recentHistory || []
+                        })
+                      });
+                    } catch (_syncErr) {}
                   }
                   document.getElementById("modal-auth")?.classList.remove("active");
                   const welcomeEl = document.getElementById("miado-welcome-screen");
                   if (welcomeEl) welcomeEl.classList.remove("active", "closing");
-                  this.syncHeaderUserUI();
-                  this.renderSidebarPlaylists();
-                  if (state.currentView === "home") this.renderHomeView();
-                  showToast(`Bem-vindo, ${user.displayName || "Ouvinte"} (${state.user.username})!`);
+                  this.syncAccountStateAcrossApp();
+                  showToast(`Conectado como ${state.user.name} (${state.user.username})! Você pode editar seu @ no Perfil.`);
                 }
               } catch (err) {
-                showAuthError(err?.message || "Não foi possível autenticar com o Google.");
+                showGoogleAuthError(err?.message || "Não foi possível autenticar com o Google.");
               }
             });
           }
@@ -5544,7 +6029,7 @@ export function initMiadoClient() {
             }
           });
 
-          // Busca de artistas em tempo real na Etapa 3 do Onboarding
+          // Busca de artistas e álbuns em tempo real na Etapa 3 do Onboarding
           const onboardSearchInput = document.getElementById("onboard-artist-search-input");
           if (onboardSearchInput) {
             let onboardSearchTimer = null;
@@ -5560,8 +6045,31 @@ export function initMiadoClient() {
                   const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=18`);
                   if (res.ok) {
                     const data = await res.json();
-                    if (data && Array.isArray(data.artists) && data.artists.length > 0) {
-                      this.renderOnboardingArtistsGrid(data.artists);
+                    const combinedResults = [];
+                    if (Array.isArray(data?.artists)) {
+                      data.artists.forEach(art => {
+                        if (art && art.name) {
+                          combinedResults.push({
+                            name: art.name,
+                            genre: art.genre || "Artista",
+                            coverUrl: art.coverUrl || `/api/artist-image?name=${encodeURIComponent(art.name)}`
+                          });
+                        }
+                      });
+                    }
+                    if (Array.isArray(data?.albums)) {
+                      data.albums.forEach(alb => {
+                        if (alb && alb.artist) {
+                          combinedResults.push({
+                            name: alb.artist,
+                            genre: alb.title ? `Álbum • ${alb.title}` : "Álbum",
+                            coverUrl: alb.coverUrl || `/api/cover?title=${encodeURIComponent(alb.title || "")}&artist=${encodeURIComponent(alb.artist)}`
+                          });
+                        }
+                      });
+                    }
+                    if (combinedResults.length > 0) {
+                      this.renderOnboardingArtistsGrid(combinedResults);
                     }
                   }
                 } catch (_e) {}
@@ -5624,21 +6132,65 @@ export function initMiadoClient() {
           const btnAuthDeleteAccount = document.getElementById("btn-auth-delete-account");
           if (btnAuthDeleteAccount) {
             btnAuthDeleteAccount.addEventListener("click", async () => {
-              const confirmed = window.confirm("Tem certeza que deseja excluir sua conta e todos os seus dados? Esta ação não pode ser desfeita.");
-              if (!confirmed) return;
+              if (btnAuthDeleteAccount.dataset.confirmDelete !== "true") {
+                btnAuthDeleteAccount.dataset.confirmDelete = "true";
+                btnAuthDeleteAccount.textContent = "Confirmar Exclusão Permanente";
+                showToast("Clique novamente em 'Confirmar Exclusão Permanente' para apagar sua conta.");
+                setTimeout(() => {
+                  if (btnAuthDeleteAccount) {
+                    delete btnAuthDeleteAccount.dataset.confirmDelete;
+                    btnAuthDeleteAccount.textContent = "Excluir Conta";
+                  }
+                }, 6000);
+                return;
+              }
+              delete btnAuthDeleteAccount.dataset.confirmDelete;
+              btnAuthDeleteAccount.textContent = "Excluindo...";
               try {
                 if (window.miadoFirestore && typeof window.miadoFirestore.deleteAccount === "function") {
                   await window.miadoFirestore.deleteAccount();
-                  return;
+                } else {
+                  const token = localStorage.getItem("miado_auth_token") || "";
+                  await fetch("/api/account", {
+                    method: "DELETE",
+                    headers: token ? { "Authorization": `Bearer ${token}` } : {}
+                  });
                 }
-                const token = localStorage.getItem("miado_auth_token") || "";
-                await fetch("/api/account", {
-                  method: "DELETE",
-                  headers: token ? { "Authorization": `Bearer ${token}` } : {}
-                });
               } catch (e) {}
-              localStorage.clear();
-              window.location.reload();
+              btnAuthDeleteAccount.textContent = "Excluir Conta";
+              localStorage.removeItem("miado_auth_token");
+              localStorage.removeItem("miado_user_uid");
+              localStorage.removeItem("miado_active_session_v1");
+              localStorage.removeItem("miado_user_onboarded_v1");
+              window._miadoGuestSessionActive = false;
+              state.user = {
+                uid: "usr_guest",
+                name: "Visitante",
+                username: "@visitante",
+                handle: "@visitante",
+                email: "",
+                bio: "",
+                avatarId: "cat_1",
+                avatarUrl: CAT_AVATAR_PRESETS[0].url,
+                bannerUrl: INITIAL_ALBUMS[0].coverUrl,
+                followingCount: 0,
+                followersCount: 0,
+                favoriteArtists: [],
+                favoriteGenres: [],
+                onboardingCompleted: false,
+                likedTracks: []
+              };
+              state.playlists = [];
+              state.recentHistory = [];
+              state.followedArtists = [];
+              localStorage.setItem("miado_user_v5", JSON.stringify(state.user));
+              localStorage.setItem("miado_playlists_v5", JSON.stringify([]));
+              localStorage.setItem("miado_recent_history_50", JSON.stringify([]));
+              localStorage.setItem("miado_followed_artists_v5", JSON.stringify([]));
+              document.getElementById("modal-auth")?.classList.remove("active");
+              this.syncAccountStateAcrossApp();
+              this.enforceWelcomeScreenGate();
+              showToast("Sua conta e todos os seus dados foram excluídos permanentemente.");
             });
           }
 
@@ -5657,8 +6209,10 @@ export function initMiadoClient() {
               localStorage.removeItem("miado_user_onboarded_v1");
               window._miadoGuestSessionActive = false;
               state.user = {
+                uid: "usr_guest",
                 name: "Visitante",
                 username: "@visitante",
+                handle: "@visitante",
                 email: "",
                 bio: "",
                 avatarId: "cat_1",
@@ -5672,13 +6226,16 @@ export function initMiadoClient() {
                 likedTracks: []
               };
               state.playlists = [];
+              state.recentHistory = [];
+              state.followedArtists = [];
               localStorage.setItem("miado_user_v5", JSON.stringify(state.user));
               localStorage.setItem("miado_playlists_v5", JSON.stringify([]));
-              this.syncHeaderUserUI();
-              this.renderSidebarPlaylists();
+              localStorage.setItem("miado_recent_history_50", JSON.stringify([]));
+              localStorage.setItem("miado_followed_artists_v5", JSON.stringify([]));
               const statusBanner = document.getElementById("auth-logged-status-banner") || document.getElementById("auth-logged-banner");
               if (statusBanner) statusBanner.style.display = "none";
               document.getElementById("modal-auth")?.classList.remove("active");
+              this.syncAccountStateAcrossApp();
               this.enforceWelcomeScreenGate();
               showToast("Você saiu da conta.");
             });
@@ -5815,6 +6372,26 @@ export function initMiadoClient() {
               </button>
             </div>
 
+            <!-- Publicar no Feed Miau & Destacar no Perfil -->
+            <div style="background-color:rgba(139,92,246,0.1); border:1px solid rgba(167,139,250,0.3); border-radius:12px; padding:12px; margin-bottom:8px; display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:0.74rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover);">
+                Publicar no Feed Miau & Perfil
+              </div>
+              <div style="display:flex; gap:8px;">
+                <input type="text" id="opt-input-feed-caption" placeholder="Escreva um comentário opcional sobre esta música..." style="flex:1; height:38px; font-size:0.82rem;" />
+                <button class="btn-modal-confirm" id="opt-btn-post-miau" style="height:38px; padding:0 14px; font-size:0.8rem; white-space:nowrap;">Publicar no Miau</button>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button class="album-action-btn" id="opt-btn-save-profile" style="flex:1; height:36px; font-size:0.78rem;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                  ${isLiked ? "Já Salva no Seu Perfil" : "+ Salvar / Destacar no Meu Perfil"}
+                </button>
+                <button class="album-action-btn" id="opt-btn-go-album" style="flex:1; height:36px; font-size:0.78rem;">
+                  Ir para o Álbum
+                </button>
+              </div>
+            </div>
+
             <!-- Criar Nova Playlist e Já Adicionar Esta Música -->
             <div style="background-color:var(--bg-base); border:1px solid var(--glass-border); border-radius:12px; padding:12px;">
               <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover); margin-bottom:8px;">
@@ -5844,7 +6421,7 @@ export function initMiadoClient() {
                       </div>
                     </div>
                     <button class="album-action-btn ${alreadyIn ? '' : 'primary'}" style="flex:0 0 auto; height:34px; padding:0 14px; font-size:0.78rem;">
-                      ${alreadyIn ? "✓ Já na Playlist" : "+ Adicionar"}
+                      ${alreadyIn ? `${ICON_CHECK_SVG}Já na Playlist` : "+ Adicionar"}
                     </button>
                   </div>
                 `;
@@ -5874,6 +6451,51 @@ export function initMiadoClient() {
             if (state.currentView === "liked") this.renderLikedTracksView();
             if (state.currentView === "profile") this.renderProfileView();
           });
+
+          const postToFeedMiauAction = () => {
+            const capInp = document.getElementById("opt-input-feed-caption");
+            const caption = capInp ? capInp.value.trim() : "";
+            state.addUserActivityPost(cleanTrack, "compartilhou no Feed Miau", caption);
+            document.getElementById("modal-add-to-playlist").classList.remove("active");
+            if (state.currentView === "social") this.renderSocialView();
+            this.renderRightSidebarBodyOnly();
+            showToast(`"${cleanTrack.title}" publicada no Feed Miau!`);
+          };
+          const btnPostMiau = document.getElementById("opt-btn-post-miau");
+          if (btnPostMiau) btnPostMiau.addEventListener("click", postToFeedMiauAction);
+          const inpFeedCap = document.getElementById("opt-input-feed-caption");
+          if (inpFeedCap) {
+            inpFeedCap.addEventListener("keydown", (e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                postToFeedMiauAction();
+              }
+            });
+          }
+
+          const btnSaveProfile = document.getElementById("opt-btn-save-profile");
+          if (btnSaveProfile) {
+            btnSaveProfile.addEventListener("click", () => {
+              if (!state.isLiked(cleanTrack.id)) {
+                state.toggleLike(cleanTrack);
+                engine.updateLikeButtonUI();
+              }
+              document.getElementById("modal-add-to-playlist").classList.remove("active");
+              if (state.currentView === "liked") this.renderLikedTracksView();
+              if (state.currentView === "profile") this.renderProfileView();
+              showToast(`"${cleanTrack.title}" salva e destacada no seu Perfil!`);
+            });
+          }
+
+          const btnGoAlbum = document.getElementById("opt-btn-go-album");
+          if (btnGoAlbum) {
+            btnGoAlbum.addEventListener("click", async () => {
+              document.getElementById("modal-add-to-playlist").classList.remove("active");
+              const fsModal = document.getElementById("modal-fullscreen-player");
+              if (fsModal) fsModal.classList.remove("active");
+              await this.playOrOpenFriendTrack({ trackObj: cleanTrack, currentTrack: `${cleanTrack.title} - ${cleanTrack.artist}` }, true, false);
+            });
+          }
 
           const quickCreateAndAdd = () => {
             const nameInput = document.getElementById("input-quick-new-pl-name");
@@ -6031,50 +6653,231 @@ export function initMiadoClient() {
           return "Boa noite";
         }
 
+        async playOrOpenFriendTrack(friendObj, navigateToAlbum = false, autoPlay = true) {
+          if (!friendObj) return;
+          let rawTitle = "";
+          let rawArtist = "";
+          let baseTrack = null;
+
+          if (friendObj.trackObj && friendObj.trackObj.title && friendObj.trackObj.title !== "Silencioso no momento" && friendObj.trackObj.title !== "Ouvindo no Miado") {
+            baseTrack = { ...friendObj.trackObj };
+            rawTitle = String(baseTrack.title || "").trim();
+            rawArtist = String(baseTrack.artist || "").trim();
+          } else if (
+            friendObj.currentTrack &&
+            friendObj.currentTrack !== "Silencioso no momento" &&
+            friendObj.currentTrack !== "Ouvindo no Miado" &&
+            friendObj.currentTrack.includes(" - ")
+          ) {
+            const parts = friendObj.currentTrack.split(" - ");
+            rawTitle = parts[0].trim();
+            rawArtist = parts.slice(1).join(" - ").trim() || "Artista";
+          }
+
+          if (!rawTitle || rawTitle === "Silencioso no momento") {
+            showToast(`${friendObj.name || friendObj.username || "Este perfil"} está silencioso no momento.`);
+            return;
+          }
+
+          const allKnownAlbums = [
+            ...(state.albums || []),
+            ...(this.extraDiscoveredAlbums || [])
+          ];
+          const normT = rawTitle.toLowerCase().trim();
+          const normA = rawArtist.toLowerCase().trim();
+
+          let matchedAlbum = null;
+          let matchedTrack = null;
+
+          if (baseTrack && baseTrack.albumId) {
+            const candidateAlb = allKnownAlbums.find(a => a && a.id === baseTrack.albumId);
+            if (candidateAlb && (!normA || String(candidateAlb.artist || "").toLowerCase().includes(normA) || normA.includes(String(candidateAlb.artist || "").toLowerCase()))) {
+              matchedAlbum = candidateAlb;
+              matchedTrack = (candidateAlb.tracks || []).find(t => String(t.title || "").toLowerCase().trim() === normT) || baseTrack;
+            }
+          }
+
+          if (!matchedAlbum) {
+            for (const alb of allKnownAlbums) {
+              if (!alb || !Array.isArray(alb.tracks)) continue;
+              const found = alb.tracks.find(
+                t =>
+                  String(t.title || "").toLowerCase().trim() === normT &&
+                  (!normA ||
+                    String(t.artist || alb.artist || "").toLowerCase().includes(normA) ||
+                    normA.includes(String(t.artist || alb.artist || "").toLowerCase()))
+              );
+              if (found) {
+                matchedAlbum = alb;
+                matchedTrack = found;
+                break;
+              }
+            }
+          }
+
+          if (!matchedAlbum || !matchedTrack) {
+            try {
+              const catalog = await MiadoMusicResolver.searchCatalog(`${rawTitle} ${rawArtist}`.trim());
+              if (catalog) {
+                if (Array.isArray(catalog.tracks) && catalog.tracks.length > 0) {
+                  const exactTr =
+                    catalog.tracks.find(
+                      t =>
+                        String(t.title || "").toLowerCase().trim() === normT &&
+                        (!normA || String(t.artist || "").toLowerCase().includes(normA))
+                    ) || catalog.tracks[0];
+                  matchedTrack = exactTr;
+                }
+                if (Array.isArray(catalog.albums) && catalog.albums.length > 0) {
+                  const targetAlbTitle = String((matchedTrack && matchedTrack.albumTitle) || (baseTrack && baseTrack.albumTitle) || "").toLowerCase().trim();
+                  const exactAlb =
+                    (targetAlbTitle && catalog.albums.find(a => String(a.title || "").toLowerCase().trim() === targetAlbTitle)) ||
+                    catalog.albums.find(a => !normA || String(a.artist || "").toLowerCase().includes(normA)) ||
+                    catalog.albums[0];
+                  if (exactAlb) {
+                    matchedAlbum = exactAlb;
+                    if (!this.extraDiscoveredAlbums) this.extraDiscoveredAlbums = [];
+                    if (!this.extraDiscoveredAlbums.some(a => a.id === exactAlb.id)) {
+                      this.extraDiscoveredAlbums.push(exactAlb);
+                    }
+                  }
+                }
+              }
+            } catch (_e) {}
+          }
+
+          const finalTrack = matchedTrack || baseTrack || {
+            id: `tr_friend_${Date.now()}`,
+            title: rawTitle,
+            artist: rawArtist || "Artista Oficial",
+            albumTitle: (baseTrack && baseTrack.albumTitle) || `${rawTitle} - Single`,
+            duration: (baseTrack && baseTrack.duration) || "3:30",
+            coverUrl: ensureTrackCoverUrl(baseTrack || {}, rawTitle, rawArtist)
+          };
+
+          const finalAlbum = matchedAlbum || {
+            id: finalTrack.albumId || `alb_friend_${rawTitle.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+            title: finalTrack.albumTitle || `${finalTrack.title} - Single`,
+            artist: finalTrack.artist || rawArtist || "Artista Oficial",
+            year: new Date().getFullYear(),
+            genre: "Catálogo Oficial",
+            coverUrl: ensureTrackCoverUrl(finalTrack, finalTrack.title, finalTrack.artist),
+            tracks: [finalTrack]
+          };
+
+          if (!Array.isArray(finalAlbum.tracks) || finalAlbum.tracks.length === 0) {
+            finalAlbum.tracks = [finalTrack];
+          } else if (!finalAlbum.tracks.some(t => String(t.title || "").toLowerCase().trim() === String(finalTrack.title || "").toLowerCase().trim())) {
+            finalAlbum.tracks = [finalTrack, ...finalAlbum.tracks];
+          }
+
+          if (autoPlay) {
+            state.setQueue(finalAlbum.tracks, finalTrack, false);
+            engine.playTrack(finalTrack, finalAlbum);
+            this.renderRightSidebarBodyOnly();
+          }
+
+          if (navigateToAlbum) {
+            const fsModal = document.getElementById("modal-fullscreen-player");
+            if (fsModal) fsModal.classList.remove("active");
+            this.navigateTo("album", true, { albumId: finalAlbum.id, customAlbum: finalAlbum });
+          }
+        }
+
         // ----------------------------------------------------------------------
         // VIEW UNIFICADA DE PERFIL DO USUÁRIO (PRÓPRIO E DE OUTROS USUÁRIOS)
         // COM SEÇÕES CLICÁVEIS: ARTISTAS SEGUIDOS, SEGUIDORES, SEGUINDO, CURTIDAS E PLAYLISTS
         // ----------------------------------------------------------------------
         renderProfileView(targetUser = null) {
           const isMe = !targetUser || String(targetUser.username || "").toLowerCase() === String(state.user.username || "").toLowerCase();
-          const activeUser = isMe ? state.user : targetUser;
+          let activeUser = isMe ? state.user : targetUser;
+          if (!isMe && activeUser && activeUser.username) {
+            const targetKey = String(activeUser.username).toLowerCase().trim();
+            const liveComm = (state.communityProfiles || []).find(
+              p => p && String(p.username || "").toLowerCase().trim() === targetKey
+            );
+            const liveFriend = (state.friends || []).find(
+              f => f && String(f.username || "").toLowerCase().trim() === targetKey
+            );
+            activeUser = {
+              ...activeUser,
+              ...(liveFriend || {}),
+              ...(liveComm || {})
+            };
+          }
           const userAvatar = (isMe ? state.user.avatarUrl : (activeUser.avatar || activeUser.avatarUrl)) || CAT_AVATAR_PRESETS[0].url;
           const bannerImg = activeUser.bannerUrl || (isMe ? (state.user.bannerUrl || INITIAL_ALBUMS[0].coverUrl) : INITIAL_ALBUMS[1].coverUrl);
-          const currentTrack = isMe
-            ? (state.currentTrack || INITIAL_ALBUMS[0].tracks[0])
-            : { title: (activeUser.currentTrack ? activeUser.currentTrack.split(" - ")[0] : "BIRDS OF A FEATHER"), artist: (activeUser.currentTrack ? activeUser.currentTrack.split(" - ")[1] || "Billie Eilish" : "Billie Eilish") };
-          const currentTrackCover = ensureTrackCoverUrl(currentTrack, currentTrack.title, currentTrack.artist);
+          const isUserOnline = isMe ? true : Boolean(activeUser.online);
 
-          // Dados das 5 seções
+          let currentTrack = null;
+          if (isMe) {
+            currentTrack = state.currentTrack || {
+              title: "Silencioso no momento",
+              artist: "Nenhuma música tocando agora",
+              coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
+            };
+          } else if (isUserOnline && activeUser.trackObj && activeUser.trackObj.title && activeUser.trackObj.title !== "Silencioso no momento") {
+            currentTrack = activeUser.trackObj;
+          } else if (
+            isUserOnline &&
+            activeUser.currentTrack &&
+            activeUser.currentTrack !== "Silencioso no momento" &&
+            activeUser.currentTrack !== "Ouvindo no Miado" &&
+            activeUser.currentTrack.includes(" - ")
+          ) {
+            const parts = activeUser.currentTrack.split(" - ");
+            currentTrack = {
+              title: parts[0].trim(),
+              artist: parts.slice(1).join(" - ").trim() || "Artista"
+            };
+          } else {
+            currentTrack = {
+              title: "Silencioso no momento",
+              artist: "Nenhuma música tocando agora",
+              coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
+            };
+          }
+          const currentTrackCover =
+            currentTrack.title === "Silencioso no momento"
+              ? createSolidAlbumSvg("Miado", "Silencioso")
+              : ensureTrackCoverUrl(currentTrack, currentTrack.title, currentTrack.artist);
+
+          // Dados das 5 seções reais do perfil
           const likedTracks = isMe
             ? deduplicateTracks(state.user.likedTracks || [])
-            : (activeUser.likedTracks || [INITIAL_ALBUMS[0].tracks[0], INITIAL_ALBUMS[1].tracks[0], INITIAL_ALBUMS[2].tracks[0]]);
+            : deduplicateTracks(Array.isArray(activeUser.likedTracks) ? activeUser.likedTracks : []);
           this.profileLikedTracks = likedTracks;
 
           const followedArtists = isMe
             ? (state.followedArtists || [])
-            : (activeUser.followedArtists || [
-                POPULAR_ARTISTS_DIRECTORY[0],
-                POPULAR_ARTISTS_DIRECTORY[1],
-                POPULAR_ARTISTS_DIRECTORY[2]
-              ]);
+            : Array.isArray(activeUser.followedArtists) && activeUser.followedArtists.length > 0
+            ? activeUser.followedArtists
+            : Array.isArray(activeUser.favoriteArtists)
+            ? activeUser.favoriteArtists.map(a =>
+                typeof a === "string"
+                  ? {
+                      name: a,
+                      role: "Artista Favorito",
+                      coverUrl: `/api/artist-image?name=${encodeURIComponent(a)}`
+                    }
+                  : a
+              )
+            : [];
 
           const followingUsers = isMe
             ? (state.friends || [])
-            : (activeUser.following || state.friends.slice(0, 3));
+            : (Array.isArray(activeUser.following) ? activeUser.following : []);
 
           const followerUsers = isMe
-            ? (state.userFollowers || (state.communityProfiles || []).slice(0, 2))
-            : (activeUser.followers || [
-                { name: state.user.name, username: state.user.username, avatarUrl: state.user.avatarUrl }
-              ]);
+            ? (state.userFollowers || [])
+            : (Array.isArray(activeUser.followers) ? activeUser.followers : []);
 
           const userPlaylists = isMe
             ? (state.playlists || [])
-            : (activeUser.playlists || state.playlists.slice(0, 2));
+            : (Array.isArray(activeUser.playlists) ? activeUser.playlists : []);
 
           const isFollowingProfile = !isMe && state.isProfileFollowed(activeUser.username);
-          const activeSectionTab = this._activeProfileTab || (isMe ? "liked" : "liked");
+          const activeSectionTab = this._activeProfileTab || (isMe ? "liked" : (followedArtists.length > 0 && likedTracks.length === 0 ? "artists" : "liked"));
 
           this.scrollContainer.innerHTML = `
             <div style="max-width:980px; margin:0 auto; display:flex; flex-direction:column; gap:22px;">
@@ -6082,7 +6885,7 @@ export function initMiadoClient() {
               <!-- HERO DO PERFIL -->
               <div class="album-card" style="padding:0; overflow:hidden; cursor:default;">
                 <!-- Banner Superior com Botão de Trocar Capa -->
-                <div id="prof-hero-banner" style="height:180px; width:100%; background-color:#130f22; background-image:url('${bannerImg}'); background-size:cover; background-position:center; position:relative; border-bottom:1px solid var(--glass-border-strong);">
+                <div id="prof-hero-banner" style="height:180px; width:100%; background-color:#130f22; background-image:url('${escapeHtml(safeImgUrl(bannerImg))}'); background-size:cover; background-position:center; position:relative; border-bottom:1px solid var(--glass-border-strong);">
                   <div style="position:absolute; inset:0; background:linear-gradient(180deg, rgba(7,6,11,0.2) 0%, rgba(7,6,11,0.65) 100%);"></div>
 
                   ${!isMe ? `
@@ -6106,7 +6909,7 @@ export function initMiadoClient() {
                     </button>
                   ` : `
                     <button type="button" id="btn-prof-follow-toggle" class="category-pill ${isFollowingProfile ? 'active' : ''}" style="position:absolute; right:16px; top:14px; z-index:4; height:34px; padding:0 18px; font-size:0.82rem; font-weight:800;">
-                      ${isFollowingProfile ? "✓ Seguindo" : "+ Seguir Perfil"}
+                      ${isFollowingProfile ? `${ICON_CHECK_SVG}Seguindo` : "+ Seguir Perfil"}
                     </button>
                   `}
                 </div>
@@ -6116,7 +6919,7 @@ export function initMiadoClient() {
                   <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:18px; margin-top:-52px; margin-bottom:18px;">
                     <div style="display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap;">
                       <div style="position:relative;">
-                        <img id="prof-hero-avatar" src="${userAvatar}" alt="${activeUser.name}" style="width:112px; height:112px; border-radius:50%; object-fit:cover; border:4px solid var(--accent-hover); background-color:#07060b; box-shadow:0 12px 30px rgba(0,0,0,0.75);" onerror="window.handleCatAvatarError(this)" />
+                        <img id="prof-hero-avatar" src="${escapeHtml(safeImgUrl(userAvatar))}" alt="${escapeHtml(activeUser.name)}" style="width:112px; height:112px; border-radius:50%; object-fit:cover; border:4px solid var(--accent-hover); background-color:#07060b;" onerror="window.handleCatAvatarError(this)" />
                         ${isMe ? `
                           <button type="button" id="btn-prof-change-avatar" title="Escolher Foto da Galeria" style="position:absolute; right:2px; bottom:2px; width:34px; height:34px; border-radius:50%; background-color:var(--accent); border:2px solid #ffffff; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#ffffff;">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -6125,23 +6928,23 @@ export function initMiadoClient() {
                       </div>
                       <div style="padding-bottom:4px;">
                         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                          <h1 id="prof-hero-name" style="font-size:1.75rem; font-weight:800; color:#ffffff; letter-spacing:-0.02em;">${activeUser.name}</h1>
-                          <span class="friend-online-badge">ONLINE AGORA</span>
+                          <h1 id="prof-hero-name" style="font-size:1.75rem; font-weight:800; color:#ffffff; letter-spacing:-0.02em;">${escapeHtml(activeUser.name)}</h1>
+                          ${isUserOnline ? `<span class="friend-online-badge">ONLINE AGORA</span>` : `<span class="friend-online-badge" style="background:rgba(255,255,255,0.08); color:var(--text-muted); border-color:rgba(255,255,255,0.12);">OFFLINE</span>`}
                         </div>
-                        <div id="prof-hero-handle" style="font-size:0.95rem; font-weight:700; color:var(--accent-hover); margin-top:2px;">${activeUser.username}</div>
-                        <p id="prof-hero-bio" style="font-size:0.86rem; color:var(--text-secondary); margin-top:6px; max-width:540px;">${activeUser.bio || "Membro da comunidade Miado Streaming."}</p>
+                        <div id="prof-hero-handle" style="font-size:0.95rem; font-weight:700; color:var(--accent-hover); margin-top:2px;">${escapeHtml(activeUser.username)}</div>
+                        <p id="prof-hero-bio" style="font-size:0.86rem; color:var(--text-secondary); margin-top:6px; max-width:540px;">${escapeHtml(activeUser.bio || "Membro da comunidade Miado Streaming.")}</p>
                       </div>
                     </div>
 
                     <!-- Status de Ouvindo Agora -->
-                    <div style="background-color:var(--bg-base); border:1px solid var(--glass-border-strong); border-radius:14px; padding:10px 14px; display:flex; align-items:center; gap:12px; min-width:270px; max-width:340px;">
+                    <div id="prof-now-playing-box" style="background-color:var(--bg-base); border:1px solid var(--glass-border-strong); border-radius:14px; padding:10px 14px; display:flex; align-items:center; gap:12px; min-width:270px; max-width:340px; cursor:${currentTrack.title !== 'Silencioso no momento' ? 'pointer' : 'default'};" title="${currentTrack.title !== 'Silencioso no momento' ? 'Clique para tocar e abrir o álbum desta música' : 'Silencioso no momento'}">
                       <img src="${currentTrackCover}" alt="${currentTrack.title}" style="width:44px; height:44px; border-radius:8px; object-fit:cover;" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${String(currentTrack.title || "").replace(/'/g, "")}', '${String(currentTrack.artist || "").replace(/'/g, "")}')" />
                       <div style="flex:1; min-width:0;">
                         <div style="font-size:0.65rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover);">Ouvindo no Fone</div>
                         <div style="font-size:0.84rem; font-weight:700; color:#ffffff;" class="text-truncate">${currentTrack.title}</div>
                         <div style="font-size:0.74rem; color:var(--text-secondary);" class="text-truncate">${currentTrack.artist}</div>
                       </div>
-                      <button class="btn-main-play" id="prof-btn-play-status" style="width:34px; height:34px; flex:0 0 auto;" title="Tocar música do perfil">
+                      <button class="btn-main-play" id="prof-btn-play-status" style="width:34px; height:34px; flex:0 0 auto;" title="Tocar música e abrir álbum">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
                       </button>
                     </div>
@@ -6274,24 +7077,25 @@ export function initMiadoClient() {
                   </div>
                   ${followerUsers.length === 0 ? `
                     <div class="album-card profile-empty-state-card" style="text-align:center; padding:32px 20px; color:var(--text-secondary); cursor:default;">
-                      Nenhum seguidor ainda. Compartilhe seu perfil na comunidade para conquistar seguidores!
+                      Nenhum seguidor
                     </div>
                   ` : `
                     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:12px;">
                       ${followerUsers.map((u, uIdx) => {
                         const isFollowedByMe = state.isProfileFollowed(u.username);
+                        const uAvatar = safeImgUrl(u.avatarUrl || u.avatar || CAT_AVATAR_PRESETS[uIdx % CAT_AVATAR_PRESETS.length].url);
                         return `
-                          <div class="album-card" style="padding:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-prof-open-user="${u.username}">
+                          <div class="album-card" style="padding:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-prof-open-user="${escapeHtml(u.username)}">
                             <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
-                              <img src="${u.avatarUrl || u.avatar || CAT_AVATAR_PRESETS[uIdx % CAT_AVATAR_PRESETS.length].url}" alt="${u.name}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" onerror="window.handleCatAvatarError(this)" />
+                              <img src="${escapeHtml(uAvatar)}" alt="${escapeHtml(u.name)}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" onerror="window.handleCatAvatarError(this)" />
                               <div style="min-width:0; flex:1;">
-                                <div style="font-weight:700; font-size:0.9rem; color:#ffffff;" class="text-truncate">${u.name}</div>
-                                <div style="font-size:0.75rem; color:var(--accent-hover);">${u.username}</div>
+                                <div style="font-weight:700; font-size:0.9rem; color:#ffffff;" class="text-truncate">${escapeHtml(u.name)}</div>
+                                <div style="font-size:0.75rem; color:var(--accent-hover);">${escapeHtml(u.username)}</div>
                               </div>
                             </div>
                             ${u.username !== state.user.username ? `
-                              <button type="button" class="category-pill ${isFollowedByMe ? 'active' : ''}" data-prof-toggle-user-follow="${u.username}" style="height:32px; padding:0 12px; font-size:0.74rem;">
-                                ${isFollowedByMe ? "✓ Seguindo" : "+ Seguir"}
+                              <button type="button" class="category-pill ${isFollowedByMe ? 'active' : ''}" data-prof-toggle-user-follow="${escapeHtml(u.username)}" style="height:32px; padding:0 12px; font-size:0.74rem;">
+                                ${isFollowedByMe ? `${ICON_CHECK_SVG}Seguindo` : "+ Seguir"}
                               </button>
                             ` : ""}
                           </div>
@@ -6316,18 +7120,19 @@ export function initMiadoClient() {
                     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:12px;">
                       ${followingUsers.map((u, uIdx) => {
                         const isFollowedByMe = state.isProfileFollowed(u.username);
+                        const uAvatar = safeImgUrl(u.avatarUrl || u.avatar || CAT_AVATAR_PRESETS[uIdx % CAT_AVATAR_PRESETS.length].url);
                         return `
-                          <div class="album-card" style="padding:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-prof-open-user="${u.username}">
+                          <div class="album-card" style="padding:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-prof-open-user="${escapeHtml(u.username)}">
                             <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
-                              <img src="${u.avatarUrl || u.avatar || CAT_AVATAR_PRESETS[uIdx % CAT_AVATAR_PRESETS.length].url}" alt="${u.name}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" onerror="window.handleCatAvatarError(this)" />
+                              <img src="${escapeHtml(uAvatar)}" alt="${escapeHtml(u.name)}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" onerror="window.handleCatAvatarError(this)" />
                               <div style="min-width:0; flex:1;">
-                                <div style="font-weight:700; font-size:0.9rem; color:#ffffff;" class="text-truncate">${u.name}</div>
-                                <div style="font-size:0.75rem; color:var(--accent-hover);">${u.username}</div>
+                                <div style="font-weight:700; font-size:0.9rem; color:#ffffff;" class="text-truncate">${escapeHtml(u.name)}</div>
+                                <div style="font-size:0.75rem; color:var(--accent-hover);">${escapeHtml(u.username)}</div>
                               </div>
                             </div>
                             ${u.username !== state.user.username ? `
-                              <button type="button" class="category-pill ${isFollowedByMe ? 'active' : ''}" data-prof-toggle-user-follow="${u.username}" style="height:32px; padding:0 12px; font-size:0.74rem;">
-                                ${isFollowedByMe ? "✓ Seguindo" : "+ Seguir"}
+                              <button type="button" class="category-pill ${isFollowedByMe ? 'active' : ''}" data-prof-toggle-user-follow="${escapeHtml(u.username)}" style="height:32px; padding:0 12px; font-size:0.74rem;">
+                                ${isFollowedByMe ? `${ICON_CHECK_SVG}Seguindo` : "+ Seguir"}
                               </button>
                             ` : ""}
                           </div>
@@ -6393,17 +7198,17 @@ export function initMiadoClient() {
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; width:100%;">
                       <div>
                         <label style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; display:block; margin-bottom:4px;">Nome no Perfil</label>
-                        <input type="text" id="prof-page-input-name" value="${state.user.name}" style="width:100%;" placeholder="Seu nome" />
+                        <input type="text" id="prof-page-input-name" value="${escapeHtml(state.user.name)}" style="width:100%;" placeholder="Seu nome" />
                       </div>
                       <div>
                         <label style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; display:block; margin-bottom:4px;">@username</label>
-                        <input type="text" id="prof-page-input-handle" value="${state.user.username}" style="width:100%;" placeholder="@miadinho" />
+                        <input type="text" id="prof-page-input-handle" value="${escapeHtml(state.user.username)}" style="width:100%;" placeholder="@miadinho" />
                       </div>
                     </div>
 
                     <div style="width:100%;">
                       <label style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; display:block; margin-bottom:4px;">Bio</label>
-                      <textarea id="prof-page-input-bio" rows="2" style="width:100%;">${state.user.bio || ""}</textarea>
+                      <textarea id="prof-page-input-bio" rows="2" style="width:100%;">${escapeHtml(state.user.bio || "")}</textarea>
                     </div>
 
                     <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; width:100%;">
@@ -6426,6 +7231,15 @@ export function initMiadoClient() {
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><polyline points="20 6 9 17 4 12"/></svg>
                       Confirmar e Salvar Alterações
                     </button>
+
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
+                      <button type="button" id="prof-page-btn-logout" style="flex:1; min-width:140px; height:40px; border-radius:999px; background:rgba(255,255,255,0.06); color:#e2e8f0; font-size:0.82rem; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+                        Sair da Conta
+                      </button>
+                      <button type="button" id="prof-page-btn-delete-account" style="flex:1; min-width:160px; height:40px; border-radius:999px; background:rgba(239,68,68,0.14); color:#fca5a5; font-size:0.82rem; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+                        Excluir Conta Permanentemente
+                      </button>
+                    </div>
                   </div>
                 </div>
               ` : ""}
@@ -6441,6 +7255,36 @@ export function initMiadoClient() {
               this.renderProfileView(targetUser);
             });
           });
+
+          const btnPlayStatus = document.getElementById("prof-btn-play-status");
+          const nowPlayingBox = document.getElementById("prof-now-playing-box");
+          if (btnPlayStatus) {
+            btnPlayStatus.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              if (currentTrack && currentTrack.title !== "Silencioso no momento") {
+                await this.playOrOpenFriendTrack({
+                  name: activeUser.name,
+                  username: activeUser.username,
+                  trackObj: currentTrack,
+                  currentTrack: `${currentTrack.title} - ${currentTrack.artist}`
+                }, false, true);
+              } else {
+                showToast(`${activeUser.name} está silencioso no momento.`);
+              }
+            });
+          }
+          if (nowPlayingBox) {
+            nowPlayingBox.addEventListener("click", async () => {
+              if (currentTrack && currentTrack.title !== "Silencioso no momento") {
+                await this.playOrOpenFriendTrack({
+                  name: activeUser.name,
+                  username: activeUser.username,
+                  trackObj: currentTrack,
+                  currentTrack: `${currentTrack.title} - ${currentTrack.artist}`
+                }, true, true);
+              }
+            });
+          }
 
           if (!isMe) {
             const btnBack = document.getElementById("btn-prof-back");
@@ -6458,6 +7302,22 @@ export function initMiadoClient() {
           }
 
           if (isMe) {
+            const btnProfLogout = document.getElementById("prof-page-btn-logout");
+            if (btnProfLogout) {
+              btnProfLogout.addEventListener("click", () => {
+                const modalLogoutBtn = document.getElementById("btn-auth-logout");
+                if (modalLogoutBtn) modalLogoutBtn.click();
+              });
+            }
+
+            const btnProfDelete = document.getElementById("prof-page-btn-delete-account");
+            if (btnProfDelete) {
+              btnProfDelete.addEventListener("click", () => {
+                const modalDeleteBtn = document.getElementById("btn-auth-delete-account");
+                if (modalDeleteBtn) modalDeleteBtn.click();
+              });
+            }
+
             const btnBanner = document.getElementById("btn-prof-change-banner") || document.getElementById("btn-prof-upload-banner-btn");
             if (btnBanner) {
               btnBanner.addEventListener("click", () => {
@@ -6541,6 +7401,12 @@ export function initMiadoClient() {
                 state.user.handle = newHandle;
                 state.user.bio = newBio;
                 if (handleInp) handleInp.value = newHandle;
+                const heroNameEl = document.getElementById("prof-hero-name");
+                if (heroNameEl) heroNameEl.textContent = newName;
+                const heroHandleEl = document.getElementById("prof-hero-handle");
+                if (heroHandleEl) heroHandleEl.textContent = newHandle;
+                const heroBioEl = document.getElementById("prof-hero-bio");
+                if (heroBioEl) heroBioEl.textContent = newBio;
                 state.saveUser();
                 state.createOrUpdateCommunityProfile({
                   name: state.user.name,
@@ -6552,7 +7418,7 @@ export function initMiadoClient() {
                 this.syncHeaderUserUI();
                 const banner = document.getElementById("prof-save-feedback-banner");
                 if (banner) banner.style.display = "flex";
-                showToast("Perfil salvo e criptografado com sucesso!");
+                showToast(`Perfil atualizado! Seu @ agora é ${newHandle}.`);
               });
             }
           }
@@ -7464,7 +8330,7 @@ export function initMiadoClient() {
 
           if ((!album.tracks || album.tracks.length < 4 || !album._studioOrderVerified) && (album.collectionId || album.dzAlbumId || album.searchQuery || album.title)) {
             if (!album.tracks || album.tracks.length < 4) {
-              this.scrollContainer.innerHTML = `<div style="padding:40px; text-align:center; color:var(--text-secondary);">Carregando faixas oficiais na ordem de estúdio e capa 1000x1000 HD do álbum...</div>`;
+              this.scrollContainer.innerHTML = `<div style="padding:40px; text-align:center; color:var(--text-secondary);">Carregando álbum...</div>`;
             }
             try {
               const details = await MiadoMusicResolver.fetchAlbumDetails(album);
@@ -7694,7 +8560,7 @@ export function initMiadoClient() {
                 <div style="position:relative; flex:1;">
                   <input type="text" id="view-search-input" value="${cleanInitial.replace(/"/g, "&quot;")}" placeholder="O que você quer ouvir?" style="width:100%; height:46px; border-radius:12px; padding:0 40px 0 42px; font-size:0.96rem;" autocomplete="off" />
                   <svg style="position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--text-muted); pointer-events:none;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                  <button type="button" class="search-clear-btn ${cleanInitial ? 'visible' : ''}" id="btn-clear-view-search" title="Limpar pesquisa" aria-label="Limpar pesquisa">✕</button>
+                  <button type="button" class="search-clear-btn ${cleanInitial ? 'visible' : ''}" id="btn-clear-view-search" title="Limpar pesquisa" aria-label="Limpar pesquisa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
                 </div>
                 <button class="album-action-btn primary" id="btn-trigger-search" style="flex:0 0 auto; height:46px; padding:0 22px;">Buscar</button>
               </div>
@@ -7797,14 +8663,14 @@ export function initMiadoClient() {
               return;
             }
             const container = document.getElementById("search-results-container");
-            container.innerHTML = `<div style="padding:24px; color:var(--text-secondary);">Buscando "${cleanTerm}"...</div>`;
+            container.innerHTML = `<div style="padding:24px; color:var(--text-secondary);">Buscando "${escapeHtml(cleanTerm)}"...</div>`;
 
             try {
               const { artists = [], songs = [], albums = [] } = await MiadoMusicResolver.searchCatalog(cleanTerm);
               this.lastSearchSongs = songs;
 
               if (!songs.length && !albums.length && !artists.length) {
-                container.innerHTML = `<div style="padding:24px; color:var(--text-muted);">Nenhum resultado encontrado para "${cleanTerm}".</div>`;
+                container.innerHTML = `<div style="padding:24px; color:var(--text-muted);">Nenhum resultado encontrado para "${escapeHtml(cleanTerm)}".</div>`;
                 return;
               }
 
@@ -8178,12 +9044,20 @@ export function initMiadoClient() {
         }
 
         async renderSocialView(searchQuery = "") {
-          if (!this._communityLoadedOnce) {
+          if (!this._communityLoadedOnce || (state.communityProfiles || []).length === 0) {
             this._communityLoadedOnce = true;
-            await state.fetchCommunityProfiles("");
+            await state.fetchCommunityProfiles(searchQuery || "");
+          } else if (!this._refreshingSocialBg) {
+            this._refreshingSocialBg = true;
+            state.fetchCommunityProfiles(searchQuery || "").finally(() => {
+              this._refreshingSocialBg = false;
+            });
           }
           const qLower = (searchQuery || "").trim().toLowerCase();
           const myHandle = String(state.user.username || "").toLowerCase();
+          const myUid = String(
+            (state.user && state.user.uid) || localStorage.getItem("miado_user_uid") || ""
+          ).trim();
           const communityList = (state.communityProfiles || []).filter(p => {
             if (!p || !p.username) return false;
             if (!qLower) return true;
@@ -8273,22 +9147,32 @@ export function initMiadoClient() {
                   <!-- Lista de Perfis Reais Encontrados no Diretório -->
                   <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); gap:12px;">
                     ${communityList.map((prof, pIdx) => {
-                      const isMe = String(prof.username || "").toLowerCase() === myHandle;
-                      const isFollowing = state.isProfileFollowed(prof.username);
+                      const isMe = Boolean(
+                        (myUid && prof.uid && prof.uid === myUid) ||
+                        (!prof.uid && myHandle && String(prof.username || "").toLowerCase() === myHandle)
+                      );
+                      const isFollowing = state.isProfileFollowed(prof.uid || prof.username);
+                      const profAvatar = safeImgUrl(prof.avatar || prof.avatarUrl || CAT_AVATAR_PRESETS[0].url);
+                      const liveTrackLabel = prof.online && prof.currentTrack && prof.currentTrack.trim() !== "" && prof.currentTrack !== "Ouvindo no Miado"
+                        ? prof.currentTrack
+                        : "Silencioso no momento";
                       return `
-                        <div class="album-card" style="padding:14px; cursor:default; background-color:var(--bg-base);">
+                        <div class="album-card" data-open-community-prof="${pIdx}" style="padding:14px; cursor:pointer; background-color:var(--bg-base);">
                           <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
-                            <img src="${prof.avatar || prof.avatarUrl || CAT_AVATAR_PRESETS[0].url}" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover);" alt="${prof.name}" onerror="window.handleCatAvatarError(this)" />
+                            <img src="${escapeHtml(profAvatar)}" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover);" alt="${escapeHtml(prof.name)}" onerror="window.handleCatAvatarError(this)" />
                             <div style="flex:1; min-width:0;">
                               <div style="display:flex; align-items:center; gap:6px;">
-                                <div style="font-weight:800; font-size:0.92rem; color:#fff;" class="text-truncate">${prof.name}</div>
-                                ${isMe ? `<span class="friend-online-badge">VOCÊ</span>` : ""}
+                                <div style="font-weight:800; font-size:0.92rem; color:#fff;" class="text-truncate">${escapeHtml(prof.name)}</div>
+                                ${isMe ? `<span class="friend-online-badge">VOCÊ</span>` : prof.online ? `<span class="friend-online-badge">ON</span>` : ""}
                               </div>
-                              <div style="font-size:0.78rem; color:var(--accent-hover); font-weight:700;">${prof.username}</div>
+                              <div style="font-size:0.78rem; color:var(--accent-hover); font-weight:700;">${escapeHtml(prof.username)}</div>
                             </div>
                           </div>
-                          <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:10px; min-height:20px;" class="text-truncate">
-                            ${prof.bio || "Perfil oficial no Miado."}
+                          <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px; min-height:20px;" class="text-truncate">
+                            ${escapeHtml(prof.bio || "Perfil oficial no Miado.")}
+                          </div>
+                          <div data-community-track-prof="${pIdx}" style="font-size:0.73rem; color:var(--accent-hover); margin-bottom:10px; cursor:pointer; text-decoration:${liveTrackLabel !== 'Silencioso no momento' ? 'underline' : 'none'};" class="text-truncate" title="Clique para tocar e ver o álbum desta música">
+                            🎧 ${escapeHtml(liveTrackLabel)}
                           </div>
                           <div style="display:flex; gap:8px;">
                             ${isMe ? `
@@ -8296,8 +9180,11 @@ export function initMiadoClient() {
                                 Editar Meu Perfil
                               </button>
                             ` : `
+                              <button type="button" class="album-action-btn" data-view-community-prof="${pIdx}" style="flex:0 0 auto; height:34px; padding:0 12px; font-size:0.76rem;">
+                                Ver Perfil
+                              </button>
                               <button type="button" class="album-action-btn ${isFollowing ? '' : 'primary'}" data-toggle-follow-prof="${pIdx}" style="flex:1; height:34px; font-size:0.78rem;">
-                                ${isFollowing ? "✓ Seguindo (Deixar de Seguir)" : "+ Seguir Amigo"}
+                                ${isFollowing ? `${ICON_CHECK_SVG}Seguindo` : "+ Seguir Amigo"}
                               </button>
                             `}
                           </div>
@@ -8314,7 +9201,7 @@ export function initMiadoClient() {
                   <div>
                     <h2 class="section-title">Amigos que Você Segue (${state.friends.length})</h2>
                     <p style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">
-                      Apenas os perfis reais que você escolheu seguir aparecem aqui.
+                      Clique no avatar ou nome do amigo para abrir o perfil dele, ou clique na música para ir direto ao álbum e ouvir.
                     </p>
                   </div>
                 </div>
@@ -8322,27 +9209,34 @@ export function initMiadoClient() {
                   <div class="album-editorial-card" style="text-align:center; padding:28px;">
                     <div style="font-weight:800; color:#ffffff; font-size:1rem;">Sua lista de amigos está zerada e pronta para você!</div>
                     <div style="font-size:0.84rem; color:var(--text-secondary); margin-top:6px;">
-                      Removemos todos os perfis falsos. Use o botão <strong>"+ Criar / Adicionar Perfil de Amigo"</strong> acima para cadastrar e seguir seus amigos.
+                      Clique em <strong>"+ Seguir Amigo"</strong> nos perfis da comunidade acima para acompanhar seus amigos aqui.
                     </div>
                   </div>
                 ` : `
                   <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); gap:14px;">
-                    ${state.friends.map((f, fIdx) => `
+                    ${state.friends.map((f, fIdx) => {
+                      const liveFriendTrack = f.online && f.currentTrack && f.currentTrack !== "Ouvindo no Miado"
+                        ? f.currentTrack
+                        : "Silencioso no momento";
+                      return `
                       <div class="album-card" style="padding:16px; cursor:default;">
-                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
-                          <img src="${f.avatar}" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover);" alt="${f.name}" onerror="window.handleCatAvatarError(this)" />
+                        <div data-open-friend-prof="${fIdx}" style="display:flex; align-items:center; gap:12px; margin-bottom:12px; cursor:pointer;" title="Ver perfil de ${escapeHtml(f.name)}">
+                          <img src="${escapeHtml(safeImgUrl(f.avatar || f.avatarUrl))}" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover); cursor:pointer;" alt="${escapeHtml(f.name)}" onerror="window.handleCatAvatarError(this)" />
                           <div style="flex:1; min-width:0;">
-                            <div style="font-weight:700; font-size:0.95rem; color:#fff;" class="text-truncate">${f.name}</div>
-                            <div style="font-size:0.78rem; color:var(--accent-hover);">${f.username}</div>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                              <div style="font-weight:700; font-size:0.95rem; color:#fff;" class="text-truncate">${escapeHtml(f.name)}</div>
+                              ${f.online ? `<span class="friend-online-badge">ON</span>` : ""}
+                            </div>
+                            <div style="font-size:0.78rem; color:var(--accent-hover);">${escapeHtml(f.username)}</div>
                           </div>
-                          <button type="button" class="track-icon-btn" data-unfollow-friend-idx="${fIdx}" title="Deixar de seguir ${f.username}" style="width:28px; height:28px;">
+                          <button type="button" class="track-icon-btn" data-unfollow-friend-idx="${fIdx}" title="Deixar de seguir ${escapeHtml(f.username)}" style="width:28px; height:28px;">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                           </button>
                         </div>
-                        <div style="background-color:var(--bg-base); border:1px solid var(--glass-border); padding:10px 12px; border-radius:10px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                          <div style="overflow:hidden;">
+                        <div data-open-friend-track-idx="${fIdx}" style="background-color:var(--bg-base); border:1px solid var(--glass-border); padding:10px 12px; border-radius:10px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:${liveFriendTrack !== 'Silencioso no momento' ? 'pointer' : 'default'};" title="Clique para tocar e abrir o álbum desta música">
+                          <div style="overflow:hidden; flex:1;">
                             <div style="font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Ouvindo Agora</div>
-                            <div style="font-size:0.85rem; font-weight:600; color:#fff; margin-top:2px;" class="text-truncate">${f.currentTrack}</div>
+                            <div style="font-size:0.85rem; font-weight:600; color:#fff; margin-top:2px; text-decoration:${liveFriendTrack !== 'Silencioso no momento' ? 'underline' : 'none'};" class="text-truncate">${escapeHtml(liveFriendTrack)}</div>
                           </div>
                           <button class="track-icon-btn ${f.likedByMe ? 'liked' : ''}" data-like-friend-idx="${fIdx}" title="Curtir atividade do amigo">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="${f.likedByMe ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
@@ -8353,12 +9247,13 @@ export function initMiadoClient() {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
                             Dar Play
                           </button>
-                          <button class="album-action-btn" style="flex:1; height:36px; font-size:0.82rem;" data-open-friend-album="${f.albumId}">
-                            Ver Álbum
+                          <button class="album-action-btn" style="flex:1; height:36px; font-size:0.82rem;" data-open-friend-prof-btn="${fIdx}">
+                            Ver Perfil
                           </button>
                         </div>
                       </div>
-                    `).join("")}
+                    `;
+                    }).join("")}
                   </div>
                 `}
               </div>
@@ -8382,21 +9277,21 @@ export function initMiadoClient() {
                     ${state.followedArtists.map((art, aIdx) => {
                       const resolvedAvatar = ensureArtistAvatarUrl(art);
                       return `
-                        <div class="artist-bubble-card" data-social-open-artist="${art.name}">
+                        <div class="artist-bubble-card" data-social-open-artist="${escapeHtml(art.name)}">
                           <div class="artist-avatar-wrap">
                             <div class="artist-avatar-inner shimmer">
-                              <img class="artist-bubble-img loaded" data-artist-bubble-img="${art.name}" src="${resolvedAvatar}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                              <img class="artist-bubble-img loaded" data-artist-bubble-img="${escapeHtml(art.name)}" src="${escapeHtml(resolvedAvatar)}" alt="${escapeHtml(art.name)}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                             </div>
-                            <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
+                            <button type="button" class="floating-artist-play" data-play-artist="${escapeHtml(art.name)}" title="Tocar ${escapeHtml(art.name)}">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4.5 19 12 7 19.5 7 4.5"/></svg>
                             </button>
                           </div>
                           <div class="artist-bubble-info">
-                            <div class="artist-bubble-name">${art.name}</div>
-                            <div class="artist-bubble-sub">${art.role || "Artista Seguido"}</div>
+                            <div class="artist-bubble-name">${escapeHtml(art.name)}</div>
+                            <div class="artist-bubble-sub">${escapeHtml(art.role || "Artista Seguido")}</div>
                           </div>
                           <button type="button" class="category-pill active" data-social-unfollow-artist="${aIdx}" style="margin-top:8px; height:30px; padding:0 14px; font-size:0.75rem;">
-                            ✓ Seguindo
+                            ${ICON_CHECK_SVG}Seguindo
                           </button>
                         </div>
                       `;
@@ -8405,15 +9300,32 @@ export function initMiadoClient() {
                 `}
               </div>
 
-              <!-- Seção 2: Timeline de Atividades Recentes (Feed Miau) -->
+              <!-- Seção 2: Timeline de Publicações Escolhidas pelo Usuário (Feed Miau) -->
               <div class="showcase-section">
                 <div class="section-head">
-                  <h2 class="section-title">Suas Publicações & Timeline (${state.feedPosts.length})</h2>
+                  <div>
+                    <h2 class="section-title">Suas Publicações & Timeline (${state.feedPosts.length})</h2>
+                    <p style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">
+                      Apenas as músicas que você escolher publicar aparecem aqui.
+                    </p>
+                  </div>
                 </div>
+
+                <!-- Caixa para o Usuário Escolher Publicar no Feed Miau -->
+                <div class="album-card" style="padding:16px 18px; margin-bottom:14px; cursor:default;">
+                  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <img src="${escapeHtml(safeImgUrl(state.user.avatarUrl))}" style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" alt="${escapeHtml(state.user.name)}" onerror="window.handleCatAvatarError(this)" />
+                    <input type="text" id="social-custom-post-comment" placeholder="${state.currentTrack ? `Escreva uma legenda sobre "${escapeHtml(state.currentTrack.title)}" (opcional)...` : 'Toque uma música e escreva uma legenda para publicar no Feed Miau...'}" style="flex:1; min-width:220px;" />
+                    <button type="button" class="album-action-btn primary" id="btn-social-publish-chosen" style="height:40px; padding:0 18px; flex:0 0 auto;">
+                      Publicar no Feed
+                    </button>
+                  </div>
+                </div>
+
                 ${state.feedPosts.length === 0 ? `
                   <div class="album-editorial-card" style="text-align:center; padding:24px;">
                     <div style="font-weight:700; color:#ffffff;">Nenhuma publicação no Feed ainda</div>
-                    <div style="font-size:0.84rem; color:var(--text-secondary); margin-top:4px;">Clique em "Publicar Música Atual" no topo para compartilhar o que você está ouvindo!</div>
+                    <div style="font-size:0.84rem; color:var(--text-secondary); margin-top:4px;">Você escolhe o que vai para o seu Feed! Use o botão "Publicar no Feed" acima ou o ícone de compartilhar em qualquer música.</div>
                   </div>
                 ` : `
                   <div style="display:flex; flex-direction:column; gap:12px;">
@@ -8422,18 +9334,18 @@ export function initMiadoClient() {
                       return `
                         <div class="album-card" style="padding:16px 18px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; cursor:default;">
                           <div style="display:flex; align-items:center; gap:14px; flex:1; min-width:240px;">
-                            <img src="${post.avatar}" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" alt="${post.name || post.username}" onerror="window.handleCatAvatarError(this)" />
+                            <img src="${escapeHtml(safeImgUrl(post.avatar))}" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" alt="${escapeHtml(post.name || post.username)}" onerror="window.handleCatAvatarError(this)" />
                             <div style="flex:1; min-width:0;">
                               <div style="font-size:0.9rem; color:#fff;">
-                                <strong style="color:var(--accent-hover);">${post.username}</strong> ${post.actionText || "acabou de ouvir"}
-                                <strong>${tr.title}</strong> de <strong>${tr.artist}</strong>
+                                <strong style="color:var(--accent-hover);">${escapeHtml(post.username)}</strong> ${escapeHtml(post.actionText || "compartilhou no Feed Miau")}
+                                <strong>${escapeHtml(tr.title)}</strong> de <strong>${escapeHtml(tr.artist)}</strong>
                               </div>
-                              ${post.comment ? `<div style="font-size:0.81rem; color:var(--text-secondary); margin-top:3px;">"${post.comment}"</div>` : ""}
-                              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px;">${post.time || "agora mesmo"} · Áudio Original de Estúdio</div>
+                              ${post.comment ? `<div style="font-size:0.81rem; color:var(--text-secondary); margin-top:3px;">"${escapeHtml(post.comment)}"</div>` : ""}
+                              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px;">${escapeHtml(post.time || "agora mesmo")}</div>
                             </div>
                           </div>
-                          <div style="display:flex; align-items:center; gap:12px;">
-                            <img src="${ensureTrackCoverUrl(tr)}" style="width:48px; height:48px; border-radius:10px; object-fit:cover; border:1px solid var(--glass-border);" alt="${tr.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${tr.title.replace(/'/g, "")}', '${tr.artist.replace(/'/g, "")}')" />
+                          <div style="display:flex; align-items:center; gap:10px;">
+                            <img src="${escapeHtml(ensureTrackCoverUrl(tr))}" style="width:48px; height:48px; border-radius:10px; object-fit:cover; border:1px solid var(--glass-border);" alt="${escapeHtml(tr.title)}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${tr.title.replace(/'/g, "")}', '${tr.artist.replace(/'/g, "")}')" />
                             <button class="album-action-btn primary" style="height:36px; padding:0 16px; font-size:0.82rem; flex:0 0 auto;" data-play-post-idx="${pIdx}">
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
                               Tocar
@@ -8441,6 +9353,9 @@ export function initMiadoClient() {
                             <button class="track-icon-btn ${post.likedByMe ? 'liked' : ''}" style="width:auto; padding:0 10px; gap:5px; border:1px solid var(--glass-border); border-radius:999px; height:36px;" data-like-post-idx="${pIdx}">
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="${post.likedByMe ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                               <span style="font-size:0.78rem; font-weight:700;">${post.likes || 0}</span>
+                            </button>
+                            <button type="button" class="track-icon-btn" data-delete-post-idx="${pIdx}" title="Excluir publicação" style="width:32px; height:32px;">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
                           </div>
                         </div>
@@ -8452,13 +9367,34 @@ export function initMiadoClient() {
             </div>
           `;
 
-          document.getElementById("btn-social-share-now").addEventListener("click", () => {
-            if (!state.currentTrack) return;
-            state.addUserActivityPost(state.currentTrack, "compartilhou no Feed Miau");
+          const publishCurrentTrackToFeed = () => {
+            const targetTrack = state.currentTrack || (state.recentHistory && state.recentHistory[0]);
+            if (!targetTrack) {
+              showToast("Toque uma música primeiro para publicá-la no Feed Miau!");
+              return;
+            }
+            const commentInp = document.getElementById("social-custom-post-comment");
+            const customCaption = commentInp ? commentInp.value.trim() : "";
+            state.addUserActivityPost(targetTrack, "compartilhou no Feed Miau", customCaption);
             this.renderSocialView(searchQuery);
             this.renderRightSidebarBodyOnly();
-            showToast("Atividade publicada no Feed Miau!");
-          });
+            showToast(`"${targetTrack.title}" publicada no Feed Miau!`);
+          };
+
+          document.getElementById("btn-social-share-now").addEventListener("click", publishCurrentTrackToFeed);
+          const btnPublishChosen = document.getElementById("btn-social-publish-chosen");
+          if (btnPublishChosen) {
+            btnPublishChosen.addEventListener("click", publishCurrentTrackToFeed);
+          }
+          const customPostInp = document.getElementById("social-custom-post-comment");
+          if (customPostInp) {
+            customPostInp.addEventListener("keydown", (e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                publishCurrentTrackToFeed();
+              }
+            });
+          }
           document.getElementById("btn-social-edit-cat").addEventListener("click", () => {
             this.setActiveNav("profile");
             this.navigateTo("profile", true);
@@ -8544,8 +9480,56 @@ export function initMiadoClient() {
             });
           }
 
+          this.scrollContainer.querySelectorAll("[data-open-community-prof]").forEach(card => {
+            card.addEventListener("click", (e) => {
+              if (
+                e.target.closest("[data-toggle-follow-prof]") ||
+                e.target.closest("[data-view-community-prof]") ||
+                e.target.closest("[data-community-track-prof]") ||
+                e.target.closest("#btn-open-my-prof-card")
+              ) {
+                return;
+              }
+              const prof = communityList[parseInt(card.dataset.openCommunityProf)];
+              if (!prof) return;
+              this.setActiveNav("profile");
+              this.navigateTo("profile", true, { targetUser: prof });
+            });
+          });
+
+          this.scrollContainer.querySelectorAll("[data-community-track-prof]").forEach(trackEl => {
+            trackEl.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              const prof = communityList[parseInt(trackEl.dataset.communityTrackProf)];
+              if (!prof) return;
+              await this.playOrOpenFriendTrack(prof, true, true);
+            });
+          });
+
+          this.scrollContainer.querySelectorAll("[data-view-community-prof]").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const prof = communityList[parseInt(btn.dataset.viewCommunityProf)];
+              if (!prof) return;
+              this.setActiveNav("profile");
+              this.navigateTo("profile", true, { targetUser: prof });
+            });
+          });
+
+          this.scrollContainer.querySelectorAll("[data-open-friend-prof], [data-open-friend-prof-btn]").forEach(el => {
+            el.addEventListener("click", (e) => {
+              if (e.target.closest("[data-unfollow-friend-idx]")) return;
+              const idxStr = el.dataset.openFriendProf ?? el.dataset.openFriendProfBtn;
+              const f = state.friends[parseInt(idxStr)];
+              if (!f) return;
+              this.setActiveNav("profile");
+              this.navigateTo("profile", true, { targetUser: f });
+            });
+          });
+
           this.scrollContainer.querySelectorAll("[data-toggle-follow-prof]").forEach(btn => {
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
               const prof = communityList[parseInt(btn.dataset.toggleFollowProf)];
               if (!prof) return;
               const nowFollowing = state.toggleFollowProfile(prof);
@@ -8556,7 +9540,8 @@ export function initMiadoClient() {
           });
 
           this.scrollContainer.querySelectorAll("[data-unfollow-friend-idx]").forEach(btn => {
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
               const f = state.friends[parseInt(btn.dataset.unfollowFriendIdx)];
               if (!f) return;
               state.toggleFollowProfile(f);
@@ -8593,17 +9578,20 @@ export function initMiadoClient() {
             });
           });
 
+          this.scrollContainer.querySelectorAll("[data-open-friend-track-idx]").forEach(box => {
+            box.addEventListener("click", async (e) => {
+              if (e.target.closest("[data-like-friend-idx]")) return;
+              const f = state.friends[parseInt(box.dataset.openFriendTrackIdx)];
+              if (!f) return;
+              await this.playOrOpenFriendTrack(f, true, true);
+            });
+          });
+
           this.scrollContainer.querySelectorAll("[data-play-friend-idx]").forEach(btn => {
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", async () => {
               const f = state.friends[parseInt(btn.dataset.playFriendIdx)];
-              const alb = state.albums.find(a => a.id === f.albumId) || state.albums[0];
-              const tr = f.trackObj || alb.tracks[0];
-              if (tr) {
-                state.queue = [...alb.tracks];
-                state.queueIndex = 0;
-                engine.playTrack(tr, alb);
-                this.renderRightSidebarBodyOnly();
-              }
+              if (!f) return;
+              await this.playOrOpenFriendTrack(f, false, true);
             });
           });
 
@@ -8625,12 +9613,15 @@ export function initMiadoClient() {
           });
 
           this.scrollContainer.querySelectorAll("[data-play-post-idx]").forEach(btn => {
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", async () => {
               const post = state.feedPosts[parseInt(btn.dataset.playPostIdx)];
               if (post && post.track) {
-                const alb = state.albums.find(a => a.id === post.albumId || a.id === post.track.albumId) || state.albums[0];
-                engine.playTrack(post.track, alb);
-                this.renderRightSidebarBodyOnly();
+                await this.playOrOpenFriendTrack({
+                  name: post.name || post.username,
+                  username: post.username,
+                  trackObj: post.track,
+                  currentTrack: `${post.track.title} - ${post.track.artist}`
+                }, false, true);
               }
             });
           });
@@ -8643,6 +9634,17 @@ export function initMiadoClient() {
               post.likes = Math.max(0, (post.likes || 0) + (post.likedByMe ? 1 : -1));
               state.saveFeedPosts();
               this.renderSocialView(searchQuery);
+            });
+          });
+
+          this.scrollContainer.querySelectorAll("[data-delete-post-idx]").forEach(btn => {
+            btn.addEventListener("click", () => {
+              const idx = parseInt(btn.dataset.deletePostIdx, 10);
+              if (isNaN(idx)) return;
+              state.deleteFeedPost(idx);
+              this.renderSocialView(searchQuery);
+              this.renderRightSidebarBodyOnly();
+              showToast("Publicação removida do Feed Miau.");
             });
           });
         }
@@ -9499,20 +10501,24 @@ export function initMiadoClient() {
                   Encontrar / Criar Perfis
                 </button>
               </div>
-            ` : state.friends.map((f, idx) => `
+            ` : state.friends.map((f, idx) => {
+              const liveSidebarTrack = f.online && f.currentTrack && f.currentTrack !== "Ouvindo no Miado"
+                ? f.currentTrack
+                : "Silencioso no momento";
+              return `
               <div class="friend-activity-card">
-                <div class="friend-top-row" data-friend-album="${f.albumId}">
-                  <img class="friend-avatar" src="${f.avatar}" alt="${f.name}" onerror="window.handleCatAvatarError(this)" />
+                <div class="friend-top-row" data-sidebar-open-friend="${idx}" style="cursor:pointer;" title="Ver perfil de ${escapeHtml(f.name)}">
+                  <img class="friend-avatar" src="${escapeHtml(safeImgUrl(f.avatar || f.avatarUrl))}" alt="${escapeHtml(f.name)}" style="cursor:pointer;" onerror="window.handleCatAvatarError(this)" />
                   <div class="friend-info">
                     <div class="friend-name-row">
-                      <span class="friend-name">${f.name}</span>
+                      <span class="friend-name">${escapeHtml(f.name)}</span>
                       ${f.online ? `<span class="friend-online-badge">ON</span>` : ""}
                     </div>
-                    <div class="friend-handle">${f.username}</div>
+                    <div class="friend-handle">${escapeHtml(f.username)}</div>
                   </div>
                 </div>
-                <div class="friend-track-pill">
-                  <div class="friend-status" title="${f.currentTrack}">${f.currentTrack}</div>
+                <div class="friend-track-pill" data-sidebar-open-friend-track="${idx}" style="cursor:${liveSidebarTrack !== 'Silencioso no momento' ? 'pointer' : 'default'};" title="Clique para tocar e ir ao álbum desta música">
+                  <div class="friend-status" title="${escapeHtml(liveSidebarTrack)}" style="text-decoration:${liveSidebarTrack !== 'Silencioso no momento' ? 'underline' : 'none'};">${escapeHtml(liveSidebarTrack)}</div>
                   <div style="display:flex; align-items:center; gap:4px;">
                     <button class="track-icon-btn" style="width:28px; height:28px; color:var(--accent-hover);" data-sidebar-play-friend="${idx}" title="Tocar essa música">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
@@ -9523,16 +10529,17 @@ export function initMiadoClient() {
                   </div>
                 </div>
               </div>
-            `).join("")}
+            `;
+            }).join("")}
 
             <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:700; margin:18px 0 10px;">Artistas Seguidos (${state.followedArtists.length})</div>
             ${state.followedArtists.map((art) => `
-              <div class="friend-activity-card" style="padding:10px; cursor:pointer;" data-sidebar-open-artist="${art.name}">
+              <div class="friend-activity-card" style="padding:10px; cursor:pointer;" data-sidebar-open-artist="${escapeHtml(art.name)}">
                 <div style="display:flex; align-items:center; gap:10px;">
-                  <img src="${ensureArtistAvatarUrl(art)}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--accent-hover);" alt="${art.name}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                  <img src="${escapeHtml(ensureArtistAvatarUrl(art))}" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--accent-hover);" alt="${escapeHtml(art.name)}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                   <div style="flex:1; min-width:0;">
-                    <div style="font-size:0.84rem; font-weight:700; color:#ffffff;" class="text-truncate">${art.name}</div>
-                    <div style="font-size:0.7rem; color:var(--accent-hover);" class="text-truncate">${art.role || "Artista Oficial"}</div>
+                    <div style="font-size:0.84rem; font-weight:700; color:#ffffff;" class="text-truncate">${escapeHtml(art.name)}</div>
+                    <div style="font-size:0.7rem; color:var(--accent-hover);" class="text-truncate">${escapeHtml(art.role || "Artista Oficial")}</div>
                   </div>
                 </div>
               </div>
@@ -9544,10 +10551,10 @@ export function initMiadoClient() {
               return `
                 <div class="friend-activity-card" style="padding:10px;">
                   <div style="font-size:0.78rem; color:#fff; line-height:1.35;">
-                    <strong style="color:var(--accent-hover);">${post.username}</strong> ${post.actionText || "acabou de ouvir"} <strong>${tr.title}</strong>
+                    <strong style="color:var(--accent-hover);">${escapeHtml(post.username)}</strong> ${escapeHtml(post.actionText || "acabou de ouvir")} <strong>${escapeHtml(tr.title)}</strong>
                   </div>
                   <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px;">
-                    <span style="font-size:0.68rem; color:var(--text-muted);">${post.time || "agora mesmo"}</span>
+                    <span style="font-size:0.68rem; color:var(--text-muted);">${escapeHtml(post.time || "agora mesmo")}</span>
                     <button class="btn-see-all" style="font-size:0.72rem;" data-sidebar-play-post="${pIdx}">Dar Play</button>
                   </div>
                 </div>
@@ -9576,23 +10583,30 @@ export function initMiadoClient() {
             });
           });
 
-          container.querySelectorAll("[data-friend-album]").forEach(row => {
+          container.querySelectorAll("[data-sidebar-open-friend]").forEach(row => {
             row.addEventListener("click", () => {
-              this.navigateTo("album", true, { albumId: row.dataset.friendAlbum });
+              const f = state.friends[parseInt(row.dataset.sidebarOpenFriend)];
+              if (!f) return;
+              this.setActiveNav("profile");
+              this.navigateTo("profile", true, { targetUser: f });
+            });
+          });
+
+          container.querySelectorAll("[data-sidebar-open-friend-track]").forEach(pill => {
+            pill.addEventListener("click", async (e) => {
+              if (e.target.closest("[data-sidebar-play-friend]") || e.target.closest("[data-sidebar-like-friend]")) return;
+              const f = state.friends[parseInt(pill.dataset.sidebarOpenFriendTrack)];
+              if (!f) return;
+              await this.playOrOpenFriendTrack(f, true, true);
             });
           });
 
           container.querySelectorAll("[data-sidebar-play-friend]").forEach(btn => {
-            btn.addEventListener("click", (e) => {
+            btn.addEventListener("click", async (e) => {
               e.stopPropagation();
               const f = state.friends[parseInt(btn.dataset.sidebarPlayFriend)];
-              const alb = state.albums.find(a => a.id === f.albumId) || state.albums[0];
-              const tr = f.trackObj || alb.tracks[0];
-              if (tr) {
-                state.queue = [...alb.tracks];
-                state.queueIndex = 0;
-                engine.playTrack(tr, alb);
-              }
+              if (!f) return;
+              await this.playOrOpenFriendTrack(f, false, true);
             });
           });
 
@@ -9608,11 +10622,15 @@ export function initMiadoClient() {
           });
 
           container.querySelectorAll("[data-sidebar-play-post]").forEach(btn => {
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", async () => {
               const post = state.feedPosts[parseInt(btn.dataset.sidebarPlayPost)];
               if (post && post.track) {
-                const alb = state.albums.find(a => a.id === post.albumId || a.id === post.track.albumId) || state.albums[0];
-                engine.playTrack(post.track, alb);
+                await this.playOrOpenFriendTrack({
+                  name: post.name || post.username,
+                  username: post.username,
+                  trackObj: post.track,
+                  currentTrack: `${post.track.title} - ${post.track.artist}`
+                }, false, true);
               }
             });
           });
@@ -9757,6 +10775,7 @@ export function initMiadoClient() {
       }
 
       window.miadoUI = new MiadoUI();
+      state.startLiveCommunitySyncLoop();
       MiadoMusicResolver.hydrateInitialCatalog();
     })();
 }

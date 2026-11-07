@@ -2,178 +2,203 @@
   "entities": {
     "UserAccount": {
       "title": "UserAccount",
-      "description": "User account and private music profile stored in Miado Firestore database",
+      "description": "Private user account document accessible strictly by owner",
       "type": "object",
       "properties": {
-        "uid": {
-          "type": "string",
-          "description": "Unique account identifier matching Firebase Auth UID",
-          "maxLength": 128
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "name": { "type": "string", "maxLength": 80 },
+        "handle": { "type": "string", "maxLength": 28 },
+        "bio": { "type": "string", "maxLength": 300 },
+        "catId": { "type": "string", "maxLength": 40 },
+        "avatarUrl": { "type": "string", "maxLength": 100000 },
+        "bannerUrl": { "type": "string", "maxLength": 150000 },
+        "favoriteArtists": { "type": "array" },
+        "favoriteGenres": { "type": "array" },
+        "followedArtists": { "type": "array" },
+        "privacy": {
+          "type": "object",
+          "properties": {
+            "presence": { "type": "string", "enum": ["public", "followers_only", "private"] },
+            "activity": { "type": "string", "enum": ["public", "followers_only", "private"] }
+          },
+          "required": ["presence", "activity"]
         },
-        "email": {
-          "type": "string",
-          "format": "email",
-          "description": "User email address",
-          "maxLength": 254
-        },
-        "name": {
-          "type": "string",
-          "description": "Display name chosen by user or from Google account",
-          "maxLength": 80
-        },
-        "handle": {
-          "type": "string",
-          "description": "Unique user handle (e.g. @username or @name1234)",
-          "maxLength": 60
-        },
-        "bio": {
-          "type": "string",
-          "description": "Profile biography",
-          "maxLength": 300
-        },
-        "catId": {
-          "type": "string",
-          "description": "Selected cat avatar ID",
-          "maxLength": 40
-        },
-        "avatarUrl": {
-          "type": "string",
-          "description": "Avatar URL or preset path",
-          "maxLength": 2000000
-        },
-        "bannerUrl": {
-          "type": "string",
-          "description": "Banner cover image URL",
-          "maxLength": 2000000
-        },
-        "favoriteArtists": {
-          "type": "array",
-          "description": "User favorite artists for recommendations"
-        },
-        "favoriteGenres": {
-          "type": "array",
-          "description": "Favorite musical genres"
-        },
-        "followedArtists": {
-          "type": "array",
-          "description": "List of followed artists"
-        },
-        "followingProfiles": {
-          "type": "array",
-          "description": "List of followed community profile handles"
-        },
-        "likedTracks": {
-          "type": "array",
-          "description": "User liked tracks persisted across sessions"
-        },
-        "playlists": {
-          "type": "array",
-          "description": "User created and collaborative playlists"
-        },
-        "recentHistory": {
-          "type": "array",
-          "description": "Recently played tracks history"
-        },
-        "onboardingCompleted": {
-          "type": "boolean",
-          "description": "Whether the user finished onboarding wizard"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Creation timestamp",
-          "maxLength": 40
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Last update timestamp",
-          "maxLength": 40
-        }
+        "onboardingCompleted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "email", "name", "catId", "createdAt"]
+      "required": ["uid", "email", "name", "handle", "catId", "privacy", "onboardingCompleted", "createdAt", "updatedAt"]
+    },
+    "LikedTrack": {
+      "title": "LikedTrack",
+      "description": "User liked track stored in /users/{userId}/likes/{trackKey}",
+      "type": "object",
+      "properties": {
+        "trackKey": { "type": "string", "maxLength": 120 },
+        "title": { "type": "string", "maxLength": 200 },
+        "artist": { "type": "string", "maxLength": 200 },
+        "albumTitle": { "type": "string", "maxLength": 200 },
+        "coverUrl": { "type": "string", "maxLength": 2000 },
+        "durationSec": { "type": "integer" },
+        "likedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["trackKey", "title", "artist", "durationSec", "likedAt"]
+    },
+    "HistoryEvent": {
+      "title": "HistoryEvent",
+      "description": "Listening history event stored in /users/{userId}/history/{eventId}",
+      "type": "object",
+      "properties": {
+        "trackKey": { "type": "string", "maxLength": 120 },
+        "title": { "type": "string", "maxLength": 200 },
+        "artist": { "type": "string", "maxLength": 200 },
+        "albumTitle": { "type": "string", "maxLength": 200 },
+        "coverUrl": { "type": "string", "maxLength": 2000 },
+        "durationSec": { "type": "integer" },
+        "playedAt": { "type": "string", "format": "date-time" },
+        "completed": { "type": "boolean" }
+      },
+      "required": ["trackKey", "title", "artist", "durationSec", "playedAt"]
+    },
+    "Handle": {
+      "title": "Handle",
+      "description": "Unique handle reservation mapping handle to owner UID",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "createdAt"]
     },
     "Profile": {
       "title": "Profile",
-      "description": "Community profile card visible to other authenticated listeners",
+      "description": "Public listener profile readable by authenticated users",
       "type": "object",
       "properties": {
-        "uid": {
-          "type": "string",
-          "description": "Author UID matching Firebase Auth UID",
-          "maxLength": 128
-        },
-        "name": {
-          "type": "string",
-          "description": "User display name",
-          "maxLength": 80
-        },
-        "username": {
-          "type": "string",
-          "description": "User public handle with leading @",
-          "maxLength": 60
-        },
-        "bio": {
-          "type": "string",
-          "description": "Short bio",
-          "maxLength": 300
-        },
-        "avatarUrl": {
-          "type": "string",
-          "description": "Avatar photo or cat preset",
-          "maxLength": 2000000
-        },
-        "bannerUrl": {
-          "type": "string",
-          "description": "Banner cover image URL",
-          "maxLength": 2000000
-        },
-        "favoriteArtists": {
-          "type": "array",
-          "description": "List of favorite artists"
-        },
-        "currentTrack": {
-          "type": "string",
-          "description": "Current song being listened to",
-          "maxLength": 200
-        },
-        "albumId": {
-          "type": "string",
-          "description": "Current album ID",
-          "maxLength": 100
-        },
-        "isSelf": {
-          "type": "boolean",
-          "description": "Self indicator flag"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Last update timestamp",
-          "maxLength": 50
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Creation timestamp",
-          "maxLength": 50
-        }
+        "uid": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 80 },
+        "handle": { "type": "string", "maxLength": 28 },
+        "bio": { "type": "string", "maxLength": 300 },
+        "avatarUrl": { "type": "string", "maxLength": 100000 },
+        "bannerUrl": { "type": "string", "maxLength": 150000 },
+        "favoriteArtists": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "name"]
+      "required": ["uid", "name", "handle", "updatedAt"]
+    },
+    "Follow": {
+      "title": "Follow",
+      "description": "Follow edge between followerId and followeeId",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string", "maxLength": 128 },
+        "followeeId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerId", "followeeId", "createdAt"]
+    },
+    "Presence": {
+      "title": "Presence",
+      "description": "Real-time listening presence governed by user privacy",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "visibility": { "type": "string", "enum": ["public", "followers_only", "private"] },
+        "state": { "type": "string", "enum": ["playing", "paused", "idle"] },
+        "track": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "visibility", "state", "updatedAt"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "Social feed activity event governed by actor visibility",
+      "type": "object",
+      "properties": {
+        "actorId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["track_play", "like", "playlist_create", "follow"] },
+        "visibility": { "type": "string", "enum": ["public", "followers_only", "private"] },
+        "track": { "type": "object" },
+        "playlistId": { "type": "string", "maxLength": 40 },
+        "targetUid": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorId", "type", "visibility", "createdAt"]
+    },
+    "Playlist": {
+      "title": "Playlist",
+      "description": "User or collaborative playlist",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "collaboratorIds": { "type": "array" },
+        "visibility": { "type": "string", "enum": ["public", "followers_only", "private"] },
+        "name": { "type": "string", "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 300 },
+        "coverUrl": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ownerId", "collaboratorIds", "visibility", "name", "createdAt", "updatedAt"]
+    },
+    "PlaylistTrack": {
+      "title": "PlaylistTrack",
+      "description": "Track item inside a playlist subcollection",
+      "type": "object",
+      "properties": {
+        "trackKey": { "type": "string", "maxLength": 120 },
+        "title": { "type": "string", "maxLength": 200 },
+        "artist": { "type": "string", "maxLength": 200 },
+        "albumTitle": { "type": "string", "maxLength": 200 },
+        "coverUrl": { "type": "string", "maxLength": 2000 },
+        "durationSec": { "type": "integer" },
+        "addedBy": { "type": "string", "maxLength": 128 },
+        "addedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["trackKey", "title", "artist", "durationSec", "addedBy", "addedAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": {
-        "$ref": "#/entities/UserAccount"
-      },
-      "description": "Stores private user account, music preferences, liked tracks, playlists, and listening history. Restricted strictly to owner."
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Documento privado do usuario, acessivel somente pelo proprio dono"
     },
-    "/profiles/{profileId}": {
-      "schema": {
-        "$ref": "#/entities/Profile"
-      },
-      "description": "Public community profiles. Readable by authenticated users; writable only by profile owner."
+    "/users/{userId}/likes/{trackKey}": {
+      "schema": { "$ref": "#/entities/LikedTrack" },
+      "description": "Faixas curtidas pelo usuario, acessiveis somente pelo dono"
+    },
+    "/users/{userId}/history/{eventId}": {
+      "schema": { "$ref": "#/entities/HistoryEvent" },
+      "description": "Historico de reproducao do usuario, acessivel somente pelo dono"
+    },
+    "/handles/{handle}": {
+      "schema": { "$ref": "#/entities/Handle" },
+      "description": "Reserva unica de handle vinculada ao UID do dono"
+    },
+    "/profiles/{userId}": {
+      "schema": { "$ref": "#/entities/Profile" },
+      "description": "Perfis publicos da comunidade para usuarios autenticados"
+    },
+    "/follows/{followId}": {
+      "schema": { "$ref": "#/entities/Follow" },
+      "description": "Relacoes de seguidor e seguido"
+    },
+    "/presence/{userId}": {
+      "schema": { "$ref": "#/entities/Presence" },
+      "description": "Presenca musical em tempo real controlada por visibilidade"
+    },
+    "/activity/{activityId}": {
+      "schema": { "$ref": "#/entities/Activity" },
+      "description": "Eventos de atividade social no feed"
+    },
+    "/playlists/{playlistId}": {
+      "schema": { "$ref": "#/entities/Playlist" },
+      "description": "Playlists pessoais e colaborativas"
+    },
+    "/playlists/{playlistId}/tracks/{trackKey}": {
+      "schema": { "$ref": "#/entities/PlaylistTrack" },
+      "description": "Faixas pertencentes a uma playlist"
     }
   }
 }

@@ -17,6 +17,19 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      fs: {
+        strict: true,
+        deny: [
+          '.env',
+          '.env.*',
+          'data/**',
+          'server.ts',
+          'src/server/**',
+          'firestore.rules',
+          'firebase-blueprint.json',
+          'firebase-applet-config.json',
+        ],
+      },
     },
   };
 });

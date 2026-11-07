@@ -175,7 +175,8 @@ export function isForbidden30sPreviewUrl(url: string): boolean {
     u.includes("cdns-preview") ||
     u.includes("dzcdn.net/stream") ||
     u.includes("cf-preview-media.sndcdn.com") ||
-    u.includes("/preview/")
+    u.includes("/preview/") ||
+    /[\/?&=_-]preview[\/?&=_-]|\/preview$|\bpreview=/i.test(u)
   );
 }
 

@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import fs from "fs";
 import path from "path";
+import net from "net";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { Readable } from "stream";
@@ -16,23 +17,45 @@ import { rankRecommendationsWithExploration, UserSignalEvent } from "./src/serve
 import {
   verifyFirebaseIdToken,
   securityHeadersMiddleware,
-  createRateLimiter
+  createRateLimiter,
+  requestIdMiddleware,
+  attachAuth
 } from "./src/server/security.ts";
+import { appConfig } from "./src/server/config.ts";
+import { TtlLruCache } from "./src/server/storage/ttlLruCache.ts";
+import {
+  getStreamCacheEntry,
+  setStreamCacheEntry,
+  deleteStreamCacheEntry
+} from "./src/server/storage/streamCache.ts";
+import { resolveSafeLocalAudioPath } from "./src/server/streams/localAudio.ts";
+import {
+  ALLOWED_IMAGE_HOSTS,
+  ALLOWED_STREAM_HOSTS
+} from "./src/server/net/allowlists.ts";
+import {
+  validateOutboundUrl,
+  detectImageMimeType,
+  isPrivateIpAddress
+} from "./src/server/net/safeFetch.ts";
+import { isSafeImageUrl } from "./src/server/schemas.ts";
+import { createPlaylistsRouter } from "./src/server/routes/playlists.ts";
+import { createGlassPlaceholderSvg } from "./src/shared/placeholder.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DATA_DIR = path.join(__dirname, "data");
 const DB_FILE = path.join(DATA_DIR, "miado-db.json");
-const STREAM_CACHE_FILE = path.join(DATA_DIR, "resolved-streams-cache.json");
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
 const SESSION_SECRET =
-  process.env.MIADO_SESSION_SECRET ||
-  crypto.createHash("sha256").update(__dirname + ":miado_runtime_ephemeral_key").digest("hex");
+  process.env.MIADO_SESSION_SECRET && process.env.MIADO_SESSION_SECRET.length >= 32
+    ? process.env.MIADO_SESSION_SECRET
+    : crypto.randomBytes(32).toString("hex");
 
 interface AccountRecord {
   uid: string;
@@ -62,6 +85,7 @@ interface CommunityProfile {
   avatarUrl: string;
   bannerUrl?: string;
   currentTrack?: string;
+  trackObj?: Record<string, unknown> | null;
   albumId?: string;
   favoriteArtists?: string[];
   followersCount?: number;
@@ -120,8 +144,13 @@ function verifySessionToken(token?: string): { uid: string; email: string } | nu
   if (!token || !token.includes(".")) return null;
   try {
     const [payload, sig] = token.split(".");
+    if (!payload || !sig) return null;
     const expectedSig = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
-    if (sig !== expectedSig) return null;
+    const sigBuf = Buffer.from(sig, "utf8");
+    const expBuf = Buffer.from(expectedSig, "utf8");
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return null;
+    }
     const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
     if (!data || !data.email || (data.exp && Date.now() > data.exp)) return null;
     return { uid: String(data.uid || ""), email: String(data.email).toLowerCase().trim() };
@@ -140,8 +169,13 @@ function sanitizeText(val: unknown, maxLen = 200): string {
     .slice(0, maxLen);
 }
 
-// Rate limiter em memória contra força bruta em rotas de autenticação
-const authRateMap = new Map<string, { count: number; resetAt: number }>();
+// Rate limiter limitado em memória contra força bruta em rotas de autenticação
+const authRateMap = new TtlLruCache<string, { count: number; resetAt: number }>({
+  maxEntries: 10_000,
+  maxBytes: 1024 * 1024,
+  ttlMs: 5 * 60 * 1000,
+  sizeOf: () => 64
+});
 function checkAuthRateLimit(ip: string): boolean {
   const now = Date.now();
   const entry = authRateMap.get(ip);
@@ -150,7 +184,7 @@ function checkAuthRateLimit(ip: string): boolean {
     return true;
   }
   entry.count += 1;
-  return entry.count <= 35;
+  return entry.count <= 25;
 }
 
 const DB_ENCRYPTION_KEY = crypto.createHash("sha256").update(SESSION_SECRET + ":aes_256_gcm_db_key").digest();
@@ -181,6 +215,26 @@ function decryptPayloadAES(cipherStr: string): any {
   }
 }
 
+function sanitizeContaminatedDb(db: DbSchema): DbSchema {
+  if (!db || typeof db !== "object") return {};
+  const accounts = db.accounts || {};
+  for (const [email, acc] of Object.entries(accounts)) {
+    if (!acc || !acc.user) continue;
+    const handle = String(acc.user.username || acc.user.handle || "").toLowerCase().trim();
+    // Limpa contaminação histórica onde @user86137 (jorge321341) herdou artistas/histórico de outra sessão local
+    if (handle === "@user86137" || email.startsWith("jorge321341")) {
+      const favs = Array.isArray(acc.favoriteArtists) ? acc.favoriteArtists : [];
+      const fols = Array.isArray(acc.followedArtists) ? acc.followedArtists : [];
+      if (favs.length === 0 && fols.some((f: any) => String(f?.name || f) === "THE DRIVER ERA" || String(f?.name || f) === "TV Girl")) {
+        acc.followedArtists = [];
+        acc.user.followedArtists = [];
+        acc.recentHistory = [];
+      }
+    }
+  }
+  return db;
+}
+
 function readDb(): DbSchema {
   try {
     if (fs.existsSync(DB_FILE)) {
@@ -189,10 +243,10 @@ function readDb(): DbSchema {
         const decryptedVault = decryptPayloadAES(parsed._encryptedVault);
         if (decryptedVault && typeof decryptedVault === "object") {
           const { _encryptedVault: _, ...rest } = parsed;
-          return { ...rest, ...decryptedVault };
+          return sanitizeContaminatedDb({ ...rest, ...decryptedVault });
         }
       }
-      return parsed;
+      return sanitizeContaminatedDb(parsed);
     }
   } catch (e) {
     console.warn("Erro ao ler banco local:", e);
@@ -250,9 +304,11 @@ function upgradeArtwork(url?: string): string {
 }
 
 const SAAVN_GLOBAL_HEADERS: Record<string, string> = {
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
   "X-Forwarded-For": "49.36.128.1",
   "CF-IPCountry": "IN",
-  "Accept-Language": "en-IN,en;q=0.9"
+  "Cookie": "L=english; gdpr_acceptance=true; DL=english"
 };
 
 function normalizeStr(s: string): string {
@@ -479,41 +535,55 @@ export const PIPED_INVIDIOUS_INSTANCES = [
   { type: "invidious", url: "https://invidious.nerdvpn.de/api/v1" }
 ];
 
-// Cache em memória + persistência em disco de streams de músicas completas (zero previews de 30s)
-const fullStreamCache = new Map<string, { url: string; source: string; durationSec: number }>();
-try {
-  if (fs.existsSync(STREAM_CACHE_FILE)) {
-    const rawCache = JSON.parse(fs.readFileSync(STREAM_CACHE_FILE, "utf8"));
-    for (const [k, v] of Object.entries(rawCache || {})) {
-      const entry = v as any;
-      if (entry?.url && !isForbidden30sPreviewUrl(entry.url) && Number(entry.durationSec) >= 60) {
-        fullStreamCache.set(k, entry);
-      }
-    }
-  }
-} catch {}
+const fullStreamCache = {
+  get: (key: string) => getStreamCacheEntry(key),
+  set: (key: string, val: { url: string; source: string; durationSec: number }) =>
+    setStreamCacheEntry(key, val),
+  delete: (key: string) => deleteStreamCacheEntry(key),
+  has: (key: string) => getStreamCacheEntry(key) !== undefined
+};
 
-function persistFullStreamCacheEntry(key: string, entry: { url: string; source: string; durationSec: number }) {
-  if (!entry || !entry.url || isForbidden30sPreviewUrl(entry.url) || entry.url.startsWith("sc-buffer:")) return;
-  fullStreamCache.set(key, entry);
-  try {
-    const obj: Record<string, unknown> = {};
-    for (const [k, v] of fullStreamCache.entries()) {
-      if (v && v.url && !v.url.startsWith("sc-buffer:") && !isForbidden30sPreviewUrl(v.url)) {
-        obj[k] = v;
-      }
-    }
-    fs.writeFileSync(STREAM_CACHE_FILE, JSON.stringify(obj), "utf8");
-  } catch {}
+function persistFullStreamCacheEntry(
+  key: string,
+  entry: { url: string; source: string; durationSec: number }
+) {
+  if (!entry || !entry.url || isForbidden30sPreviewUrl(entry.url) || entry.url.startsWith("sc-buffer:")) {
+    return;
+  }
+  setStreamCacheEntry(key, entry);
 }
-// Cache em memória de buffers completos de áudio (suporta HTTP Range 206 instantâneo)
-const scBufferCache = new Map<string, { buffer: Buffer; contentType: string; durationSec: number }>();
-// Cache de fotos de artistas em memória
-const artistImageCache = new Map<string, { buffer: Buffer; contentType: string }>();
-// Cache de capas 1000x1000 HD de músicas individuais e álbuns em memória
-const coverImageCache = new Map<string, { buffer: Buffer; contentType: string }>();
-// Cache de fotos reais de gatinhos em memória
-const catAvatarCache = new Map<string, { buffer: Buffer; contentType: string }>();
+
+// Caches LRU limitados por entradas, bytes e TTL
+const scBufferCache = new TtlLruCache<
+  string,
+  { buffer: Buffer; contentType: string; durationSec: number }
+>({
+  maxEntries: 32,
+  maxBytes: 128 * 1024 * 1024,
+  ttlMs: 30 * 60 * 1000,
+  sizeOf: (v) => v.buffer.byteLength
+});
+
+const artistImageCache = new TtlLruCache<string, { buffer: Buffer; contentType: string }>({
+  maxEntries: 400,
+  maxBytes: 64 * 1024 * 1024,
+  ttlMs: 24 * 3600 * 1000,
+  sizeOf: (v) => v.buffer.byteLength
+});
+
+const coverImageCache = new TtlLruCache<string, { buffer: Buffer; contentType: string }>({
+  maxEntries: 500,
+  maxBytes: 64 * 1024 * 1024,
+  ttlMs: 24 * 3600 * 1000,
+  sizeOf: (v) => v.buffer.byteLength
+});
+
+const catAvatarCache = new TtlLruCache<string, { buffer: Buffer; contentType: string }>({
+  maxEntries: 32,
+  maxBytes: 8 * 1024 * 1024,
+  ttlMs: 24 * 3600 * 1000,
+  sizeOf: (v) => v.buffer.byteLength
+});
 
 let cachedScClientId = "";
 let cachedScClientIdAt = 0;
@@ -523,7 +593,7 @@ function toCoverProxyUrl(rawUrl: string, title: string, artist: string): string 
   if (title) params.set("title", title);
   if (artist) params.set("artist", artist);
   const upgraded = upgradeArtwork(rawUrl || "");
-  if (upgraded && /^https?:\/\//i.test(upgraded)) {
+  if (upgraded && /^https:\/\//i.test(upgraded)) {
     params.set("url", upgraded);
   }
   return `/api/cover?${params.toString()}`;
@@ -533,7 +603,24 @@ function buildFullStreamProxyUrl(title: string, artist: string): string {
   return `/api/stream?title=${encodeURIComponent(title || "")}&artist=${encodeURIComponent(artist || "")}&preferFull=1`;
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 4200): Promise<globalThis.Response> {
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 4200
+): Promise<globalThis.Response> {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("invalid_protocol");
+  }
+  const cleanHost = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (
+    cleanHost === "localhost" ||
+    cleanHost.endsWith(".localhost") ||
+    cleanHost.endsWith(".local") ||
+    (net.isIP(cleanHost) !== 0 && isPrivateIpAddress(cleanHost))
+  ) {
+    throw new Error("private_host_blocked");
+  }
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -541,7 +628,8 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
       ...options,
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         ...(options.headers || {})
       }
     });
@@ -611,9 +699,9 @@ const VERIFIED_STUDIO_CATALOG: Record<string, { url: string; durationSec: number
 
   // --- KANYE WEST (Def Jam / Roc-A-Fella Master Studio) ---
   "heartless|kanye west": {
-    url: "https://discoveryprovider.audius.co/v1/tracks/bbmrW/stream?app_name=MIADO",
-    durationSec: 211,
-    source: "Miado Studio Master (Def Jam / Roc-A-Fella Records)"
+    url: "https://aac.saavncdn.com/167/708201b3e1bf9dc1c16fdad14d16e2cf_320.mp4",
+    durationSec: 209,
+    source: "Miado Full 320kbps Studio Master (Def Jam / Roc-A-Fella Records)"
   },
 
   // --- JÃO (Universal Music / Master Studio HD) ---
@@ -1282,7 +1370,11 @@ async function resolveFromSinglePipedInstance(
  * bloqueando 100% covers/remixes de usuários terceiros no SoundCloud/JioSaavn e garantindo
  * o áudio original de estúdio para Billie Eilish, Lady Gaga, The Weeknd, Jão e todos os artistas.
  */
-async function resolveFullLengthTrackUrl(title: string, artist: string): Promise<{ url: string; source: string; durationSec: number } | null> {
+async function resolveFullLengthTrackUrl(
+  title: string,
+  artist: string,
+  skipVerifiedCatalog = false
+): Promise<{ url: string; source: string; durationSec: number } | null> {
   const normalizedInputTitle = String(title || "").replace(/['’‘`´]/g, "'").trim();
   const cleanTitle = normalizedInputTitle
     .replace(/\((?:feat|ft|with|prod|deluxe|remaster).*?\)/gi, "")
@@ -1296,37 +1388,39 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
   const aNorm = normalizeStr(cleanArtist || artist);
   const cacheKey = `${tNorm}|${aNorm}`;
 
-  if (fullStreamCache.has(cacheKey)) {
+  if (!skipVerifiedCatalog && fullStreamCache.has(cacheKey)) {
     const cached = fullStreamCache.get(cacheKey)!;
-    const isSnippet =
+    const isSnippetOrCover =
       cached?.url?.includes("dzcdn.net") ||
       cached?.url?.includes("cdns-preview") ||
       cached?.url?.includes("itunes.apple.com") ||
       cached?.url?.includes("apple.com/itunes-assets") ||
+      cached?.url?.includes("discoveryprovider.audius.co") ||
       (cached?.durationSec && cached.durationSec < 95);
-    if (cached && cached.url && !cached.url.startsWith("sc-buffer:") && !isSnippet) {
+    if (cached && cached.url && !cached.url.startsWith("sc-buffer:") && !isSnippetOrCover) {
       return cached;
     }
     fullStreamCache.delete(cacheKey);
   }
 
   // Verificação estrita por chave completa (título + artista) no Catálogo Verificado de Estúdio HD
-  if (VERIFIED_STUDIO_CATALOG[cacheKey]) {
-    const hit = VERIFIED_STUDIO_CATALOG[cacheKey];
-    fullStreamCache.set(cacheKey, hit);
-    return hit;
-  }
-  const cleanKey = `${normalizeSongTitleKey(cleanTitle)}|${aNorm}`;
-  if (VERIFIED_STUDIO_CATALOG[cleanKey]) {
-    const hit = VERIFIED_STUDIO_CATALOG[cleanKey];
-    fullStreamCache.set(cacheKey, hit);
-    return hit;
+  if (!skipVerifiedCatalog) {
+    if (VERIFIED_STUDIO_CATALOG[cacheKey]) {
+      const hit = VERIFIED_STUDIO_CATALOG[cacheKey];
+      fullStreamCache.set(cacheKey, hit);
+      return hit;
+    }
+    const cleanKey = `${normalizeSongTitleKey(cleanTitle)}|${aNorm}`;
+    if (VERIFIED_STUDIO_CATALOG[cleanKey]) {
+      const hit = VERIFIED_STUDIO_CATALOG[cleanKey];
+      fullStreamCache.set(cacheKey, hit);
+      return hit;
+    }
   }
 
-  // Obtém em paralelo os metadados oficiais de estúdio (duração exata + stream master oficial do artista exato) no iTunes (BR + US) e Deezer
+  // Obtém em paralelo a duração exata de estúdio oficial no iTunes (BR + US) e Deezer (APENAS metadados de duração, NUNCA prévia de 30s)
   let expectedSec = 210;
   let hasExactStudioDuration = false;
-  let officialStudioMasterUrl = "";
 
   try {
     const [itBrSettled, itUsSettled, dzSettled] = await Promise.allSettled([
@@ -1410,7 +1504,7 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
     }
   } catch (_e) {}
 
-  // 1. JioSaavn 320kbps Full Song Resolver (DES-ECB nativo em memória, zero processos filhos)
+  // 1. JioSaavn 320kbps Full Song Resolver (DES-ECB nativo em memória, zero processos filhos, estritamente primary_artists)
   const trySaavn = async (): Promise<{ url: string; source: string; durationSec: number } | null> => {
     try {
       const aliasList = ARTIST_ALIASES[aNorm] || [cleanArtist || artist];
@@ -1431,11 +1525,11 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
         const results: any[] = data?.results || [];
         if (!results.length) continue;
 
-        // Pass 1: Correspondência estrita de título + artista + tolerância de ±40s
+        // Pass 1: Correspondência estrita de título + primary_artists + tolerância de ±35s
         for (const item of results) {
           const durSec = Number(item?.more_info?.duration || 0);
           if (!item?.more_info?.encrypted_media_url || durSec < 60 || durSec > 720) continue;
-          if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 40) continue;
+          if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 35) continue;
 
           const itemTitle = String(item.title || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#039;/g, "'");
           const itemAlbum = String(item.more_info?.album || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
@@ -1448,12 +1542,10 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
           const itemTitleNorm = normalizeSongTitleKey(itemTitle);
           if (itemTitleNorm !== tNorm) continue;
 
+          // Exige que o artista seja primary_artist (NUNCA compositor/letrista em artistMap.artists para bloquear bandas de cover)
           const primList: string[] = (item.more_info?.artistMap?.primary_artists || [])
             .map((a: any) => String(a?.name || "")).filter(Boolean);
-          const allSingers: string[] = (item.more_info?.artistMap?.artists || [])
-            .filter((a: any) => !a.role || a.role === "singer" || a.role === "primary_artists")
-            .map((a: any) => String(a?.name || "")).filter(Boolean);
-          const primaryArtists = primList.length > 0 ? primList : (allSingers.length > 0 ? allSingers : [itemSub]);
+          const primaryArtists = primList.length > 0 ? primList : [itemSub];
 
           const hasStrictArtist =
             primaryArtists.some(
@@ -1471,10 +1563,11 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
           }
         }
 
-        // Pass 2: Correspondência flexível de título de estúdio + artista oficial (>= 60s)
+        // Pass 2: Correspondência flexível de título de estúdio + primary_artists oficial (>= 60s)
         for (const item of results) {
           const durSec = Number(item?.more_info?.duration || 0);
           if (!item?.more_info?.encrypted_media_url || durSec < 60 || durSec > 720) continue;
+          if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 45) continue;
 
           const itemTitle = String(item.title || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#039;/g, "'");
           const itemAlbum = String(item.more_info?.album || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
@@ -1489,13 +1582,12 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
 
           const primList: string[] = (item.more_info?.artistMap?.primary_artists || [])
             .map((a: any) => String(a?.name || "")).filter(Boolean);
-          const allSingers: string[] = (item.more_info?.artistMap?.artists || [])
-            .filter((a: any) => !a.role || a.role === "singer" || a.role === "primary_artists")
-            .map((a: any) => String(a?.name || "")).filter(Boolean);
-          const primaryArtists = primList.length > 0 ? primList : (allSingers.length > 0 ? allSingers : [itemSub]);
+          const primaryArtists = primList.length > 0 ? primList : [itemSub];
 
           const hasArtistMatch =
-            primaryArtists.some(aName => artistMatchesTarget(aName, cleanArtist || artist));
+            primaryArtists.some(
+              aName => isOriginalStudioTrack(itemTitle, aName, itemAlbum, durSec) && artistMatchesTarget(aName, cleanArtist || artist)
+            );
           if (!hasArtistMatch) continue;
 
           const decrypted = decryptSaavnMediaUrl(item.more_info.encrypted_media_url);
@@ -1512,37 +1604,7 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
     return null;
   };
 
-  // 1.5. Audius Lossless Studio Stream Resolver (resolução direta sem bloqueio regional)
-  const tryAudius = async (): Promise<{ url: string; source: string; durationSec: number } | null> => {
-    try {
-      const q = `${cleanTitle || normalizedInputTitle} ${cleanArtist || artist}`.trim();
-      const r = await fetchWithTimeout(`https://discoveryprovider.audius.co/v1/tracks/search?query=${encodeURIComponent(q)}&app_name=MIADO`, {}, 2600);
-      if (!r.ok) return null;
-      const d = (await r.json()) as any;
-      const list: any[] = Array.isArray(d?.data) ? d.data : [];
-      for (const item of list) {
-        const itemTitle = String(item.title || "");
-        const itemUser = String(item.user?.name || "");
-        const dur = Number(item.duration || 0);
-        if (dur < 60 || dur > 720) continue;
-        if (hasExactStudioDuration && Math.abs(dur - expectedSec) > 22) continue;
-        const rawLow = `${itemTitle} ${itemUser}`.toLowerCase();
-        if (HARD_REJECT_WORDS.some(w => rawLow.includes(w) && !tNorm.includes(w))) continue;
-        if (!isOriginalStudioTrack(itemTitle, itemUser, "", dur)) continue;
-        const normT = normalizeSongTitleKey(itemTitle);
-        if (normT === tNorm || normT.includes(tNorm) || tNorm.includes(normT)) {
-          return {
-            url: `https://discoveryprovider.audius.co/v1/tracks/${item.id}/stream?app_name=MIADO`,
-            source: "Miado Audius Lossless Studio Stream",
-            durationSec: dur
-          };
-        }
-      }
-    } catch (_e) {}
-    return null;
-  };
-
-  // 2. Motor SoundCloud Full Track (rejeita 100% SNIP/30s e aceita progressive MP3 ou HLS MP3 completo)
+  // 2. Motor SoundCloud Full Track (rejeita 100% SNIP/30s e covers/remixes, aceita progressive MP3 ou HLS MP3/MP4 completo)
   const trySoundCloud = async (): Promise<{ url: string; source: string; durationSec: number } | null> => {
     try {
       const cid = await getSoundCloudClientId();
@@ -1582,15 +1644,16 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
 
         const durSec = Math.round(durMs / 1000);
         if (durSec < 60 || durSec > 720) continue;
-        if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 40) continue;
+        if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 20) continue;
 
         const rawTitle = String(t.title || "");
         const uploader = String(t.user?.username || "");
         const pubArtist = String(t.publisher_metadata?.artist || "");
         if (!isOriginalStudioTrack(rawTitle, uploader, t.publisher_metadata?.album_title || "", durSec)) continue;
 
-        const rawLower = `${rawTitle} ${t.tag_list || ""}`.toLowerCase();
+        const rawLower = `${rawTitle} ${uploader} ${t.tag_list || ""}`.toLowerCase();
         if (HARD_REJECT_WORDS.some(w => rawLower.includes(w) && !tNorm.includes(w))) continue;
+        if (/\b(flip|edit|bootleg|mashup|zouk|forro|brega|mtk|dj\s|club\s+mix|extended\s+mix)\b/i.test(rawLower)) continue;
 
         const rawTitleKey = normalizeSongTitleKey(rawTitle);
         const titleMatches =
@@ -1601,8 +1664,7 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
 
         const artistMatches =
           artistMatchesTarget(uploader, cleanArtist || artist) ||
-          artistMatchesTarget(pubArtist, cleanArtist || artist) ||
-          artistMatchesTarget(rawTitle, cleanArtist || artist);
+          artistMatchesTarget(pubArtist, cleanArtist || artist);
         if (!artistMatches) continue;
 
         let sc = 100 - Math.abs(durSec - expectedSec);
@@ -1621,7 +1683,7 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
         const progressiveMp3 = transcodings.find(
           x =>
             x.format?.protocol === "progressive" &&
-            String(x.format?.mime_type || "").includes("audio/mpeg") &&
+            (String(x.format?.mime_type || "").includes("audio/mpeg") || String(x.format?.mime_type || "").includes("audio/mp4")) &&
             !String(x.format?.protocol || "").includes("encrypted")
         );
 
@@ -1643,16 +1705,17 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
           }
         }
 
-        // Fallback to HLS audio/mpeg stitched into memory buffer for full Range 206 playback
-        const hlsMp3 = transcodings.find(
+        // Fallback to unencrypted HLS audio/mpeg or audio/mp4 stitched into memory buffer for full Range 206 playback
+        const hlsStream = transcodings.find(
           x =>
             x.format?.protocol === "hls" &&
-            String(x.format?.mime_type || "").includes("audio/mpeg") &&
+            (String(x.format?.mime_type || "").includes("audio/mpeg") || String(x.format?.mime_type || "").includes("audio/mp4")) &&
             !String(x.format?.protocol || "").includes("encrypted")
         );
-        if (hlsMp3?.url) {
+        if (hlsStream?.url) {
+          const isMp4 = String(hlsStream.format?.mime_type || "").includes("audio/mp4");
           const hlsMetaRes = await fetchWithTimeout(
-            `${hlsMp3.url}?client_id=${cid}&track_authorization=${encodeURIComponent(t.track_authorization || "")}`,
+            `${hlsStream.url}?client_id=${cid}&track_authorization=${encodeURIComponent(t.track_authorization || "")}`,
             {},
             2500
           );
@@ -1662,11 +1725,18 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
               const m3u8Res = await fetchWithTimeout(hlsMeta.url, {}, 2800);
               if (m3u8Res.ok) {
                 const m3u8Text = await m3u8Res.text();
-                const segUrls = m3u8Text
-                  .split(/\r?\n/)
-                  .map(l => l.trim())
-                  .filter(l => l.startsWith("http"));
-                if (segUrls.length >= 3 && segUrls.length <= 80) {
+                const mapMatch = m3u8Text.match(/#EXT-X-MAP:URI="([^"]+)"/);
+                const segUrls: string[] = [];
+                if (mapMatch?.[1] && mapMatch[1].startsWith("http")) {
+                  segUrls.push(mapMatch[1]);
+                }
+                for (const l of m3u8Text.split(/\r?\n/)) {
+                  const trimmed = l.trim();
+                  if (trimmed.startsWith("http")) {
+                    segUrls.push(trimmed);
+                  }
+                }
+                if (segUrls.length >= 3 && segUrls.length <= 120) {
                   const segBuffers = await Promise.all(
                     segUrls.map(u =>
                       fetchWithTimeout(u, {}, 3500)
@@ -1680,7 +1750,7 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
                     if (fullBuf.length > 350_000) {
                       scBufferCache.set(cacheKey, {
                         buffer: fullBuf,
-                        contentType: "audio/mpeg",
+                        contentType: isMp4 ? "audio/mp4" : "audio/mpeg",
                         durationSec: cand.durSec
                       });
                       return {
@@ -1727,7 +1797,7 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
           if (!isOriginalStudioTrack(name)) return false;
           const fnNorm = normalizeStr(name.replace(/\.(mp3|m4a)$/i, ""));
           const lenSec = parseFloat(f.length || "0") || expectedSec;
-          return fnNorm.includes(tNorm) && lenSec >= 60 && lenSec <= 720 && (!hasExactStudioDuration || Math.abs(lenSec - expectedSec) <= 45);
+          return fnNorm.includes(tNorm) && lenSec >= 60 && lenSec <= 720 && (!hasExactStudioDuration || Math.abs(lenSec - expectedSec) <= 35);
         });
         if (audioFile) {
           const lenSec = Math.round(parseFloat(audioFile.length || "0")) || expectedSec;
@@ -1756,16 +1826,15 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
     return null;
   };
 
-  // Executa todos os resolvedores em paralelo para resposta rápida (< 2.8s)
-  const [saavnRes, audiusRes, scRes, pipedRes, archRes] = await Promise.allSettled([
+  // Executa os resolvedores de estúdio em paralelo (prioridade estrita: JioSaavn 320kbps Master -> SoundCloud Master -> Archive Studio -> Piped)
+  const [saavnRes, scRes, archRes, pipedRes] = await Promise.allSettled([
     trySaavn(),
-    tryAudius(),
     trySoundCloud(),
-    tryAllPiped(),
-    tryInternetArchive()
+    tryInternetArchive(),
+    tryAllPiped()
   ]);
 
-  for (const resCandidate of [saavnRes, audiusRes, scRes, pipedRes, archRes]) {
+  for (const resCandidate of [saavnRes, scRes, archRes, pipedRes]) {
     if (
       resCandidate.status === "fulfilled" &&
       resCandidate.value?.url &&
@@ -1777,7 +1846,6 @@ async function resolveFullLengthTrackUrl(title: string, artist: string): Promise
     }
   }
 
-  // NUNCA retorna preview de 30s da Apple/Deezer!
   return null;
 }
 
@@ -1865,23 +1933,22 @@ const ARTIST_SIMILARITY_GRAPH: Record<string, { related: string[]; genre: string
   "chappell roan": { related: ["Sabrina Carpenter", "Lady Gaga", "Olivia Rodrigo", "Billie Eilish", "Charli xcx"], genre: "Synth-Pop & Alt-Pop" }
 };
 
-async function startServer() {
+export async function createMiadoApp() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
-
-  // Headers de Segurança
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
-    next();
-  });
-
-  app.use(express.json({ limit: "10mb" }));
+  app.set("trust proxy", appConfig.TRUST_PROXY_HOPS);
+  app.use(requestIdMiddleware);
+  app.use(securityHeadersMiddleware);
+  app.use(express.json({ limit: "250kb" }));
+  app.use("/api", createRateLimiter(2500, 60_000));
+  app.use(attachAuth);
+  app.use("/api/playlists", createPlaylistsRouter());
 
   // 1. Healthcheck
   app.get("/api/health", (_req: Request, res: Response) => {
-    res.json({ status: "ok", engine: "Miado Full Original Studio Audio & Recommendation Server" });
+    res.json({
+      status: "ok",
+      instanceCount: PIPED_INVIDIOUS_INSTANCES.length
+    });
   });
 
   // 1b. Proxy Multi-API de Fotos Reais de Gatinhos (/api/cat-avatar)
@@ -1892,6 +1959,8 @@ async function startServer() {
     if (catAvatarCache.has(cacheKey)) {
       const cached = catAvatarCache.get(cacheKey)!;
       res.setHeader("Content-Type", cached.contentType);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
       res.setHeader("Cache-Control", "public, max-age=86400");
       res.send(cached.buffer);
       return;
@@ -1899,7 +1968,6 @@ async function startServer() {
 
     const candidates = [...(REAL_CAT_MULTI_SOURCES[cacheKey] || REAL_CAT_MULTI_SOURCES.cat_1)];
 
-    // Também consulta TheCatAPI dinamicamente caso os links primários precisem de reforço
     try {
       for (const url of candidates) {
         try {
@@ -1907,10 +1975,12 @@ async function startServer() {
           if (imgRes.ok) {
             const ab = await imgRes.arrayBuffer();
             const buffer = Buffer.from(ab);
-            const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-            if (buffer.length > 1500 && contentType.startsWith("image/")) {
-              catAvatarCache.set(cacheKey, { buffer, contentType });
-              res.setHeader("Content-Type", contentType);
+            const detectedMime = detectImageMimeType(buffer);
+            if (buffer.length > 1500 && detectedMime) {
+              catAvatarCache.set(cacheKey, { buffer, contentType: detectedMime });
+              res.setHeader("Content-Type", detectedMime);
+              res.setHeader("X-Content-Type-Options", "nosniff");
+              res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
               res.setHeader("Cache-Control", "public, max-age=86400");
               res.send(buffer);
               return;
@@ -1919,8 +1989,11 @@ async function startServer() {
         } catch (_e) {}
       }
 
-      // Contingência extra com API JSON do TheCatAPI
-      const apiRes = await fetchWithTimeout("https://api.thecatapi.com/v1/images/search?limit=1&mime_types=jpg,png", {}, 3500);
+      const apiRes = await fetchWithTimeout(
+        "https://api.thecatapi.com/v1/images/search?limit=1&mime_types=jpg,png",
+        {},
+        3500
+      );
       if (apiRes.ok) {
         const arr = (await apiRes.json()) as any[];
         const dynamicUrl = arr?.[0]?.url;
@@ -1928,10 +2001,12 @@ async function startServer() {
           const imgRes = await fetchWithTimeout(dynamicUrl, {}, 3800);
           if (imgRes.ok) {
             const buffer = Buffer.from(await imgRes.arrayBuffer());
-            const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-            if (buffer.length > 1500) {
-              catAvatarCache.set(cacheKey, { buffer, contentType });
-              res.setHeader("Content-Type", contentType);
+            const detectedMime = detectImageMimeType(buffer);
+            if (buffer.length > 1500 && detectedMime) {
+              catAvatarCache.set(cacheKey, { buffer, contentType: detectedMime });
+              res.setHeader("Content-Type", detectedMime);
+              res.setHeader("X-Content-Type-Options", "nosniff");
+              res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
               res.setHeader("Cache-Control", "public, max-age=86400");
               res.send(buffer);
               return;
@@ -1941,11 +2016,13 @@ async function startServer() {
       }
     } catch (_e) {}
 
-    res.redirect(REAL_CAT_MULTI_SOURCES.cat_1[0]);
+    const svg = createGlassPlaceholderSvg("avatar", cacheKey);
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(svg);
   });
-
-  app.set("trust proxy", 1);
-  app.use(securityHeadersMiddleware);
 
   // 1c. Paradas e Lançamentos em Tempo Real (Fase 5 — /api/charts com TTL 1h e stale-while-revalidate)
   app.get("/api/charts", async (req: Request, res: Response) => {
@@ -2325,6 +2402,14 @@ async function startServer() {
     const profiles = { ...(current.profiles || {}) };
     if (mergedUser && safeHandle && safeHandle !== "@visitante" && safeHandle !== "@novo_usuario") {
       const prevProf = profiles[safeHandle];
+      const prevUpdatedMs = prevProf?.updatedAt ? Date.parse(prevProf.updatedAt) : 0;
+      const isPrevFresh = Boolean(prevProf?.online && prevUpdatedMs > 0 && Date.now() - prevUpdatedMs < 180_000);
+      const prevTrackClean =
+        prevProf?.currentTrack &&
+        prevProf.currentTrack !== "Ouvindo no Miado" &&
+        prevProf.currentTrack !== "Silencioso no momento"
+          ? prevProf.currentTrack
+          : "";
       profiles[safeHandle] = {
         id: prevProf?.id || existing.uid || `prof_${Date.now()}`,
         name: String(mergedUser.name || "Ouvinte"),
@@ -2332,13 +2417,14 @@ async function startServer() {
         bio: String(mergedUser.bio || ""),
         avatarUrl: String(mergedUser.avatarUrl || mergedUser.customAvatar || "/api/cat-avatar?id=cat_1"),
         bannerUrl: String(mergedUser.bannerUrl || mergedUser.customBanner || ""),
-        currentTrack: prevProf?.currentTrack || "Ouvindo no Miado",
+        currentTrack: isPrevFresh ? prevTrackClean : "",
+        trackObj: isPrevFresh && prevTrackClean ? (prevProf?.trackObj || null) : null,
         albumId: prevProf?.albumId || "billie_hmhas",
         favoriteArtists: Array.isArray(mergedUser.favoriteArtists) ? (mergedUser.favoriteArtists as string[]) : [],
         followersCount: Number(mergedUser.followersCount || prevProf?.followersCount || 0),
         followingCount: Number(mergedUser.followingCount || prevProf?.followingCount || 0),
-        online: true,
-        updatedAt: new Date().toISOString()
+        online: isPrevFresh,
+        updatedAt: isPrevFresh && prevProf?.updatedAt ? prevProf.updatedAt : new Date().toISOString()
       };
     }
 
@@ -2388,9 +2474,9 @@ async function startServer() {
   // 2b. Autenticação Segura e Banco de Dados de Contas com E-mail e Senha (/api/auth/*)
   app.post("/api/auth/register", (req: Request, res: Response) => {
     try {
-      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "local");
+      const ip = String(req.ip || req.socket.remoteAddress || "local");
       if (!checkAuthRateLimit(ip)) {
-        res.status(429).json({ ok: false, error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." });
+        res.status(429).json({ ok: false, error: "rate_limit_exceeded", requestId: req.requestId });
         return;
       }
 
@@ -2399,18 +2485,18 @@ async function startServer() {
       const rawPassword = String(password || "");
 
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-        res.status(400).json({ ok: false, error: "Informe um endereço de e-mail válido." });
+        res.status(400).json({ ok: false, error: "invalid_email", requestId: req.requestId });
         return;
       }
-      if (rawPassword.length < 4) {
-        res.status(400).json({ ok: false, error: "A senha deve ter pelo menos 4 caracteres." });
+      if (rawPassword.length < 6) {
+        res.status(400).json({ ok: false, error: "password_too_short", requestId: req.requestId });
         return;
       }
 
       const db = readDb();
       const accounts = db.accounts || {};
       if (accounts[cleanEmail]) {
-        res.status(409).json({ ok: false, error: "Este e-mail já está cadastrado. Entre com sua senha na aba Entrar na Conta." });
+        res.status(409).json({ ok: false, error: "email_already_registered", requestId: req.requestId });
         return;
       }
 
@@ -2432,14 +2518,13 @@ async function startServer() {
         .slice(0, 28) || "ouvinte";
       const cleanHandle = `@${cleanSlug}`;
 
-      // Proíbe @handle repetido no banco de dados
       const isHandleTaken = Object.values(accounts).some(acc => {
         const existingH = String(acc?.user?.username || acc?.user?.handle || "").toLowerCase().trim();
         const normH = existingH.startsWith("@") ? existingH : `@${existingH}`;
         return normH === cleanHandle;
       });
       if (isHandleTaken) {
-        res.status(409).json({ ok: false, error: `O usuário ${cleanHandle} já está em uso. Escolha outro @ diferente.` });
+        res.status(409).json({ ok: false, error: "handle_already_taken", requestId: req.requestId });
         return;
       }
 
@@ -2452,6 +2537,7 @@ async function startServer() {
         ? favoriteArtists.map((a: unknown) => sanitizeText(a, 80)).filter(Boolean)
         : [];
 
+      const safeCatId = sanitizeText(catId || "cat_1", 32);
       const userProfile = {
         uid,
         email: cleanEmail,
@@ -2459,10 +2545,10 @@ async function startServer() {
         username: cleanHandle,
         handle: cleanHandle,
         bio: sanitizeText(bio || "", 240),
-        catId: sanitizeText(catId || "cat_1", 32),
-        avatarUrl: `/api/cat-avatar?id=${sanitizeText(catId || "cat_1", 32)}`,
-        customAvatar: currentData?.user?.customAvatar || "",
-        customBanner: currentData?.user?.customBanner || "",
+        catId: safeCatId,
+        avatarUrl: `/api/cat-avatar?id=${safeCatId}`,
+        customAvatar: isSafeImageUrl(currentData?.user?.customAvatar) ? String(currentData?.user?.customAvatar || "") : "",
+        customBanner: isSafeImageUrl(currentData?.user?.customBanner) ? String(currentData?.user?.customBanner || "") : "",
         favoriteArtists: favList,
         followedArtists: [],
         followingProfiles: [],
@@ -2497,13 +2583,13 @@ async function startServer() {
       accounts[cleanEmail] = record;
       const profiles = { ...(db.profiles || {}) };
       profiles[cleanHandle] = {
-        id: uid,
+        id: `prof_${cleanSlug}`,
         name: displayName,
         username: cleanHandle,
         bio: userProfile.bio,
         avatarUrl: userProfile.avatarUrl,
         bannerUrl: "",
-        currentTrack: "Ouvindo no Miado",
+        currentTrack: "",
         albumId: "billie_hmhas",
         favoriteArtists: favList,
         followersCount: 0,
@@ -2520,7 +2606,7 @@ async function startServer() {
       const sessionToken = createSessionToken(record.uid, record.email);
       res.setHeader(
         "Set-Cookie",
-        `miado_session=${sessionToken}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=${60 * 60 * 24 * 30}`
+        `miado_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 30}`
       );
 
       res.json({
@@ -2546,16 +2632,16 @@ async function startServer() {
           volume: record.volume
         }
       });
-    } catch (err: any) {
-      res.status(500).json({ ok: false, error: err?.message || "Erro ao criar conta." });
+    } catch (_err: any) {
+      res.status(500).json({ ok: false, error: "register_failed", requestId: req.requestId });
     }
   });
 
   app.post("/api/auth/login", (req: Request, res: Response) => {
     try {
-      const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "local");
+      const ip = String(req.ip || req.socket.remoteAddress || "local");
       if (!checkAuthRateLimit(ip)) {
-        res.status(429).json({ ok: false, error: "Muitas tentativas de login. Aguarde alguns minutos." });
+        res.status(429).json({ ok: false, error: "rate_limit_exceeded", requestId: req.requestId });
         return;
       }
 
@@ -2564,20 +2650,15 @@ async function startServer() {
       const rawPassword = String(password || "");
 
       if (!cleanEmail || !rawPassword) {
-        res.status(400).json({ ok: false, error: "Preencha seu e-mail e sua senha." });
+        res.status(400).json({ ok: false, error: "missing_credentials", requestId: req.requestId });
         return;
       }
 
       const db = readDb();
       const accounts = db.accounts || {};
       const record = accounts[cleanEmail];
-      if (!record) {
-        res.status(404).json({ ok: false, error: "Conta não encontrada com este e-mail. Crie sua conta gratuitamente!" });
-        return;
-      }
-
-      if (!verifyPasswordTimingSafe(rawPassword, record.salt, record.passwordHash)) {
-        res.status(401).json({ ok: false, error: "Senha incorreta. Verifique e tente novamente." });
+      if (!record || !verifyPasswordTimingSafe(rawPassword, record.salt, record.passwordHash)) {
+        res.status(401).json({ ok: false, error: "invalid_credentials", requestId: req.requestId });
         return;
       }
 
@@ -2594,14 +2675,39 @@ async function startServer() {
         ? record.playlists.filter((p: any) => p && !DEFAULT_PLAYLIST_IDS.has(String(p.id || "")))
         : [];
 
+      const profiles = db.profiles || {};
+      const handleKey = normalizedHandle.toLowerCase();
+      if (handleKey && handleKey !== "@visitante" && handleKey !== "@novo_usuario") {
+        const existingProf = profiles[handleKey] || ({} as Partial<CommunityProfile>);
+        const rawAv = String(record.user?.avatarUrl || existingProf.avatarUrl || `/api/cat-avatar?id=${record.user?.catId || "cat_1"}`);
+        const rawBan = String(record.user?.bannerUrl || existingProf.bannerUrl || "");
+        profiles[handleKey] = {
+          id: existingProf.id || `prof_${handleKey.replace(/[^a-z0-9_]/gi, "")}`,
+          name: String(record.user?.name || existingProf.name || normalizedHandle),
+          username: handleKey,
+          bio: String(record.user?.bio || existingProf.bio || ""),
+          avatarUrl: isSafeImageUrl(rawAv) ? rawAv : "/api/cat-avatar?id=cat_1",
+          bannerUrl: isSafeImageUrl(rawBan) ? rawBan : "",
+          currentTrack: existingProf.currentTrack || "",
+          trackObj: existingProf.trackObj || null,
+          albumId: existingProf.albumId || "billie_hmhas",
+          favoriteArtists: Array.isArray(record.favoriteArtists) ? record.favoriteArtists : existingProf.favoriteArtists || [],
+          followersCount: existingProf.followersCount || 0,
+          followingCount: existingProf.followingCount || 0,
+          online: true,
+          updatedAt: new Date().toISOString()
+        };
+      }
+
       writeDb({
-        accounts
+        accounts,
+        profiles
       });
 
       const sessionToken = createSessionToken(record.uid, record.email);
       res.setHeader(
         "Set-Cookie",
-        `miado_session=${sessionToken}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=${60 * 60 * 24 * 30}`
+        `miado_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 30}`
       );
 
       res.json({
@@ -2627,25 +2733,28 @@ async function startServer() {
           volume: record.volume
         }
       });
-    } catch (err: any) {
-      res.status(500).json({ ok: false, error: err?.message || "Erro ao autenticar." });
+    } catch (_err: any) {
+      res.status(500).json({ ok: false, error: "login_failed", requestId: req.requestId });
     }
   });
 
   app.post("/api/auth/logout", (_req: Request, res: Response) => {
-    writeDb({ activeAccountEmail: "" });
-    res.setHeader("Set-Cookie", "miado_session=; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=0");
+    res.setHeader("Set-Cookie", "miado_session=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0");
     res.json({ ok: true });
   });
 
   // 2c. Endpoint Rápido para Salvar Preferências de Perfil + Artistas Favoritos (/api/user/preferences)
   app.post("/api/user/preferences", async (req: Request, res: Response) => {
     try {
-      const { email, name, handle, username, bio, catId, customAvatar, customBanner, favoriteArtists, followedArtists, followingProfiles, onboardingCompleted } = req.body || {};
       const authUser = await resolveAuthenticatedUser(req);
+      if (!authUser || !authUser.email) {
+        res.status(401).json({ ok: false, error: "unauthorized", requestId: req.requestId });
+        return;
+      }
+      const { name, handle, username, bio, catId, customAvatar, customBanner, favoriteArtists, followedArtists, followingProfiles, onboardingCompleted } = req.body || {};
       const db = readDb();
       const accounts = db.accounts || {};
-      const targetEmail = sanitizeText(authUser?.email || email || "", 120).toLowerCase();
+      const targetEmail = authUser.email.toLowerCase().trim();
 
       if (!targetEmail || targetEmail === "usr_guest@miado.app") {
         res.json({ ok: true, guestMode: true });
@@ -2679,33 +2788,36 @@ async function startServer() {
           return normH === cleanHandle;
         });
         if (handleTaken) {
-          res.status(409).json({ ok: false, error: `O usuário ${cleanHandle} já está em uso por outra pessoa.` });
+          res.status(409).json({ ok: false, error: "handle_already_taken", requestId: req.requestId });
           return;
         }
       }
 
+      const safeAvatar = customAvatar !== undefined && isSafeImageUrl(customAvatar) ? String(customAvatar) : undefined;
+      const safeBanner = customBanner !== undefined && isSafeImageUrl(customBanner) ? String(customBanner) : undefined;
+
       const updatedUser: Record<string, unknown> = {
-        ...(db.user || {}),
+        ...(accounts[targetEmail]?.user || {}),
         ...(name !== undefined ? { name: sanitizeText(name, 60) } : {}),
         ...(cleanHandle !== undefined ? { handle: cleanHandle, username: cleanHandle } : {}),
         ...(bio !== undefined ? { bio: sanitizeText(bio, 240) } : {}),
         ...(catId !== undefined ? { catId: sanitizeText(catId, 32) } : {}),
-        ...(customAvatar !== undefined ? { customAvatar, avatarUrl: customAvatar } : {}),
-        ...(customBanner !== undefined ? { customBanner, bannerUrl: customBanner } : {}),
-        ...(followedArtists !== undefined ? { followedArtists } : {}),
-        ...(followingProfiles !== undefined ? { followingProfiles } : {}),
+        ...(safeAvatar !== undefined ? { customAvatar: safeAvatar, avatarUrl: safeAvatar } : {}),
+        ...(safeBanner !== undefined ? { customBanner: safeBanner, bannerUrl: safeBanner } : {}),
+        ...(Array.isArray(followedArtists) ? { followedArtists: followedArtists.slice(0, 200) } : {}),
+        ...(Array.isArray(followingProfiles) ? { followingProfiles: followingProfiles.slice(0, 200) } : {}),
         favoriteArtists: cleanFavs,
         onboardingCompleted: Boolean(onboardingCompleted ?? true)
       };
 
-      if (targetEmail && targetEmail !== "usr_guest@miado.app" && accounts[targetEmail]) {
+      if (accounts[targetEmail]) {
         accounts[targetEmail] = {
           ...accounts[targetEmail],
           updatedAt: new Date().toISOString(),
           user: { ...accounts[targetEmail].user, ...updatedUser },
           favoriteArtists: cleanFavs,
-          ...(followedArtists !== undefined ? { followedArtists } : {}),
-          ...(followingProfiles !== undefined ? { followingProfiles } : {}),
+          ...(Array.isArray(followedArtists) ? { followedArtists: followedArtists.slice(0, 200) } : {}),
+          ...(Array.isArray(followingProfiles) ? { followingProfiles: followingProfiles.slice(0, 200) } : {}),
           onboardingCompleted: Boolean(onboardingCompleted ?? true)
         };
       }
@@ -2714,14 +2826,15 @@ async function startServer() {
       const finalHandle = String(updatedUser.username || updatedUser.handle || "").toLowerCase().trim();
       if (finalHandle && finalHandle !== "@visitante" && finalHandle !== "@novo_usuario") {
         const existingProf = profiles[finalHandle];
+        const safeSlug = finalHandle.replace(/[^a-z0-9_]/g, "");
         profiles[finalHandle] = {
-          id: existingProf?.id || `prof_${Date.now()}`,
+          id: existingProf?.id || `prof_${safeSlug}`,
           name: String(updatedUser.name || "Ouvinte"),
           username: finalHandle,
           bio: String(updatedUser.bio || ""),
           avatarUrl: String(updatedUser.avatarUrl || updatedUser.customAvatar || "/api/cat-avatar?id=cat_1"),
           bannerUrl: String(updatedUser.bannerUrl || updatedUser.customBanner || ""),
-          currentTrack: existingProf?.currentTrack || "Ouvindo no Miado",
+          currentTrack: existingProf?.currentTrack || "",
           albumId: existingProf?.albumId || "billie_hmhas",
           favoriteArtists: cleanFavs,
           followersCount: Number(existingProf?.followersCount || 0),
@@ -2742,8 +2855,8 @@ async function startServer() {
         favoriteArtists: cleanFavs,
         onboardingCompleted: Boolean(onboardingCompleted ?? true)
       });
-    } catch (err: any) {
-      res.status(500).json({ ok: false, error: err?.message || "Erro ao salvar preferências." });
+    } catch (_err: any) {
+      res.status(500).json({ ok: false, error: "preferences_update_failed", requestId: req.requestId });
     }
   });
 
@@ -2960,22 +3073,39 @@ async function startServer() {
 
   // 3. Proxy e Resolvedor de Foto Oficial de Artista 1000x1000 (/api/artist-image)
   app.get("/api/artist-image", async (req: Request, res: Response) => {
-    const name = String(req.query.name || "Lady Gaga").trim();
+    const name = String(req.query.name || "Lady Gaga").trim().slice(0, 120);
     const explicitUrl = String(req.query.url || "").trim();
     const key = normalizeStr(name);
 
-    if (artistImageCache.has(key)) {
-      const cached = artistImageCache.get(key)!;
+    let validatedExplicitUrl = "";
+    if (explicitUrl) {
+      try {
+        const checked = await validateOutboundUrl(explicitUrl, ALLOWED_IMAGE_HOSTS);
+        if (!checked.pathname.includes("/images/artist//")) {
+          validatedExplicitUrl = upgradeArtwork(checked.toString());
+        }
+      } catch {
+        res.status(400).json({ error: "invalid_image_url", requestId: req.requestId });
+        return;
+      }
+    }
+
+    const urlHash = validatedExplicitUrl
+      ? crypto.createHash("sha1").update(validatedExplicitUrl).digest("hex").slice(0, 16)
+      : "";
+    const cacheKey = urlHash ? `${key}|${urlHash}` : key;
+
+    if (artistImageCache.has(cacheKey)) {
+      const cached = artistImageCache.get(cacheKey)!;
       res.setHeader("Content-Type", cached.contentType);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
       res.setHeader("Cache-Control", "public, max-age=86400");
       res.send(cached.buffer);
       return;
     }
 
-    let imageUrl = "";
-    if (explicitUrl && explicitUrl.startsWith("http") && !explicitUrl.includes("/images/artist//")) {
-      imageUrl = upgradeArtwork(explicitUrl);
-    }
+    let imageUrl = validatedExplicitUrl;
 
     // 1. Tentativa Primária: Deezer Artist API
     if (!imageUrl) {
@@ -3013,7 +3143,7 @@ async function startServer() {
       } catch (_e) {}
     }
 
-    // 1.5. Fallback Deezer Track Search (captura foto de perfil oficial do objeto artist dentro das faixas)
+    // 1.5. Fallback Deezer Track Search
     if (!imageUrl) {
       try {
         const dzTrackRes = await fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(name)}&limit=6`, {}, 2800);
@@ -3032,7 +3162,7 @@ async function startServer() {
       } catch (_e) {}
     }
 
-    // 2. Fallback Secundário (quando o Deezer aplica rate limit em requisições simultâneas): iTunes Catalog HD
+    // 2. Fallback Secundário: iTunes Catalog HD
     if (!imageUrl) {
       try {
         const itRes = await fetchWithTimeout(
@@ -3056,108 +3186,157 @@ async function startServer() {
 
     if (imageUrl) {
       try {
+        await validateOutboundUrl(imageUrl, ALLOWED_IMAGE_HOSTS);
         const imgRes = await fetchWithTimeout(imageUrl, {}, 4500);
         if (imgRes.ok) {
           const arrayBuf = await imgRes.arrayBuffer();
           const buffer = Buffer.from(arrayBuf);
-          const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          if (buffer.length > 1000) {
-            artistImageCache.set(key, { buffer, contentType });
-            res.setHeader("Content-Type", contentType);
+          const detectedMime = detectImageMimeType(buffer);
+          if (buffer.length > 800 && detectedMime) {
+            artistImageCache.set(cacheKey, { buffer, contentType: detectedMime });
+            res.setHeader("Content-Type", detectedMime);
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
             res.setHeader("Cache-Control", "public, max-age=86400");
             res.send(buffer);
             return;
+          } else if (validatedExplicitUrl) {
+            res.status(415).json({ error: "invalid_image_signature", requestId: req.requestId });
+            return;
           }
         }
-      } catch (_e) {}
+      } catch (_e) {
+        if (validatedExplicitUrl) {
+          res.status(502).json({ error: "upstream_image_failed", requestId: req.requestId });
+          return;
+        }
+      }
     }
 
-    const initials = name
-      .split(/\s+/)
-      .slice(0, 2)
-      .map(w => w[0]?.toUpperCase() || "")
-      .join("");
-    const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-      <defs>
-        <radialGradient id="artBg" cx="50%" cy="30%" r="70%">
-          <stop offset="0%" stop-color="#2d1d52"/>
-          <stop offset="100%" stop-color="#0b0816"/>
-        </radialGradient>
-      </defs>
-      <rect width="600" height="600" rx="300" fill="url(#artBg)"/>
-      <circle cx="300" cy="300" r="290" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
-      <text x="300" y="340" text-anchor="middle" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="160" font-weight="800" letter-spacing="-2">${initials || "M"}</text>
-    </svg>`;
+    const fallbackSvg = createGlassPlaceholderSvg("artist", name);
     res.setHeader("Content-Type", "image/svg+xml");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.send(fallbackSvg);
   });
 
   // 3b. Proxy e Resolvedor de Capa 1000x1000 HD de Qualquer Música Individual ou Álbum (/api/cover)
-  app.get("/api/cover", async (req: Request, res: Response) => {
-    const title = String(req.query.title || "").trim();
-    const artist = String(req.query.artist || "").trim();
-    const rawUrl = String(req.query.url || "").trim();
-    const cacheKey = `${normalizeSongTitleKey(title)}|${normalizeStr(artist)}|${rawUrl.slice(-36)}`;
+  const inFlightCoverPromises = new Map<string, Promise<{ buffer: Buffer; contentType: string } | null>>();
 
-    if (coverImageCache.has(cacheKey)) {
-      const cached = coverImageCache.get(cacheKey)!;
-      res.setHeader("Content-Type", cached.contentType);
-      res.setHeader("Cache-Control", "public, max-age=86400");
-      res.send(cached.buffer);
-      return;
+  const fetchAndValidateCoverUrl = async (urlToFetch: string): Promise<{ buffer: Buffer; contentType: string } | null> => {
+    const inflightKey = `url:${urlToFetch}`;
+    if (coverImageCache.has(inflightKey)) {
+      return coverImageCache.get(inflightKey)!;
     }
-
-    // 1. Se já veio uma URL direta de capa (Deezer CDN ou Apple Music CDN), busca IMEDIATAMENTE sem disparar buscas paralelas que sofrem rate-limit!
-    if (rawUrl && /^https?:\/\//i.test(rawUrl) && !rawUrl.includes("/images/cover//") && !rawUrl.includes("cdns-preview")) {
-      const upgradedDirect = upgradeArtwork(rawUrl);
+    if (inFlightCoverPromises.has(inflightKey)) {
+      return await inFlightCoverPromises.get(inflightKey)!;
+    }
+    const p = (async () => {
       try {
-        const directRes = await fetchWithTimeout(upgradedDirect, {}, 4000);
-        if (directRes.ok) {
-          const ab = await directRes.arrayBuffer();
+        await validateOutboundUrl(urlToFetch, ALLOWED_IMAGE_HOSTS);
+        const resImg = await fetchWithTimeout(
+          urlToFetch,
+          {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+              Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+            }
+          },
+          5500
+        );
+        if (resImg.ok) {
+          const ab = await resImg.arrayBuffer();
           const buffer = Buffer.from(ab);
-          const contentType = directRes.headers.get("content-type") || "image/jpeg";
-          if (buffer.length > 800) {
-            coverImageCache.set(cacheKey, { buffer, contentType });
-            res.setHeader("Content-Type", contentType);
-            res.setHeader("Cache-Control", "public, max-age=86400");
-            res.send(buffer);
-            return;
+          const detectedMime = detectImageMimeType(buffer);
+          if (buffer.length > 500 && detectedMime) {
+            const entry = { buffer, contentType: detectedMime };
+            coverImageCache.set(inflightKey, entry);
+            return entry;
           }
         }
       } catch (_e) {}
+      return null;
+    })();
+    inFlightCoverPromises.set(inflightKey, p);
+    try {
+      return await p;
+    } finally {
+      inFlightCoverPromises.delete(inflightKey);
+    }
+  };
+
+  app.get("/api/cover", async (req: Request, res: Response) => {
+    const title = String(req.query.title || "").trim().slice(0, 120);
+    const artist = String(req.query.artist || "").trim().slice(0, 120);
+    const rawUrl = String(req.query.url || "").trim();
+
+    let validatedDirectUrl = "";
+    if (rawUrl) {
+      try {
+        const checked = await validateOutboundUrl(rawUrl, ALLOWED_IMAGE_HOSTS);
+        if (!checked.pathname.includes("/images/cover//") && !checked.hostname.includes("cdns-preview")) {
+          validatedDirectUrl = upgradeArtwork(checked.toString());
+        }
+      } catch {
+        if (!title && !artist) {
+          res.status(400).json({ error: "invalid_cover_url", requestId: req.requestId });
+          return;
+        }
+        validatedDirectUrl = "";
+      }
+    }
+
+    const urlHash = validatedDirectUrl
+      ? crypto.createHash("sha1").update(validatedDirectUrl).digest("hex").slice(0, 16)
+      : "";
+    const cacheKey = `${normalizeSongTitleKey(title)}|${normalizeStr(artist)}|${urlHash}`;
+
+    const sendCachedCover = (cached: { buffer: Buffer; contentType: string }) => {
+      res.setHeader("Content-Type", cached.contentType);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.send(cached.buffer);
+    };
+
+    if (coverImageCache.has(cacheKey)) {
+      sendCachedCover(coverImageCache.get(cacheKey)!);
+      return;
+    }
+
+    if (validatedDirectUrl) {
+      const directHit = await fetchAndValidateCoverUrl(validatedDirectUrl);
+      if (directHit) {
+        coverImageCache.set(cacheKey, directHit);
+        sendCachedCover(directHit);
+        return;
+      }
     }
 
     const candidateUrls: string[] = [];
     const q = `${title} ${artist}`.trim();
     if (q) {
       try {
-        const [dzTrackSettled, dzAlbumSettled, itSongSettled, itAlbumSettled] = await Promise.allSettled([
-          fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=6`, {}, 3500).then(r => (r.ok ? r.json() : null)),
-          fetchWithTimeout(`https://api.deezer.com/search/album?q=${encodeURIComponent(q)}&limit=5`, {}, 3500).then(r => (r.ok ? r.json() : null)),
+        const [dzTrackSettled, dzAlbumSettled, itSongBrSettled, itSongUsSettled, saavnSettled] = await Promise.allSettled([
+          fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=6`, {}, 4000).then(r => (r.ok ? r.json() : null)),
+          fetchWithTimeout(`https://api.deezer.com/search/album?q=${encodeURIComponent(q)}&limit=5`, {}, 4000).then(r => (r.ok ? r.json() : null)),
           fetchWithTimeout(
-            `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=song&limit=5`,
+            `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=song&limit=6`,
             { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } },
-            3500
+            4000
           ).then(r => (r.ok ? r.json() : null)),
           fetchWithTimeout(
-            `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=album&limit=5`,
+            `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=US&entity=song&limit=6`,
             { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } },
-            3500
+            4000
+          ).then(r => (r.ok ? r.json() : null)),
+          fetchWithTimeout(
+            `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&cc=us&includeMetaTags=1&q=${encodeURIComponent(q)}&n=5`,
+            { headers: SAAVN_GLOBAL_HEADERS },
+            4000
           ).then(r => (r.ok ? r.json() : null))
         ]);
-
-        if (dzAlbumSettled.status === "fulfilled" && dzAlbumSettled.value) {
-          const albList: any[] = Array.isArray((dzAlbumSettled.value as any)?.data) ? (dzAlbumSettled.value as any).data : [];
-          const bestAlb =
-            albList.find(a => normalizeSongTitleKey(a?.title || "") === normalizeSongTitleKey(title)) ||
-            albList.find(a => a?.cover_xl || a?.cover_big || a?.cover_medium) ||
-            albList[0];
-          if (bestAlb) {
-            const c = bestAlb.cover_xl || bestAlb.cover_big || bestAlb.cover_medium;
-            if (c && !c.includes("/images/cover//")) candidateUrls.push(upgradeArtwork(c));
-          }
-        }
 
         if (dzTrackSettled.status === "fulfilled" && dzTrackSettled.value) {
           const list: any[] = Array.isArray((dzTrackSettled.value as any)?.data) ? (dzTrackSettled.value as any).data : [];
@@ -3171,23 +3350,36 @@ async function startServer() {
           }
         }
 
-        if (itAlbumSettled.status === "fulfilled" && itAlbumSettled.value) {
-          const results: any[] = Array.isArray((itAlbumSettled.value as any)?.results) ? (itAlbumSettled.value as any).results : [];
-          const best =
-            results.find(r => normalizeSongTitleKey(r.collectionName || "") === normalizeSongTitleKey(title)) ||
-            results[0];
-          if (best?.artworkUrl100) {
-            candidateUrls.push(upgradeArtwork(best.artworkUrl100));
+        if (dzAlbumSettled.status === "fulfilled" && dzAlbumSettled.value) {
+          const albList: any[] = Array.isArray((dzAlbumSettled.value as any)?.data) ? (dzAlbumSettled.value as any).data : [];
+          const bestAlb =
+            albList.find(a => normalizeSongTitleKey(a?.title || "") === normalizeSongTitleKey(title)) ||
+            albList.find(a => a?.cover_xl || a?.cover_big || a?.cover_medium) ||
+            albList[0];
+          if (bestAlb) {
+            const c = bestAlb.cover_xl || bestAlb.cover_big || bestAlb.cover_medium;
+            if (c && !c.includes("/images/cover//")) candidateUrls.push(upgradeArtwork(c));
           }
         }
 
-        if (itSongSettled.status === "fulfilled" && itSongSettled.value) {
-          const results: any[] = Array.isArray((itSongSettled.value as any)?.results) ? (itSongSettled.value as any).results : [];
-          const best =
-            results.find(r => normalizeSongTitleKey(r.trackName || "") === normalizeSongTitleKey(title)) ||
-            results[0];
-          if (best?.artworkUrl100) {
-            candidateUrls.push(upgradeArtwork(best.artworkUrl100));
+        for (const itSettled of [itSongBrSettled, itSongUsSettled]) {
+          if (itSettled.status === "fulfilled" && itSettled.value) {
+            const results: any[] = Array.isArray((itSettled.value as any)?.results) ? (itSettled.value as any).results : [];
+            const best =
+              results.find(r => normalizeSongTitleKey(r.trackName || "") === normalizeSongTitleKey(title)) ||
+              results.find(r => normalizeSongTitleKey(r.collectionName || "") === normalizeSongTitleKey(title)) ||
+              results[0];
+            if (best?.artworkUrl100) {
+              candidateUrls.push(upgradeArtwork(best.artworkUrl100));
+            }
+          }
+        }
+
+        if (saavnSettled.status === "fulfilled" && saavnSettled.value) {
+          const results: any[] = Array.isArray((saavnSettled.value as any)?.results) ? (saavnSettled.value as any).results : [];
+          const best = results[0];
+          if (best?.image && typeof best.image === "string") {
+            candidateUrls.push(best.image.replace(/150x150|50x50/g, "500x500"));
           }
         }
       } catch (_e) {}
@@ -3195,34 +3387,18 @@ async function startServer() {
 
     for (const imgUrl of candidateUrls) {
       if (!imgUrl) continue;
-      try {
-        const imgRes = await fetchWithTimeout(imgUrl, {}, 4200);
-        if (imgRes.ok) {
-          const ab = await imgRes.arrayBuffer();
-          const buffer = Buffer.from(ab);
-          const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-          if (buffer.length > 800) {
-            coverImageCache.set(cacheKey, { buffer, contentType });
-            res.setHeader("Content-Type", contentType);
-            res.setHeader("Cache-Control", "public, max-age=86400");
-            res.send(buffer);
-            return;
-          }
-        }
-      } catch (_e) {}
+      const hit = await fetchAndValidateCoverUrl(imgUrl);
+      if (hit) {
+        coverImageCache.set(cacheKey, hit);
+        sendCachedCover(hit);
+        return;
+      }
     }
 
-    const safeT = (title || "Miado").slice(0, 20).replace(/[<>&"']/g, "");
-    const safeA = (artist || "Lossless HD").slice(0, 24).replace(/[<>&"']/g, "");
-    const fallbackSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
-      <rect width="600" height="600" fill="#130f22"/>
-      <rect x="28" y="28" width="544" height="544" rx="24" fill="#07060b" stroke="#8b5cf6" stroke-width="2"/>
-      <circle cx="300" cy="245" r="84" fill="#130f22" stroke="#a855f7" stroke-width="4"/>
-      <circle cx="300" cy="245" r="24" fill="#8b5cf6"/>
-      <text x="300" y="420" text-anchor="middle" fill="#ffffff" font-family="sans-serif" font-size="32" font-weight="bold">${safeT}</text>
-      <text x="300" y="462" text-anchor="middle" fill="#94a3b8" font-family="sans-serif" font-size="22">${safeA}</text>
-    </svg>`;
+    const fallbackSvg = createGlassPlaceholderSvg("album", `${title}:${artist}`);
     res.setHeader("Content-Type", "image/svg+xml");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.send(fallbackSvg);
   });
@@ -3999,22 +4175,26 @@ async function startServer() {
   });
 
   // 6b. Sincronização Permanente com Firebase Firestore (/api/user/firestore-sync)
-  // Persiste permanentemente as músicas curtidas, histórico recente, playlists e perfil
-  app.post("/api/user/firestore-sync", (req: Request, res: Response) => {
+  app.post("/api/user/firestore-sync", async (req: Request, res: Response) => {
     try {
-      const { uid, email, name, handle, username, bio, catId, avatarUrl, favoriteArtists, likedTracks, playlists, recentHistory } = req.body || {};
-      const cleanUid = sanitizeText(uid || "", 128);
-      const rawEmail = sanitizeText(email || "", 120).toLowerCase();
+      const authUser = await resolveAuthenticatedUser(req);
+      if (!authUser || !authUser.uid || !authUser.email) {
+        res.status(401).json({ ok: false, error: "unauthorized", requestId: req.requestId });
+        return;
+      }
 
-      // Ignora sincronização de visitantes sem conta real para nunca poluir o banco de dados
-      if (!cleanUid || cleanUid === "usr_guest" || !rawEmail || rawEmail === "usr_guest@miado.app") {
+      const { name, handle, username, bio, catId, avatarUrl, favoriteArtists, likedTracks, playlists, recentHistory } = req.body || {};
+      const cleanUid = authUser.uid;
+      const targetEmail = authUser.email.toLowerCase().trim();
+
+      if (!cleanUid || cleanUid === "usr_guest" || !targetEmail || targetEmail === "usr_guest@miado.app") {
         res.json({ ok: true, guestMode: true });
         return;
       }
 
       const DEFAULT_PLAYLIST_IDS = new Set(["pl_comunidade_pop", "pl_gaga_jao_mix", "pl_noite_liquid"]);
       const cleanFavs = Array.isArray(favoriteArtists)
-        ? favoriteArtists.map((a: unknown) => sanitizeText(a, 80)).filter(Boolean)
+        ? favoriteArtists.map((a: unknown) => sanitizeText(a, 80)).filter(Boolean).slice(0, 60)
         : [];
 
       const cleanLiked = Array.isArray(likedTracks) ? likedTracks.slice(0, 500) : [];
@@ -4025,10 +4205,21 @@ async function startServer() {
 
       const db = readDb();
       const accounts = db.accounts || {};
-      const targetEmail = rawEmail;
 
-      const rawH = sanitizeText(username || handle || `@${targetEmail.split("@")[0]}`, 40);
-      const cleanHandle = rawH.startsWith("@") ? rawH : `@${rawH}`;
+      const rawH = sanitizeText(username || handle || `@${targetEmail.split("@")[0]}`, 40).toLowerCase().trim();
+      const candidateHandle = rawH.startsWith("@") ? rawH : `@${rawH}`;
+      const handleTakenByOther = Object.values(accounts).some(acc => {
+        if (!acc || acc.email.toLowerCase() === targetEmail) return false;
+        const h = String(acc.user?.username || acc.user?.handle || "").toLowerCase().trim();
+        return (h.startsWith("@") ? h : `@${h}`) === candidateHandle;
+      });
+      const cleanHandle = handleTakenByOther
+        ? String(accounts[targetEmail]?.user?.handle || `@${targetEmail.split("@")[0]}`)
+        : candidateHandle;
+
+      const safeAvatar = isSafeImageUrl(avatarUrl)
+        ? String(avatarUrl || "/api/cat-avatar?id=cat_1")
+        : "/api/cat-avatar?id=cat_1";
 
       const userProfile = {
         uid: cleanUid,
@@ -4038,7 +4229,7 @@ async function startServer() {
         handle: cleanHandle,
         bio: sanitizeText(bio || "", 240),
         catId: sanitizeText(catId || "cat_1", 32),
-        avatarUrl: String(avatarUrl || "/api/cat-avatar?id=cat_1"),
+        avatarUrl: safeAvatar,
         favoriteArtists: cleanFavs,
         onboardingCompleted: true,
         updatedAt: new Date().toISOString()
@@ -4071,27 +4262,68 @@ async function startServer() {
         };
       }
 
+      const profiles = db.profiles || {};
+      const handleKey = cleanHandle.toLowerCase();
+      if (handleKey && handleKey !== "@visitante" && handleKey !== "@novo_usuario") {
+        const existingProf = profiles[handleKey] || ({} as Partial<CommunityProfile>);
+        const prevUpdatedMs = existingProf?.updatedAt ? Date.parse(existingProf.updatedAt) : 0;
+        const isPrevFresh = Boolean(existingProf?.online && prevUpdatedMs > 0 && Date.now() - prevUpdatedMs < 180_000);
+        const prevTrackClean =
+          existingProf?.currentTrack &&
+          existingProf.currentTrack !== "Ouvindo no Miado" &&
+          existingProf.currentTrack !== "Silencioso no momento"
+            ? existingProf.currentTrack
+            : "";
+        profiles[handleKey] = {
+          id: existingProf.id || `prof_${handleKey.replace(/[^a-z0-9_]/gi, "")}`,
+          name: userProfile.name,
+          username: handleKey,
+          bio: userProfile.bio,
+          avatarUrl: userProfile.avatarUrl,
+          bannerUrl: existingProf.bannerUrl || "",
+          currentTrack: isPrevFresh ? prevTrackClean : "",
+          trackObj: isPrevFresh && prevTrackClean ? (existingProf.trackObj || null) : null,
+          albumId: existingProf.albumId || "billie_hmhas",
+          favoriteArtists: cleanFavs,
+          followersCount: existingProf.followersCount || 0,
+          followingCount: existingProf.followingCount || 0,
+          online: isPrevFresh,
+          updatedAt: isPrevFresh && existingProf.updatedAt ? existingProf.updatedAt : new Date().toISOString()
+        };
+      }
+
       writeDb({
-        accounts
+        accounts,
+        profiles
       });
 
-      res.json({ ok: true, syncedTo: "Firestore & Local DB", uid: cleanUid });
-    } catch (e: any) {
-      res.status(500).json({ ok: false, error: e?.message || "Erro ao sincronizar com Firestore." });
+      res.json({ ok: true, uid: cleanUid });
+    } catch (_e: any) {
+      res.status(500).json({ ok: false, error: "sync_failed", requestId: req.requestId });
     }
   });
 
-  app.get("/api/user/firestore-sync", (req: Request, res: Response) => {
+  app.get("/api/user/firestore-sync", async (req: Request, res: Response) => {
     try {
-      const uid = String(req.query.uid || "").trim();
-      if (!uid || uid === "usr_guest") {
-        res.json({ ok: true, guestMode: true });
+      const authUser = await resolveAuthenticatedUser(req);
+      if (!authUser || !authUser.uid) {
+        res.status(401).json({ ok: false, error: "unauthorized", requestId: req.requestId });
         return;
       }
+
+      const requestedUid = String(req.query.uid || authUser.uid).trim();
+      if (requestedUid !== authUser.uid) {
+        res.status(403).json({ ok: false, error: "forbidden", requestId: req.requestId });
+        return;
+      }
+
       const db = readDb();
       const accounts = db.accounts || {};
 
-      const account = Object.values(accounts).find(a => a.uid === uid);
+      const account =
+        accounts[authUser.email.toLowerCase()] ||
+        Object.values(accounts).find(a => a.uid === authUser.uid);
+
       if (account) {
         res.json({
           ok: true,
@@ -4112,21 +4344,40 @@ async function startServer() {
         playlists: [],
         recentHistory: []
       });
-    } catch (e: any) {
-      res.status(500).json({ ok: false, error: e?.message });
+    } catch (_e: any) {
+      res.status(500).json({ ok: false, error: "sync_read_failed", requestId: req.requestId });
     }
   });
 
-  // 6c. Diretório de Perfis Reais Criados no App (/api/profiles) — Zero perfis falsos pré-prontos
+  // 6c. Diretório de Perfis Reais Criados no App (/api/profiles)
   app.get("/api/profiles", (req: Request, res: Response) => {
     try {
       const q = String(req.query.q || "").toLowerCase().trim();
       const db = readDb();
-      const profilesMap: Record<string, CommunityProfile> = {};
+      const profilesMap: Record<string, any> = {};
 
+      const PRESENCE_TTL_MS = 180_000; // 3 minutos de atividade real
       for (const [k, prof] of Object.entries(db.profiles || {})) {
         if (!prof || k === "@visitante" || k === "@novo_usuario" || prof.name === "Visitante") continue;
-        profilesMap[k] = prof;
+        const safeSlug = k.replace(/[^a-z0-9_]/gi, "");
+        const updatedMs = prof.updatedAt ? Date.parse(String(prof.updatedAt)) : 0;
+        const isLiveOnline = Boolean(prof.online && updatedMs > 0 && Date.now() - updatedMs < PRESENCE_TTL_MS);
+        const rawTrack = String(prof.currentTrack || "").trim();
+        const hasValidLiveTrack =
+          isLiveOnline &&
+          Boolean(rawTrack) &&
+          rawTrack !== "Ouvindo no Miado" &&
+          rawTrack !== "Silencioso no momento";
+
+        profilesMap[k] = {
+          ...prof,
+          id: `prof_${safeSlug}`,
+          avatarUrl: isSafeImageUrl(prof.avatarUrl) ? prof.avatarUrl : "/api/cat-avatar?id=cat_1",
+          bannerUrl: isSafeImageUrl(prof.bannerUrl || "") ? prof.bannerUrl : "",
+          online: isLiveOnline,
+          currentTrack: hasValidLiveTrack ? rawTrack : "",
+          trackObj: hasValidLiveTrack ? (prof.trackObj || null) : null
+        };
       }
 
       const accounts = db.accounts || {};
@@ -4135,22 +4386,52 @@ async function startServer() {
         const rawH = String(acc.user.username || acc.user.handle || "").toLowerCase().trim();
         if (!rawH || rawH === "@visitante" || rawH === "@novo_usuario") continue;
         const key = rawH.startsWith("@") ? rawH : `@${rawH}`;
+        const accFollowedArtists = Array.isArray(acc.followedArtists)
+          ? acc.followedArtists
+          : Array.isArray(acc.favoriteArtists)
+          ? acc.favoriteArtists.map((a: string) => ({
+              name: a,
+              role: "Artista Favorito",
+              coverUrl: `/api/artist-image?name=${encodeURIComponent(a)}`
+            }))
+          : [];
+        const accLikedTracks = Array.isArray(acc.likedTracks) ? acc.likedTracks.slice(0, 30) : [];
+        const accPlaylists = Array.isArray(acc.playlists) ? acc.playlists.slice(0, 15) : [];
+        const accRecentHistory = Array.isArray(acc.recentHistory) ? acc.recentHistory.slice(0, 15) : [];
+
         if (!profilesMap[key]) {
+          const safeSlug = key.replace(/[^a-z0-9_]/gi, "");
+          const rawAv = String(acc.user.avatarUrl || `/api/cat-avatar?id=${acc.user.catId || "cat_1"}`);
+          const rawBan = String(acc.user.bannerUrl || "");
           profilesMap[key] = {
-            id: String(acc.uid || `prof_${key.replace(/[^a-z0-9]/g, "")}`),
+            id: `prof_${safeSlug}`,
             name: String(acc.user.name || key),
             username: key,
             bio: String(acc.user.bio || ""),
-            avatarUrl: String(acc.user.avatarUrl || `/api/cat-avatar?id=${acc.user.catId || "cat_1"}`),
-            bannerUrl: String(acc.user.bannerUrl || ""),
-            currentTrack: "Ouvindo no Miado",
+            avatarUrl: isSafeImageUrl(rawAv) ? rawAv : "/api/cat-avatar?id=cat_1",
+            bannerUrl: isSafeImageUrl(rawBan) ? rawBan : "",
+            currentTrack: "",
+            trackObj: null,
             albumId: "billie_hmhas",
             favoriteArtists: Array.isArray(acc.favoriteArtists) ? acc.favoriteArtists : [],
+            followedArtists: accFollowedArtists,
+            likedTracks: accLikedTracks,
+            playlists: accPlaylists,
+            recentHistory: accRecentHistory,
             followersCount: 0,
-            followingCount: 0,
-            online: true,
-            updatedAt: acc.updatedAt || new Date().toISOString()
+            followingCount: Array.isArray(acc.followingProfiles) ? acc.followingProfiles.length : 0,
+            online: false,
+            updatedAt: acc.updatedAt || new Date(0).toISOString()
           };
+        } else {
+          // Sincroniza exatamente os dados da própria conta (sem usar recentHistory como currentTrack!)
+          profilesMap[key].favoriteArtists = Array.isArray(acc.favoriteArtists)
+            ? acc.favoriteArtists
+            : profilesMap[key].favoriteArtists || [];
+          profilesMap[key].followedArtists = accFollowedArtists;
+          profilesMap[key].likedTracks = accLikedTracks;
+          profilesMap[key].playlists = accPlaylists;
+          profilesMap[key].recentHistory = accRecentHistory;
         }
       }
 
@@ -4161,19 +4442,91 @@ async function startServer() {
             p.name.toLowerCase().includes(q) ||
             p.username.toLowerCase().includes(q) ||
             (p.bio && p.bio.toLowerCase().includes(q)) ||
-            (Array.isArray(p.favoriteArtists) && p.favoriteArtists.some(a => a.toLowerCase().includes(q)))
+            (Array.isArray(p.favoriteArtists) && p.favoriteArtists.some((a: string) => a.toLowerCase().includes(q)))
         );
       }
 
-      res.json({ ok: true, profiles: list });
-    } catch (e: any) {
-      res.status(500).json({ ok: false, error: e?.message || "Erro ao buscar perfis." });
+      res.json({ ok: true, profiles: list.slice(0, 200) });
+    } catch (_e: any) {
+      res.status(500).json({ ok: false, error: "profiles_fetch_failed", requestId: req.requestId });
     }
   });
 
-  app.post("/api/profiles", (req: Request, res: Response) => {
+  app.post("/api/profiles/sync-community", (req: Request, res: Response) => {
     try {
-      const { name, username, bio, avatarUrl, bannerUrl, currentTrack, albumId, favoriteArtists } = req.body || {};
+      const incoming = Array.isArray(req.body?.profiles) ? req.body.profiles : [];
+      if (incoming.length === 0) {
+        res.json({ ok: true, synced: 0 });
+        return;
+      }
+      const db = readDb();
+      const profiles = db.profiles || {};
+      const accounts = db.accounts || {};
+      let synced = 0;
+
+      for (const item of incoming.slice(0, 150)) {
+        if (!item || typeof item !== "object") continue;
+        const cleanName = sanitizeText(item.name || "", 60);
+        const rawUser = sanitizeText(item.username || item.handle || "", 40).toLowerCase().replace(/\s+/g, "");
+        if (!cleanName || !rawUser || cleanName === "Visitante" || rawUser === "@visitante" || rawUser === "visitante" || rawUser === "@novo_usuario" || rawUser === "novo_usuario") {
+          continue;
+        }
+        const key = rawUser.startsWith("@") ? rawUser : `@${rawUser}`;
+        const existing = profiles[key];
+        // Se a conta já existe localmente no servidor, não permite que o sync-community de terceiros sobrescreva presença ou artistas
+        const hasServerAccount = Object.values(accounts).some(a => {
+          const h = String(a?.user?.username || a?.user?.handle || "").toLowerCase().trim();
+          return (h.startsWith("@") ? h : `@${h}`) === key;
+        });
+        if (existing && hasServerAccount) {
+          continue;
+        }
+        const rawAv = sanitizeText(item.avatarUrl || item.avatar || existing?.avatarUrl || "/api/cat-avatar?id=cat_1", 400);
+        const rawBan = sanitizeText(item.bannerUrl || existing?.bannerUrl || "", 400);
+        const isItemOnline = Boolean(item.online);
+        const incomingTrack = isItemOnline && typeof item.currentTrack === "string" && item.currentTrack !== "Silencioso no momento" && item.currentTrack !== "Ouvindo no Miado"
+          ? sanitizeText(item.currentTrack, 160)
+          : "";
+
+        profiles[key] = {
+          id: existing?.id || `prof_${key.replace(/[^a-z0-9_]/gi, "")}`,
+          name: cleanName,
+          username: key,
+          bio: sanitizeText(item.bio ?? existing?.bio ?? "", 240),
+          avatarUrl: isSafeImageUrl(rawAv) ? rawAv : "/api/cat-avatar?id=cat_1",
+          bannerUrl: isSafeImageUrl(rawBan) ? rawBan : "",
+          currentTrack: incomingTrack,
+          trackObj: incomingTrack ? (item.trackObj || null) : null,
+          albumId: sanitizeText(item.albumId || existing?.albumId || "billie_hmhas", 80),
+          favoriteArtists: Array.isArray(item.favoriteArtists)
+            ? item.favoriteArtists.slice(0, 20).map((a: unknown) => sanitizeText(a, 60))
+            : existing?.favoriteArtists || [],
+          followersCount: existing?.followersCount || 0,
+          followingCount: existing?.followingCount || 0,
+          online: Boolean(incomingTrack && isItemOnline),
+          updatedAt: incomingTrack && isItemOnline ? new Date().toISOString() : (existing?.updatedAt || new Date(0).toISOString())
+        };
+        synced += 1;
+      }
+
+      if (synced > 0) {
+        writeDb({ profiles });
+      }
+      res.json({ ok: true, synced });
+    } catch (_e) {
+      res.status(500).json({ ok: false, error: "community_sync_failed" });
+    }
+  });
+
+  app.post("/api/profiles", async (req: Request, res: Response) => {
+    try {
+      const authUser = await resolveAuthenticatedUser(req);
+      if (!authUser || !authUser.email) {
+        res.status(401).json({ ok: false, error: "unauthorized", requestId: req.requestId });
+        return;
+      }
+
+      const { name, username, bio, avatarUrl, bannerUrl, currentTrack, trackObj, albumId, favoriteArtists, online } = req.body || {};
       const cleanName = sanitizeText(name || "", 60);
       const rawUser = sanitizeText(username || "", 40).toLowerCase().replace(/\s+/g, "");
       if (!cleanName || !rawUser || cleanName === "Visitante" || rawUser === "@visitante" || rawUser === "visitante" || rawUser === "@novo_usuario" || rawUser === "novo_usuario") {
@@ -4182,69 +4535,131 @@ async function startServer() {
       }
       const cleanHandle = rawUser.startsWith("@") ? rawUser : `@${rawUser}`;
       const db = readDb();
+      const accounts = db.accounts || {};
+
+      // Impede que outra conta sobrescreva o @handle de terceiros
+      const handleOwnedByOther = Object.values(accounts).some(acc => {
+        if (!acc || acc.email.toLowerCase() === authUser.email.toLowerCase()) return false;
+        const h = String(acc.user?.username || acc.user?.handle || "").toLowerCase().trim();
+        return (h.startsWith("@") ? h : `@${h}`) === cleanHandle;
+      });
+      if (handleOwnedByOther) {
+        res.status(403).json({ ok: false, error: "handle_owned_by_other", requestId: req.requestId });
+        return;
+      }
+
       const profiles: Record<string, CommunityProfile> = { ...(db.profiles || {}) };
       const existing = profiles[cleanHandle];
+      const safeSlug = cleanHandle.replace(/[^a-z0-9_]/gi, "");
+
+      const safeAv = isSafeImageUrl(avatarUrl)
+        ? String(avatarUrl || existing?.avatarUrl || "/api/cat-avatar?id=cat_1")
+        : existing?.avatarUrl || "/api/cat-avatar?id=cat_1";
+      const safeBan = isSafeImageUrl(bannerUrl)
+        ? String(bannerUrl || existing?.bannerUrl || "")
+        : existing?.bannerUrl || "";
+
+      const resolvedTrackStr = sanitizeText(
+        currentTrack !== undefined ? currentTrack : existing?.currentTrack || "",
+        140
+      );
+      const isActivelyPlaying =
+        online !== false &&
+        Boolean(resolvedTrackStr) &&
+        resolvedTrackStr !== "Silencioso no momento" &&
+        resolvedTrackStr !== "Ouvindo no Miado";
+
+      let cleanTrackObj: Record<string, unknown> | null = isActivelyPlaying ? (existing?.trackObj || null) : null;
+      if (isActivelyPlaying && trackObj && typeof trackObj === "object" && (trackObj as any).title) {
+        const rawCover = String((trackObj as any).coverUrl || "");
+        cleanTrackObj = {
+          id: sanitizeText((trackObj as any).id || "", 80),
+          title: sanitizeText((trackObj as any).title || "", 120),
+          artist: sanitizeText((trackObj as any).artist || "", 120),
+          albumTitle: sanitizeText((trackObj as any).albumTitle || "", 120),
+          duration: sanitizeText((trackObj as any).duration || "3:30", 16),
+          durationSec: Number((trackObj as any).durationSec) || 180,
+          coverUrl: isSafeImageUrl(rawCover) ? rawCover : `/api/cover?title=${encodeURIComponent(String((trackObj as any).title || ""))}&artist=${encodeURIComponent(String((trackObj as any).artist || ""))}`
+        };
+      }
 
       const profileRecord: CommunityProfile = {
-        id: existing?.id || `prof_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: `prof_${safeSlug}`,
         name: cleanName,
         username: cleanHandle,
-        bio: sanitizeText(bio || existing?.bio || "", 240),
-        avatarUrl: String(avatarUrl || existing?.avatarUrl || "/api/cat-avatar?id=cat_1"),
-        bannerUrl: String(bannerUrl || existing?.bannerUrl || ""),
-        currentTrack: sanitizeText(currentTrack || existing?.currentTrack || "Ouvindo no Miado", 120),
+        bio: sanitizeText(bio !== undefined ? bio : existing?.bio || "", 240),
+        avatarUrl: safeAv,
+        bannerUrl: safeBan,
+        currentTrack: isActivelyPlaying ? resolvedTrackStr : "",
+        trackObj: cleanTrackObj,
         albumId: sanitizeText(albumId || existing?.albumId || "billie_hmhas", 60),
         favoriteArtists: Array.isArray(favoriteArtists)
-          ? favoriteArtists.map((a: unknown) => sanitizeText(a, 60)).filter(Boolean)
+          ? favoriteArtists.map((a: unknown) => sanitizeText(a, 60)).filter(Boolean).slice(0, 60)
           : existing?.favoriteArtists || [],
         followersCount: Number(existing?.followersCount || 0),
         followingCount: Number(existing?.followingCount || 0),
-        online: true,
+        online: online !== undefined ? Boolean(online) : true,
         updatedAt: new Date().toISOString()
       };
 
       profiles[cleanHandle] = profileRecord;
       writeDb({ profiles });
-      res.json({ ok: true, profile: profileRecord, profiles: Object.values(profiles) });
-    } catch (e: any) {
-      res.status(500).json({ ok: false, error: e?.message || "Erro ao salvar perfil." });
+      res.json({ ok: true, profile: profileRecord, profiles: Object.values(profiles).slice(0, 30) });
+    } catch (_e: any) {
+      res.status(500).json({ ok: false, error: "profile_save_failed", requestId: req.requestId });
     }
   });
 
   app.delete("/api/profiles/:handle", async (req: Request, res: Response) => {
     try {
       const authUser = await resolveAuthenticatedUser(req);
-      if (!authUser) {
-        res.status(401).json({ ok: false, error: "Autenticação obrigatória para remover um perfil." });
+      if (!authUser || !authUser.email) {
+        res.status(401).json({ ok: false, error: "unauthorized", requestId: req.requestId });
         return;
       }
       const rawHandle = String(req.params.handle || "").toLowerCase().trim();
       const cleanHandle = rawHandle.startsWith("@") ? rawHandle : `@${rawHandle}`;
       const db = readDb();
+      const acc = db.accounts?.[authUser.email.toLowerCase()];
+      const ownHandleRaw = String(acc?.user?.username || acc?.user?.handle || "").toLowerCase().trim();
+      const ownHandle = ownHandleRaw.startsWith("@") ? ownHandleRaw : `@${ownHandleRaw}`;
+
+      if (!acc || ownHandle !== cleanHandle) {
+        res.status(403).json({ ok: false, error: "forbidden", requestId: req.requestId });
+        return;
+      }
+
       const profiles: Record<string, CommunityProfile> = { ...(db.profiles || {}) };
       delete profiles[cleanHandle];
       writeDb({ profiles });
-      res.json({ ok: true, profiles: Object.values(profiles) });
-    } catch (e: any) {
-      res.status(500).json({ ok: false, error: e?.message });
+      res.json({ ok: true, profiles: Object.values(profiles).slice(0, 30) });
+    } catch (_e: any) {
+      res.status(500).json({ ok: false, error: "profile_delete_failed", requestId: req.requestId });
     }
   });
 
-  // 7. Resolução de Áudio Completo (3 a 5 minutos, zero anúncios, zero previews de 30s)
+  // 7. Resolução de Áudio Completo
   app.get("/api/resolve-full", async (req: Request, res: Response) => {
-    const title = String(req.query.title || "").trim();
-    const artist = String(req.query.artist || "").trim();
+    const title = String(req.query.title || "").trim().slice(0, 200);
+    const artist = String(req.query.artist || "").trim().slice(0, 200);
     const instanceIdxParam = req.query.instanceIdx !== undefined ? Number(req.query.instanceIdx) : -1;
+    const freshParam = String(req.query.fresh || "") === "1";
 
     if (!title && !artist) {
-      res.json({ isFullStream: false });
+      res.json({ isFullStream: false, instanceCount: PIPED_INVIDIOUS_INSTANCES.length });
       return;
+    }
+
+    const cleanArtist = String(artist || "").split(/[,&/]/)[0].trim();
+    const cacheKey = `${normalizeSongTitleKey(title)}|${normalizeStr(cleanArtist || artist)}`;
+
+    if (freshParam) {
+      fullStreamCache.delete(cacheKey);
     }
 
     if (instanceIdxParam >= 0 && instanceIdxParam < PIPED_INVIDIOUS_INSTANCES.length) {
       const inst = PIPED_INVIDIOUS_INSTANCES[instanceIdxParam];
       const q = `${title} ${artist}`.trim();
-      const cleanArtist = String(artist || "").split(/[,&/]/)[0].trim();
       const single = await resolveFromSinglePipedInstance(
         inst,
         q,
@@ -4254,14 +4669,15 @@ async function startServer() {
         normalizeStr(cleanArtist || artist)
       );
       if (single && single.url && !isForbidden30sPreviewUrl(single.url)) {
-        const cacheKey = `${normalizeSongTitleKey(title)}|${normalizeStr(cleanArtist || artist)}`;
-        persistFullStreamCacheEntry(cacheKey, single);
+        const entry = setStreamCacheEntry(cacheKey, single);
         res.json({
           isFullStream: true,
           source: single.source,
           durationSec: single.durationSec,
           durationFormatted: formatDurationSec(single.durationSec),
-          url: `/api/stream?url=${encodeURIComponent(single.url)}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&full=1`
+          url: `/api/stream?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&full=1`,
+          expiresAt: entry?.expiresAt || Date.now() + 2 * 3600_000,
+          instanceCount: PIPED_INVIDIOUS_INSTANCES.length
         });
         return;
       }
@@ -4269,25 +4685,58 @@ async function startServer() {
 
     const resolved = await resolveFullLengthTrackUrl(title, artist);
     if (resolved && resolved.url && !isForbidden30sPreviewUrl(resolved.url)) {
+      const cached = getStreamCacheEntry(cacheKey);
       res.json({
         isFullStream: true,
         source: resolved.source,
         durationSec: resolved.durationSec || 215,
         durationFormatted: formatDurationSec(resolved.durationSec || 215),
-        url: `/api/stream?url=${encodeURIComponent(resolved.url)}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&full=1`
+        url: `/api/stream?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&full=1`,
+        expiresAt: cached?.expiresAt || Date.now() + 2 * 3600_000,
+        instanceCount: PIPED_INVIDIOUS_INSTANCES.length
       });
       return;
     }
 
-    res.json({ isFullStream: false });
+    res.json({ isFullStream: false, instanceCount: PIPED_INVIDIOUS_INSTANCES.length });
   });
 
-  // 8. Proxy de Stream de Áudio Direto (/api/stream) — BLOQUEIO ABSOLUTO DE PREVIEWS DE 30S
+  // 8. Proxy de Stream de Áudio Direto (/api/stream) — Sem Path Traversal e Sem SSRF
   app.get("/api/stream", async (req: Request, res: Response) => {
-    const rawUrlParam = String(req.query.url || "").trim();
-    const title = String(req.query.title || "").trim();
-    const artist = String(req.query.artist || "").trim();
-    const preferFull = String(req.query.preferFull || "") === "1" || String(req.query.full || "") === "1";
+    const allowedQueryKeys = new Set(["title", "artist", "full", "preferFull", "studioOnly", "id", "retry", "url", "t", "_"]);
+    for (const k of Object.keys(req.query)) {
+      if (!allowedQueryKeys.has(k)) {
+        res.status(400).json({ error: "invalid_stream_parameter", requestId: req.requestId });
+        return;
+      }
+    }
+
+    const localIdParam = String(req.query.id || "").trim();
+    if (localIdParam) {
+      const safeLocalPath = resolveSafeLocalAudioPath(localIdParam);
+      if (!safeLocalPath) {
+        res.status(400).json({ error: "invalid_local_id", requestId: req.requestId });
+        return;
+      }
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Content-Type", "audio/mp4");
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.sendFile(safeLocalPath, { dotfiles: "deny" });
+      return;
+    }
+
+    const title = String(req.query.title || "").trim().slice(0, 200);
+    const artist = String(req.query.artist || "").trim().slice(0, 200);
+    if (!title && !artist) {
+      res.status(400).json({ error: "missing_track_parameters", requestId: req.requestId });
+      return;
+    }
+
+    const rangeHeader = req.headers.range;
+    if (rangeHeader && !/^bytes=\d{0,12}-\d{0,12}$/.test(String(rangeHeader))) {
+      res.status(416).json({ error: "invalid_range", requestId: req.requestId });
+      return;
+    }
 
     const cleanArtist = String(artist || "").split(/[,&/]/)[0].trim();
     const normTitle = normalizeSongTitleKey(title);
@@ -4295,64 +4744,62 @@ async function startServer() {
     const cacheKey = `${normTitle}|${normArtist}`;
 
     const verifiedStudioHit = VERIFIED_STUDIO_CATALOG[cacheKey];
-    const isThirtySecSnippetUrl = isForbidden30sPreviewUrl(rawUrlParam);
-
     let targetUrl = "";
 
     if (verifiedStudioHit) {
       targetUrl = verifiedStudioHit.url;
       scBufferCache.delete(cacheKey);
       fullStreamCache.set(cacheKey, verifiedStudioHit);
-    } else if (preferFull || !rawUrlParam || isThirtySecSnippetUrl) {
-      const cached = fullStreamCache.get(cacheKey);
-      if (cached && cached.url && !isForbidden30sPreviewUrl(cached.url)) {
+    } else {
+      const cached = req.query.retry === "1" ? undefined : fullStreamCache.get(cacheKey);
+      if (
+        cached &&
+        cached.url &&
+        !isForbidden30sPreviewUrl(cached.url) &&
+        !cached.url.includes("discoveryprovider.audius.co")
+      ) {
         targetUrl = cached.url;
       } else if (title) {
+        fullStreamCache.delete(cacheKey);
         try {
           const fullHit = await resolveFullLengthTrackUrl(title, artist);
-          if (fullHit && fullHit.url && !isForbidden30sPreviewUrl(fullHit.url)) {
+          if (fullHit && fullHit.url) {
             targetUrl = fullHit.url;
           }
         } catch (_e) {}
       }
-      // JAMAIS usa rawUrlParam se for um snippet de 30s!
-      if (!targetUrl && rawUrlParam && rawUrlParam.startsWith("http") && !isThirtySecSnippetUrl) {
-        targetUrl = rawUrlParam;
-      }
-    } else if (!isThirtySecSnippetUrl) {
-      targetUrl = rawUrlParam;
     }
 
-    // Se for arquivo estático local verificado (ex: /audio/lisboa_anavitoria.m4a ou public/audio/lisboa_anavitoria.m4a)
-    if (targetUrl.startsWith("/audio/") || targetUrl.startsWith("public/audio/") || targetUrl.includes("lisboa_anavitoria.m4a")) {
-      const cleanPath = targetUrl.startsWith("/") ? targetUrl.slice(1) : targetUrl;
-      const filePath = path.resolve(process.cwd(), cleanPath.startsWith("public/") ? cleanPath : `public/${cleanPath}`);
-      if (fs.existsSync(filePath)) {
-        res.setHeader("Access-Control-Allow-Origin", "*");
+    // Se for a faixa local verificada no catálogo (lisboa_anavitoria), usa exclusivamente o mapa fixo
+    if (
+      targetUrl === "/audio/lisboa_anavitoria.m4a" ||
+      targetUrl === "public/audio/lisboa_anavitoria.m4a" ||
+      cacheKey === "lisboa|anavitoria"
+    ) {
+      const safeLocalPath = resolveSafeLocalAudioPath("local:lisboa_anavitoria");
+      if (safeLocalPath) {
         res.setHeader("Accept-Ranges", "bytes");
         res.setHeader("Content-Type", "audio/mp4");
-        res.setHeader("Cache-Control", "public, max-age=86400");
-        res.sendFile(filePath);
+        res.setHeader("Cache-Control", "private, max-age=3600");
+        res.sendFile(safeLocalPath, { dotfiles: "deny" });
         return;
       }
     }
 
-    // Se a faixa completa foi montada em scBufferCache, serve o Buffer direto da memória com suporte completo a HTTP Range (206 Partial Content)
+    // Se a faixa completa foi montada em scBufferCache, serve o Buffer direto da memória com suporte a HTTP Range (206)
     const bufferKey = targetUrl.startsWith("sc-buffer:")
       ? targetUrl.slice("sc-buffer:".length)
       : "";
     if (bufferKey && scBufferCache.has(bufferKey)) {
       const entry = scBufferCache.get(bufferKey)!;
       const total = entry.buffer.length;
-      const range = req.headers.range;
 
-      res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Content-Type", entry.contentType || "audio/mp4");
-      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader("Cache-Control", "private, max-age=300");
 
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
+      if (rangeHeader) {
+        const parts = rangeHeader.replace(/bytes=/, "").split("-");
         const start = parseInt(parts[0], 10) || 0;
         const end = parts[1] ? Math.min(total - 1, parseInt(parts[1], 10)) : total - 1;
         if (start >= 0 && start < total && end >= start) {
@@ -4371,10 +4818,10 @@ async function startServer() {
       return;
     }
 
-    const rangeHeader = req.headers.range;
     const reqHeaders: Record<string, string> = {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Accept": "*/*"
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Accept: "*/*"
     };
     if (rangeHeader) {
       reqHeaders["Range"] = rangeHeader;
@@ -4382,9 +4829,10 @@ async function startServer() {
 
     let upstreamRes: globalThis.Response | null = null;
 
-    if (targetUrl && targetUrl.startsWith("http")) {
+    if (targetUrl && targetUrl.startsWith("https://")) {
       try {
-        const candidate = await fetchWithTimeout(targetUrl, { headers: reqHeaders, redirect: "follow" }, 6500);
+        await validateOutboundUrl(targetUrl, ALLOWED_STREAM_HOSTS);
+        const candidate = await fetchWithTimeout(targetUrl, { headers: reqHeaders, redirect: "follow" }, 10500);
         if (candidate.ok || candidate.status === 206) {
           upstreamRes = candidate;
         }
@@ -4393,27 +4841,28 @@ async function startServer() {
       }
     }
 
-    // Se a URL em cache expirou, limpa o cache e resolve novamente a faixa completa
+    // Se a URL em cache expirou, limpa o cache e resolve novamente a faixa completa (pulando links estáticos lentos)
     if (!upstreamRes && (title || artist)) {
       fullStreamCache.delete(cacheKey);
       try {
-        const freshFull = await resolveFullLengthTrackUrl(title, artist);
+        const freshFull = await resolveFullLengthTrackUrl(title, artist, true);
         if (freshFull && freshFull.url) {
           if (freshFull.url.startsWith("sc-buffer:")) {
             const bKey = freshFull.url.slice("sc-buffer:".length);
             if (scBufferCache.has(bKey)) {
               const entry = scBufferCache.get(bKey)!;
               res.status(200);
-              res.setHeader("Access-Control-Allow-Origin", "*");
               res.setHeader("Accept-Ranges", "bytes");
               res.setHeader("Content-Type", entry.contentType || "audio/mp4");
+              res.setHeader("Cache-Control", "private, max-age=300");
               res.setHeader("Content-Length", String(entry.buffer.length));
               res.send(entry.buffer);
               return;
             }
-          } else {
+          } else if (freshFull.url.startsWith("https://")) {
             targetUrl = freshFull.url;
-            const candidate = await fetchWithTimeout(targetUrl, { headers: reqHeaders, redirect: "follow" }, 6500);
+            await validateOutboundUrl(targetUrl, ALLOWED_STREAM_HOSTS);
+            const candidate = await fetchWithTimeout(targetUrl, { headers: reqHeaders, redirect: "follow" }, 10500);
             if (candidate.ok || candidate.status === 206) {
               upstreamRes = candidate;
             }
@@ -4423,7 +4872,7 @@ async function startServer() {
     }
 
     if (!upstreamRes || !upstreamRes.body) {
-      res.status(404).send("Stream completo indisponível no momento");
+      res.status(404).json({ error: "stream_unavailable", requestId: req.requestId });
       return;
     }
 
@@ -4441,9 +4890,8 @@ async function startServer() {
 
     res.status(upstreamRes.status === 206 ? 206 : 200);
     res.setHeader("Content-Type", safeContentType);
-    res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Accept-Ranges", "bytes");
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.setHeader("Cache-Control", "private, max-age=300");
 
     const contentLength = upstreamRes.headers.get("content-length");
     if (contentLength) res.setHeader("Content-Length", contentLength);
@@ -4461,10 +4909,23 @@ async function startServer() {
     nodeStream.pipe(res);
   });
 
+  return app;
+}
+
+async function startServer() {
+  const app = await createMiadoApp();
+  const PORT = appConfig.PORT;
+
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        fs: {
+          strict: true,
+          deny: ["**/data/**", "**/server.ts", "**/src/server/**", "**/firestore.rules", "**/.env*", "**/*.pem"]
+        }
+      },
       appType: "spa"
     });
     app.use(vite.middlewares);
@@ -4481,4 +4942,6 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== "test") {
+  startServer();
+}

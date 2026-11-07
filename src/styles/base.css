@@ -15,7 +15,8 @@
       --glass-border: rgba(255, 255, 255, 0.08);
       --glass-border-top: rgba(255, 255, 255, 0.16);
       --glass-border-strong: rgba(255, 255, 255, 0.18);
-      --glass-inner-border: 0 18px 40px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      --glass-inner-border: var(--glass-specular);
       --glass-blur: blur(24px) saturate(180%);
       --glass-blur-heavy: blur(28px) saturate(190%);
 
@@ -179,13 +180,12 @@
       -webkit-backdrop-filter: blur(48px) saturate(240%);
       border: 1px solid rgba(168, 85, 247, 0.28);
       border-top: 1px solid rgba(255, 255, 255, 0.36);
-      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.28), inset 0 0 16px rgba(168, 85, 247, 0.16);
+      box-shadow: var(--glass-specular);
       font-size: 1.48rem;
       font-weight: 900;
       letter-spacing: -0.035em;
       color: #ffffff;
-      text-shadow: 0 2px 16px rgba(168, 85, 247, 0.6);
-      transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+      transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, background-color 0.2s ease;
     }
     .brand-title::after {
       content: "";
@@ -193,14 +193,14 @@
       height: 7px;
       border-radius: 999px;
       background-color: #a855f7;
-      box-shadow: 0 0 10px #a855f7, inset 0 1px 1px rgba(255, 255, 255, 0.6);
+      box-shadow: var(--glass-specular);
       display: inline-block;
     }
     .brand-header:hover .brand-title {
       transform: translateY(-1px) scale(1.02);
       background: rgba(255, 255, 255, 0.085);
       border-color: rgba(168, 85, 247, 0.52);
-      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.38), inset 0 0 22px rgba(168, 85, 247, 0.26);
+      box-shadow: var(--glass-specular);
     }
 
     /* Links da Sidebar */
@@ -643,7 +643,7 @@
       background: rgba(20, 16, 36, 0.76);
       border: 1px solid rgba(168, 85, 247, 0.22);
       border-top: 1px solid rgba(255, 255, 255, 0.25);
-      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.14);
+      box-shadow: var(--glass-specular);
     }
     .btn-see-all:hover {
       background-color: var(--bg-surface-hover);
@@ -1364,7 +1364,7 @@
       border: 1px solid rgba(168, 85, 247, 0.35);
       border-top: 1px solid rgba(255, 255, 255, 0.22);
       border-radius: 12px;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(168, 85, 247, 0.15);
+      box-shadow: var(--glass-specular);
       padding: 6px;
       min-width: 210px;
       display: none;
@@ -1625,7 +1625,7 @@
       flex-shrink: 0;
       background-color: var(--bg-surface);
       border: none !important;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+      box-shadow: none;
       cursor: pointer;
       filter: none !important;
       -webkit-filter: none !important;
@@ -1661,7 +1661,6 @@
       cursor: pointer;
       filter: none !important;
       -webkit-filter: none !important;
-      text-shadow: none !important;
       opacity: 1 !important;
     }
     .player-track-name:hover {
@@ -1801,7 +1800,7 @@
       border-radius: 7px;
       background-color: var(--bg-surface);
       border: none !important;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+      box-shadow: none;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1856,7 +1855,7 @@
       right: -6px;
       top: 50%;
       transform: translateY(-50%);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      box-shadow: none;
     }
     .volume-pct-label {
       font-size: 0.7rem;
@@ -1875,13 +1874,16 @@
       background-color: rgba(7, 6, 11, 0.84);
       backdrop-filter: var(--glass-blur);
       -webkit-backdrop-filter: var(--glass-blur);
-      z-index: 100;
+      z-index: 5000;
       display: none !important;
       align-items: center;
       justify-content: center;
       padding: 20px;
       pointer-events: none !important;
       visibility: hidden;
+    }
+    .modal-overlay:not(#modal-fullscreen-player) {
+      z-index: 5500 !important;
     }
     .modal-overlay.active {
       display: flex !important;
@@ -1894,7 +1896,7 @@
       -webkit-backdrop-filter: blur(24px) saturate(190%);
       border: 1px solid rgba(168, 85, 247, 0.28);
       border-top: 1px solid rgba(255, 255, 255, 0.28);
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+      box-shadow: var(--glass-specular);
       border-radius: var(--radius-lg);
       width: 100%;
       max-width: 560px;
@@ -1977,6 +1979,7 @@
     }
     #modal-fullscreen-player,
     div#modal-fullscreen-player {
+      z-index: 1200 !important;
       background-color: rgba(6, 5, 12, 0.76) !important;
       backdrop-filter: blur(60px) saturate(180%) !important;
       -webkit-backdrop-filter: blur(60px) saturate(180%) !important;
@@ -1990,7 +1993,7 @@
       backdrop-filter: blur(60px) saturate(180%) !important;
       -webkit-backdrop-filter: blur(60px) saturate(180%) !important;
       border: 1px solid rgba(255, 255, 255, 0.1) !important;
-      box-shadow: 0 32px 80px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+      box-shadow: var(--glass-specular) !important;
       border-radius: 26px;
       position: relative;
       overflow: hidden;
@@ -2060,7 +2063,7 @@
       display: block;
       margin: 0 auto;
       border: 1px solid rgba(255, 255, 255, 0.12);
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.75);
+      box-shadow: none;
       transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
     }
     /* Marquee estilo Spotify / Apple Music para títulos longos de música */
@@ -2141,7 +2144,7 @@
       background-color: #ffffff;
       color: #07060b;
       border: none;
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      box-shadow: none;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -2247,10 +2250,7 @@
       backdrop-filter: blur(36px) saturate(190%);
       -webkit-backdrop-filter: blur(36px) saturate(190%);
       border: 1px solid rgba(255, 255, 255, 0.16);
-      box-shadow:
-        0 34px 90px rgba(0, 0, 0, 0.82),
-        0 0 60px rgba(139, 92, 246, 0.22),
-        inset 0 1px 0 rgba(255, 255, 255, 0.24);
+      box-shadow: var(--glass-specular);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -2275,7 +2275,7 @@
     .miado-welcome-ring.ring-outer {
       inset: 0;
       border: 1.5px dashed rgba(168, 85, 247, 0.45);
-      box-shadow: 0 0 28px rgba(168, 85, 247, 0.25);
+      box-shadow: none;
       animation: welcomeRingSpin 16s linear infinite;
     }
     .miado-welcome-ring.ring-inner {
@@ -2296,9 +2296,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow:
-        0 14px 34px rgba(139, 92, 246, 0.55),
-        inset 0 1px 1px rgba(255, 255, 255, 0.42);
+      box-shadow: var(--glass-specular);
       animation: welcomeLogoPulse 3.4s ease-in-out infinite;
     }
     .miado-welcome-eq {
@@ -2313,7 +2311,7 @@
       border-radius: 999px;
       background: rgba(12, 9, 22, 0.9);
       border: 1px solid rgba(168, 85, 247, 0.45);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      box-shadow: none;
     }
     .miado-welcome-eq span {
       width: 3px;
@@ -2334,7 +2332,6 @@
       color: #ffffff;
       letter-spacing: -0.03em;
       margin: 0 0 8px;
-      text-shadow: 0 0 28px rgba(168, 85, 247, 0.45);
       animation: welcomeItemSlideUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.16s both;
     }
     .miado-welcome-subtitle {
@@ -2361,12 +2358,12 @@
       font-weight: 800;
       border: none;
       cursor: pointer;
-      box-shadow: 0 10px 26px rgba(168, 85, 247, 0.32);
-      transition: transform 0.18s ease, box-shadow 0.18s ease;
+      box-shadow: var(--glass-specular);
+      transition: transform 0.18s ease;
     }
     .miado-welcome-btn-primary:hover {
       transform: translateY(-2px) scale(1.01);
-      box-shadow: 0 14px 32px rgba(168, 85, 247, 0.48);
+      box-shadow: var(--glass-specular);
     }
     .miado-welcome-btn-secondary {
       width: 100%;
@@ -2538,7 +2535,7 @@
     .spotify-artist-pick-card.selected {
       background-color: rgba(139, 92, 246, 0.22);
       border-color: #a855f7;
-      box-shadow: 0 0 0 1px #a855f7, 0 8px 20px rgba(0, 0, 0, 0.5);
+      box-shadow: var(--glass-specular);
     }
     .spotify-artist-pick-card img {
       width: 64px;
@@ -2621,7 +2618,7 @@
       -webkit-backdrop-filter: var(--glass-blur);
       border: 1px solid rgba(168, 85, 247, 0.45);
       border-top: 1px solid rgba(255, 255, 255, 0.32);
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.8), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+      box-shadow: var(--glass-specular);
       color: var(--text-primary);
       padding: 12px 18px;
       border-radius: var(--radius-md);
@@ -2729,7 +2726,6 @@
       }
       .greeting-title {
         font-size: 1.42rem;
-        text-shadow: 0 0 24px rgba(168, 85, 247, 0.45);
       }
       .greeting-sub {
         font-size: 0.82rem;
@@ -2774,7 +2770,8 @@
       .cards-row-scroll {
         display: flex;
         overflow-x: auto;
-        scroll-snap-type: x mandatory;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
         padding-bottom: 12px;
         gap: 12px;
         -webkit-overflow-scrolling: touch;
@@ -2910,7 +2907,7 @@
         margin: 0 auto 6px !important;
         border-radius: 20px !important;
         object-fit: cover !important;
-        box-shadow: 0 14px 40px rgba(0,0,0,0.7) !important;
+        box-shadow: none !important;
       }
       .fs-title-heart-row {
         margin: 4px 0 2px !important;
@@ -2946,7 +2943,8 @@
         grid-auto-columns: minmax(142px, 156px) !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
-        scroll-snap-type: x mandatory !important;
+        overscroll-behavior-x: contain !important;
+        scroll-snap-type: x proximity !important;
         -webkit-overflow-scrolling: touch !important;
         gap: 12px !important;
         padding: 4px 0 14px 0 !important;
@@ -2971,7 +2969,8 @@
         grid-auto-flow: column !important;
         grid-auto-columns: minmax(104px, 114px) !important;
         overflow-x: auto !important;
-        scroll-snap-type: x mandatory !important;
+        overscroll-behavior-x: contain !important;
+        scroll-snap-type: x proximity !important;
         -webkit-overflow-scrolling: touch !important;
         gap: 10px !important;
         padding: 4px 0 12px 0 !important;
@@ -3033,7 +3032,8 @@
 
       .artist-bubbles-grid {
         overflow-x: auto !important;
-        scroll-snap-type: x mandatory !important;
+        overscroll-behavior-x: contain !important;
+        scroll-snap-type: x proximity !important;
         -webkit-overflow-scrolling: touch !important;
         scrollbar-width: none !important;
       }
