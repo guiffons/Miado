@@ -85,10 +85,14 @@ export function initMiadoClient() {
       }
 
       function safeImgUrl(url, fallback = "/api/cat-avatar?id=cat_1") {
-        if (window.miadoDom && typeof window.miadoDom.safeUrl === "function") {
-          return window.miadoDom.safeUrl(url, { allowDataImage: true }) || fallback;
+        let raw = String(url || "").trim();
+        if (raw.startsWith("http://")) {
+          raw = "https://" + raw.slice(7);
         }
-        return String(url || fallback);
+        if (window.miadoDom && typeof window.miadoDom.safeUrl === "function") {
+          return window.miadoDom.safeUrl(raw, { allowDataImage: true }) || fallback;
+        }
+        return raw || fallback;
       }
 
       function getAuthHeaders(extra = {}) {
@@ -248,7 +252,10 @@ export function initMiadoClient() {
       function ensureArtistAvatarUrl(art) {
         if (!art) return "/api/artist-image?name=Artista";
         const name = typeof art === "string" ? art : (art.name || "");
-        const rawCover = typeof art === "object" ? (art.coverUrl || art.pictureUrl || "") : "";
+        let rawCover = typeof art === "object" ? (art.coverUrl || art.pictureUrl || "") : "";
+        if (rawCover && rawCover.startsWith("http://")) {
+          rawCover = "https://" + rawCover.slice(7);
+        }
         if (rawCover && rawCover.startsWith("/api/artist-image")) {
           return rawCover;
         }
@@ -277,7 +284,15 @@ export function initMiadoClient() {
 
       function upgradeTo1000x1000(artworkUrl) {
         if (!artworkUrl) return "";
-        return String(artworkUrl).replace(/100x100bb/g, "1000x1000bb").replace(/60x60bb/g, "1000x1000bb");
+        let url = String(artworkUrl).trim();
+        if (url.startsWith("http://")) {
+          url = "https://" + url.slice(7);
+        }
+        return url
+          .replace(/100x100bb/g, "1000x1000bb")
+          .replace(/60x60bb/g, "1000x1000bb")
+          .replace(/250x250-000000-80-0-0/g, "1000x1000-000000-80-0-0")
+          .replace(/500x500-000000-80-0-0/g, "1000x1000-000000-80-0-0");
       }
 
       function applySpotifyMarquee(el) {
@@ -6251,7 +6266,7 @@ export function initMiadoClient() {
                 this.pendingNewPlaylistCoverDataUrl = dataUrl;
                 const previewEl = document.getElementById("new-collab-cover-preview");
                 if (previewEl) {
-                  previewEl.innerHTML = `<img src="${dataUrl}" alt="Capa" style="width:100%; height:100%; object-fit:cover;" />`;
+                  previewEl.innerHTML = `<img src="${dataUrl}" alt="Capa" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;" />`;
                 }
                 showToast("Foto da galeria selecionada para a capa da playlist!");
               } catch (err) {
@@ -6919,7 +6934,7 @@ export function initMiadoClient() {
                   <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:18px; margin-top:-52px; margin-bottom:18px;">
                     <div style="display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap;">
                       <div style="position:relative;">
-                        <img id="prof-hero-avatar" src="${escapeHtml(safeImgUrl(userAvatar))}" alt="${escapeHtml(activeUser.name)}" style="width:112px; height:112px; border-radius:50%; object-fit:cover; border:4px solid var(--accent-hover); background-color:#07060b;" onerror="window.handleCatAvatarError(this)" />
+                        <img id="prof-hero-avatar" src="${escapeHtml(safeImgUrl(userAvatar))}" referrerpolicy="no-referrer" alt="${escapeHtml(activeUser.name)}" style="width:112px; height:112px; border-radius:50%; object-fit:cover; border:4px solid var(--accent-hover); background-color:#07060b;" onerror="window.handleCatAvatarError(this)" />
                         ${isMe ? `
                           <button type="button" id="btn-prof-change-avatar" title="Escolher Foto da Galeria" style="position:absolute; right:2px; bottom:2px; width:34px; height:34px; border-radius:50%; background-color:var(--accent); border:2px solid #ffffff; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#ffffff;">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -7087,7 +7102,7 @@ export function initMiadoClient() {
                         return `
                           <div class="album-card" style="padding:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-prof-open-user="${escapeHtml(u.username)}">
                             <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
-                              <img src="${escapeHtml(uAvatar)}" alt="${escapeHtml(u.name)}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" onerror="window.handleCatAvatarError(this)" />
+                              <img src="${escapeHtml(uAvatar)}" referrerpolicy="no-referrer" alt="${escapeHtml(u.name)}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" onerror="window.handleCatAvatarError(this)" />
                               <div style="min-width:0; flex:1;">
                                 <div style="font-weight:700; font-size:0.9rem; color:#ffffff;" class="text-truncate">${escapeHtml(u.name)}</div>
                                 <div style="font-size:0.75rem; color:var(--accent-hover);">${escapeHtml(u.username)}</div>
@@ -7124,7 +7139,7 @@ export function initMiadoClient() {
                         return `
                           <div class="album-card" style="padding:14px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-prof-open-user="${escapeHtml(u.username)}">
                             <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
-                              <img src="${escapeHtml(uAvatar)}" alt="${escapeHtml(u.name)}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" onerror="window.handleCatAvatarError(this)" />
+                              <img src="${escapeHtml(uAvatar)}" referrerpolicy="no-referrer" alt="${escapeHtml(u.name)}" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" onerror="window.handleCatAvatarError(this)" />
                               <div style="min-width:0; flex:1;">
                                 <div style="font-weight:700; font-size:0.9rem; color:#ffffff;" class="text-truncate">${escapeHtml(u.name)}</div>
                                 <div style="font-size:0.75rem; color:var(--accent-hover);">${escapeHtml(u.username)}</div>
@@ -9159,7 +9174,7 @@ export function initMiadoClient() {
                       return `
                         <div class="album-card" data-open-community-prof="${pIdx}" style="padding:14px; cursor:pointer; background-color:var(--bg-base);">
                           <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
-                            <img src="${escapeHtml(profAvatar)}" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover);" alt="${escapeHtml(prof.name)}" onerror="window.handleCatAvatarError(this)" />
+                            <img src="${escapeHtml(profAvatar)}" referrerpolicy="no-referrer" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover);" alt="${escapeHtml(prof.name)}" onerror="window.handleCatAvatarError(this)" />
                             <div style="flex:1; min-width:0;">
                               <div style="display:flex; align-items:center; gap:6px;">
                                 <div style="font-weight:800; font-size:0.92rem; color:#fff;" class="text-truncate">${escapeHtml(prof.name)}</div>
@@ -9171,8 +9186,16 @@ export function initMiadoClient() {
                           <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px; min-height:20px;" class="text-truncate">
                             ${escapeHtml(prof.bio || "Perfil oficial no Miado.")}
                           </div>
-                          <div data-community-track-prof="${pIdx}" style="font-size:0.73rem; color:var(--accent-hover); margin-bottom:10px; cursor:pointer; text-decoration:${liveTrackLabel !== 'Silencioso no momento' ? 'underline' : 'none'};" class="text-truncate" title="Clique para tocar e ver o álbum desta música">
-                            🎧 ${escapeHtml(liveTrackLabel)}
+                          <div data-community-track-prof="${pIdx}" style="display:flex; align-items:center; gap:8px; font-size:0.73rem; color:var(--accent-hover); margin-bottom:10px; cursor:pointer; text-decoration:${liveTrackLabel !== 'Silencioso no momento' ? 'underline' : 'none'};" class="text-truncate" title="Clique para tocar e ver o álbum desta música">
+                            ${prof.online && liveTrackLabel !== 'Silencioso no momento' ? `
+                              <div class="sound-wave-badge" title="Tocando agora">
+                                <span class="sw-bar"></span>
+                                <span class="sw-bar"></span>
+                                <span class="sw-bar"></span>
+                                <span class="sw-bar"></span>
+                              </div>
+                            ` : `<span>🎧</span>`}
+                            <span class="text-truncate">${escapeHtml(liveTrackLabel)}</span>
                           </div>
                           <div style="display:flex; gap:8px;">
                             ${isMe ? `
@@ -9215,13 +9238,17 @@ export function initMiadoClient() {
                 ` : `
                   <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); gap:14px;">
                     ${state.friends.map((f, fIdx) => {
-                      const liveFriendTrack = f.online && f.currentTrack && f.currentTrack !== "Ouvindo no Miado"
+                      const isPlayingNow = f.online && f.currentTrack && f.currentTrack !== "Ouvindo no Miado";
+                      const liveFriendTrack = isPlayingNow
                         ? f.currentTrack
                         : "Silencioso no momento";
+                      const friendTrackCover = isPlayingNow
+                        ? ensureTrackCoverUrl(null, f.currentTrack, f.name)
+                        : "";
                       return `
                       <div class="album-card" style="padding:16px; cursor:default;">
                         <div data-open-friend-prof="${fIdx}" style="display:flex; align-items:center; gap:12px; margin-bottom:12px; cursor:pointer;" title="Ver perfil de ${escapeHtml(f.name)}">
-                          <img src="${escapeHtml(safeImgUrl(f.avatar || f.avatarUrl))}" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover); cursor:pointer;" alt="${escapeHtml(f.name)}" onerror="window.handleCatAvatarError(this)" />
+                          <img src="${escapeHtml(safeImgUrl(f.avatar || f.avatarUrl))}" referrerpolicy="no-referrer" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover); cursor:pointer;" alt="${escapeHtml(f.name)}" onerror="window.handleCatAvatarError(this)" />
                           <div style="flex:1; min-width:0;">
                             <div style="display:flex; align-items:center; gap:6px;">
                               <div style="font-weight:700; font-size:0.95rem; color:#fff;" class="text-truncate">${escapeHtml(f.name)}</div>
@@ -9233,10 +9260,32 @@ export function initMiadoClient() {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                           </button>
                         </div>
-                        <div data-open-friend-track-idx="${fIdx}" style="background-color:var(--bg-base); border:1px solid var(--glass-border); padding:10px 12px; border-radius:10px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:${liveFriendTrack !== 'Silencioso no momento' ? 'pointer' : 'default'};" title="Clique para tocar e abrir o álbum desta música">
+                        <div data-open-friend-track-idx="${fIdx}" style="background-color:var(--bg-base); border:1px solid var(--glass-border); padding:10px 12px; border-radius:10px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:${isPlayingNow ? 'pointer' : 'default'};" title="Clique para tocar e abrir o álbum desta música">
+                          ${isPlayingNow ? `
+                            <div style="position:relative; width:40px; height:40px; border-radius:8px; overflow:hidden; flex-shrink:0;">
+                              <img src="${escapeHtml(friendTrackCover)}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;" alt="Capa" onerror="window.handleImgError(this, '${escapeHtml(liveFriendTrack)}', '')" />
+                              <div style="position:absolute; inset:0; background:rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center;">
+                                <div class="sound-wave-badge" style="padding:1px 3px; height:14px; background:rgba(0,0,0,0.5);">
+                                  <span class="sw-bar"></span>
+                                  <span class="sw-bar"></span>
+                                  <span class="sw-bar"></span>
+                                  <span class="sw-bar"></span>
+                                </div>
+                              </div>
+                            </div>
+                          ` : ""}
                           <div style="overflow:hidden; flex:1;">
-                            <div style="font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Ouvindo Agora</div>
-                            <div style="font-size:0.85rem; font-weight:600; color:#fff; margin-top:2px; text-decoration:${liveFriendTrack !== 'Silencioso no momento' ? 'underline' : 'none'};" class="text-truncate">${escapeHtml(liveFriendTrack)}</div>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                              <div style="font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Ouvindo Agora</div>
+                              ${isPlayingNow ? `
+                                <div class="sound-wave-badge" style="height:12px; padding:1px 3px;">
+                                  <span class="sw-bar"></span>
+                                  <span class="sw-bar"></span>
+                                  <span class="sw-bar"></span>
+                                </div>
+                              ` : ""}
+                            </div>
+                            <div style="font-size:0.85rem; font-weight:600; color:#fff; margin-top:2px; text-decoration:${isPlayingNow ? 'underline' : 'none'};" class="text-truncate">${escapeHtml(liveFriendTrack)}</div>
                           </div>
                           <button class="track-icon-btn ${f.likedByMe ? 'liked' : ''}" data-like-friend-idx="${fIdx}" title="Curtir atividade do amigo">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="${f.likedByMe ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
@@ -9314,7 +9363,7 @@ export function initMiadoClient() {
                 <!-- Caixa para o Usuário Escolher Publicar no Feed Miau -->
                 <div class="album-card" style="padding:16px 18px; margin-bottom:14px; cursor:default;">
                   <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                    <img src="${escapeHtml(safeImgUrl(state.user.avatarUrl))}" style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" alt="${escapeHtml(state.user.name)}" onerror="window.handleCatAvatarError(this)" />
+                    <img src="${escapeHtml(safeImgUrl(state.user.avatarUrl))}" referrerpolicy="no-referrer" style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" alt="${escapeHtml(state.user.name)}" onerror="window.handleCatAvatarError(this)" />
                     <input type="text" id="social-custom-post-comment" placeholder="${state.currentTrack ? `Escreva uma legenda sobre "${escapeHtml(state.currentTrack.title)}" (opcional)...` : 'Toque uma música e escreva uma legenda para publicar no Feed Miau...'}" style="flex:1; min-width:220px;" />
                     <button type="button" class="album-action-btn primary" id="btn-social-publish-chosen" style="height:40px; padding:0 18px; flex:0 0 auto;">
                       Publicar no Feed
@@ -9334,7 +9383,7 @@ export function initMiadoClient() {
                       return `
                         <div class="album-card" style="padding:16px 18px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; cursor:default;">
                           <div style="display:flex; align-items:center; gap:14px; flex:1; min-width:240px;">
-                            <img src="${escapeHtml(safeImgUrl(post.avatar))}" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" alt="${escapeHtml(post.name || post.username)}" onerror="window.handleCatAvatarError(this)" />
+                            <img src="${escapeHtml(safeImgUrl(post.avatar))}" referrerpolicy="no-referrer" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" alt="${escapeHtml(post.name || post.username)}" onerror="window.handleCatAvatarError(this)" />
                             <div style="flex:1; min-width:0;">
                               <div style="font-size:0.9rem; color:#fff;">
                                 <strong style="color:var(--accent-hover);">${escapeHtml(post.username)}</strong> ${escapeHtml(post.actionText || "compartilhou no Feed Miau")}
@@ -9754,7 +9803,7 @@ export function initMiadoClient() {
                         <span class="track-artist">${track.artist}</span>
                         ${track.addedBy ? `
                           <span class="collab-contributor-tag">
-                            <img src="${track.addedBy.avatar}" style="width:15px; height:15px; border-radius:50%; object-fit:cover;" onerror="window.handleCatAvatarError(this)" />
+                            <img src="${track.addedBy.avatar}" referrerpolicy="no-referrer" style="width:15px; height:15px; border-radius:50%; object-fit:cover;" onerror="window.handleCatAvatarError(this)" />
                             ${track.addedBy.username}
                           </span>
                         ` : ""}
@@ -9882,7 +9931,7 @@ export function initMiadoClient() {
 
             addResultsContainer.innerHTML = matches.map((tr, mIdx) => `
               <div class="track-row" style="padding:6px 10px; border-radius:10px; background:rgba(255,255,255,0.02); min-height:48px;" data-pl-add-candidate="${mIdx}">
-                <img src="${ensureTrackCoverUrl(tr, tr.title, tr.artist)}" style="width:36px; height:36px; border-radius:6px; object-fit:cover; margin-right:10px; flex-shrink:0;" onerror="window.handleImgError(this, '${tr.title.replace(/'/g, "")}', '${tr.artist.replace(/'/g, "")}')" />
+                <img src="${ensureTrackCoverUrl(tr, tr.title, tr.artist)}" referrerpolicy="no-referrer" style="width:36px; height:36px; border-radius:6px; object-fit:cover; margin-right:10px; flex-shrink:0;" onerror="window.handleImgError(this, '${tr.title.replace(/'/g, "")}', '${tr.artist.replace(/'/g, "")}')" />
                 <div style="flex:1; min-width:0;">
                   <div style="font-size:0.85rem; font-weight:700; color:#fff;" class="text-truncate">${tr.title}</div>
                   <div style="font-size:0.73rem; color:var(--text-secondary);" class="text-truncate">${tr.artist}</div>
@@ -10508,7 +10557,7 @@ export function initMiadoClient() {
               return `
               <div class="friend-activity-card">
                 <div class="friend-top-row" data-sidebar-open-friend="${idx}" style="cursor:pointer;" title="Ver perfil de ${escapeHtml(f.name)}">
-                  <img class="friend-avatar" src="${escapeHtml(safeImgUrl(f.avatar || f.avatarUrl))}" alt="${escapeHtml(f.name)}" style="cursor:pointer;" onerror="window.handleCatAvatarError(this)" />
+                  <img class="friend-avatar" src="${escapeHtml(safeImgUrl(f.avatar || f.avatarUrl))}" referrerpolicy="no-referrer" alt="${escapeHtml(f.name)}" style="cursor:pointer;" onerror="window.handleCatAvatarError(this)" />
                   <div class="friend-info">
                     <div class="friend-name-row">
                       <span class="friend-name">${escapeHtml(f.name)}</span>

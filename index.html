@@ -115,7 +115,7 @@
           </button>
 
           <div class="user-pill-top" id="btn-user-profile" title="Meu Perfil">
-            <img id="top-user-avatar" class="user-pill-avatar" src="" alt="Foto de Perfil" />
+            <img id="top-user-avatar" class="user-pill-avatar" src="" alt="Foto de Perfil" referrerpolicy="no-referrer" />
             <div class="user-pill-info-text">
               <div class="user-pill-name" id="top-user-name">Visitante</div>
               <div class="user-pill-handle" id="top-user-handle">@novo_usuario</div>
@@ -293,7 +293,7 @@
           <label style="font-weight:700; font-size:0.85rem; color:#fff; display:block; margin-bottom:6px;">Criar Nova Playlist</label>
           <input type="text" id="input-new-collab-name" placeholder="Nome da playlist (ex: Festa Miau)..." style="width:100%; margin-bottom:10px;" />
           <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:10px; border-radius:12px; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border);">
-            <img id="new-collab-cover-preview" src="/api/cover?title=Sabrina+Carpenter&artist=Short+n+Sweet" alt="Capa" style="width:52px; height:52px; border-radius:10px; object-fit:cover; border:1px solid var(--glass-border-strong); flex-shrink:0;" />
+            <img id="new-collab-cover-preview" src="/api/cover?title=Sabrina+Carpenter&artist=Short+n+Sweet" alt="Capa" referrerpolicy="no-referrer" style="width:52px; height:52px; border-radius:10px; object-fit:cover; border:1px solid var(--glass-border-strong); flex-shrink:0;" />
             <div style="flex:1; min-width:0;">
               <div style="font-size:0.8rem; font-weight:700; color:#ffffff; margin-bottom:4px;">Capa Personalizada (Opcional)</div>
               <label for="input-new-collab-cover-file" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:8px; background:rgba(168,85,247,0.18); border:1px solid var(--accent-hover); color:#ffffff; font-size:0.78rem; font-weight:700; cursor:pointer;">
@@ -552,7 +552,7 @@
         <div id="onboard-pane-2" style="display:none; flex-direction:column; gap:12px;">
           <div style="display:flex; align-items:center; gap:14px; background-color:var(--bg-base); border:1px solid var(--glass-border-strong); border-radius:12px; padding:12px;">
             <div style="position:relative; flex-shrink:0;">
-              <img id="onboard-avatar-preview" src="/api/cat-avatar?id=cat_1" style="width:68px; height:68px; border-radius:50%; object-fit:cover; border:2.5px solid var(--accent-hover);" alt="Foto de Perfil" />
+              <img id="onboard-avatar-preview" src="/api/cat-avatar?id=cat_1" referrerpolicy="no-referrer" style="width:68px; height:68px; border-radius:50%; object-fit:cover; border:2.5px solid var(--accent-hover);" alt="Foto de Perfil" />
               <label for="onboard-file-avatar" title="Enviar Foto Própria" style="position:absolute; right:-2px; bottom:-2px; width:24px; height:24px; border-radius:50%; background-color:var(--accent); border:1px solid #fff; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#fff;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               </label>

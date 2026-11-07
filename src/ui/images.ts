@@ -11,6 +11,7 @@ export function bindImageFallback(
   img.decoding = "async";
   img.loading = "lazy";
   img.draggable = false;
+  img.referrerPolicy = "no-referrer";
   img.alt = altText;
 
   const placeholderUri = createGlassPlaceholderDataUri(kind, seed);

@@ -89,9 +89,17 @@ export function updateAmbientColorsFromCover(coverUrl: string): void {
     animateAmbientRgbTransition([147, 51, 234], [88, 28, 135], [180, 180, 200]);
     return;
   }
+  let cleanUrl = coverUrl;
+  if (cleanUrl.startsWith("http://")) {
+    cleanUrl = "https://" + cleanUrl.slice(7);
+  }
 
   const img = new Image();
   img.crossOrigin = "anonymous";
+  img.referrerPolicy = "no-referrer";
+  img.onerror = () => {
+    animateAmbientRgbTransition([147, 51, 234], [88, 28, 135], [180, 180, 200]);
+  };
   img.onload = () => {
     try {
       const canvas = document.createElement("canvas");
@@ -135,9 +143,10 @@ export function updateAmbientColorsFromCover(coverUrl: string): void {
       animateAmbientRgbTransition(next1, next2, next3);
     } catch {
       // Fallback to default Miado palette if canvas is tainted
+      animateAmbientRgbTransition([147, 51, 234], [88, 28, 135], [180, 180, 200]);
     }
   };
-  img.src = coverUrl;
+  img.src = cleanUrl;
 }
 
 export function initEnhancements(): void {

@@ -10,8 +10,11 @@ export function escapeHtml(val: unknown): string {
 }
 
 export function safeUrl(raw: unknown, fallback = ""): string {
-  const s = typeof raw === "string" ? raw.trim() : "";
+  let s = typeof raw === "string" ? raw.trim() : "";
   if (!s) return fallback;
+  if (s.startsWith("http://")) {
+    s = "https://" + s.slice(7);
+  }
   if (s.startsWith("/api/") || s.startsWith("/audio/") || s.startsWith("/assets/")) {
     return s;
   }
@@ -35,6 +38,9 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   ...children: DomChild[]
 ): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
+  if (tag === "img") {
+    el.setAttribute("referrerpolicy", "no-referrer");
+  }
   if (attrs) {
     for (const [key, value] of Object.entries(attrs)) {
       if (value === undefined || value === null || value === false) continue;

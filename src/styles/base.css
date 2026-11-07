@@ -152,7 +152,7 @@
       display: none;
     }
 
-    /* Tipografia Oficial do Miado em Liquid Glass Estilizado (Sem Ícone de Logo) */
+    /* Tipografia Oficial do Miado em Liquid Glass Estilizado */
     .brand-header {
       padding: 18px 14px 12px;
       display: flex;
@@ -170,7 +170,7 @@
       pointer-events: none !important;
     }
     .brand-title {
-      display: inline-flex;
+      display: inline-flex !important;
       align-items: center;
       gap: 8px;
       padding: 7px 18px;
@@ -3170,18 +3170,21 @@
         right: 10px;
         bottom: calc(var(--bottom-nav-height) + 8px + env(safe-area-inset-bottom, 0px));
         height: 60px;
-        background: rgba(20, 15, 34, 0.52) !important;
+        background: rgba(20, 15, 34, 0.55) !important;
         backdrop-filter: blur(28px) saturate(190%) !important;
         -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
         filter: none !important;
         -webkit-filter: none !important;
-        border: none !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.22) !important;
         outline: none !important;
-        box-shadow: none !important;
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
         border-radius: 18px !important;
         padding: 0 12px;
         z-index: 65;
         overflow: hidden;
+        transform: translateZ(0);
+        will-change: transform, backdrop-filter;
       }
       .mobile-mini-progress-track {
         position: absolute;
@@ -3259,11 +3262,13 @@
         backdrop-filter: blur(28px) saturate(190%) !important;
         -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
         border: none !important;
-        border-top: none !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
         outline: none !important;
         box-shadow: none !important;
         z-index: 99999 !important;
         pointer-events: auto !important;
+        transform: translateZ(0);
+        will-change: backdrop-filter;
       }
       .bottom-tab-item {
         display: flex;
@@ -3282,6 +3287,18 @@
         pointer-events: auto !important;
         background: none;
         border: none;
+        min-width: 0;
+        padding: 0 4px;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+      .bottom-tab-item span {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        max-width: 100% !important;
+        display: block;
       }
       .bottom-tab-item svg,
       .bottom-tab-item span {

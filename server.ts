@@ -294,7 +294,11 @@ function formatDurationMs(ms: number): string {
 
 function upgradeArtwork(url?: string): string {
   if (!url) return "";
-  return url
+  let clean = String(url).trim();
+  if (clean.startsWith("http://")) {
+    clean = "https://" + clean.slice(7);
+  }
+  return clean
     .replace(/100x100bb/g, "1000x1000bb")
     .replace(/60x60bb/g, "1000x1000bb")
     .replace(/250x250-000000-80-0-0/g, "1000x1000-000000-80-0-0")
