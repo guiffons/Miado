@@ -119,18 +119,18 @@ body {
 .sidebar-right,
 .top-bar {
   background: var(--glass-bg-2) !important;
-  backdrop-filter: var(--glass-blur-2) !important;
   -webkit-backdrop-filter: var(--glass-blur-2) !important;
+  backdrop-filter: var(--glass-blur-2) !important;
   border: none !important;
   box-shadow: none !important;
 }
 
 .player-footer {
-  background: rgba(14, 10, 26, 0.54) !important;
-  backdrop-filter: blur(32px) saturate(190%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+  background: rgba(14, 10, 26, 0.46) !important;
+  -webkit-backdrop-filter: blur(38px) saturate(200%) !important;
+  backdrop-filter: blur(38px) saturate(200%) !important;
   border: none !important;
-  border-top: none !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
   outline: none !important;
   box-shadow: none !important;
   transform: translateZ(0) !important;
@@ -141,8 +141,8 @@ body {
 .quick-card,
 .friend-activity-card {
   background: var(--glass-bg-1) !important;
-  backdrop-filter: var(--glass-blur-1) !important;
   -webkit-backdrop-filter: var(--glass-blur-1) !important;
+  backdrop-filter: var(--glass-blur-1) !important;
   border: none !important;
   box-shadow: none !important;
 }
@@ -165,8 +165,8 @@ body {
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
-  backdrop-filter: blur(18px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
 }
 
 .artist-bubble-card,
@@ -196,19 +196,36 @@ body {
 #modal-fullscreen-player,
 div#modal-fullscreen-player,
 div#modal-fullscreen-player:nth-of-type(6) {
-  background-color: rgba(6, 5, 12, 0.72) !important;
-  backdrop-filter: blur(60px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(60px) saturate(180%) !important;
+  background-color: rgba(6, 5, 12, 0.52) !important;
+  -webkit-backdrop-filter: blur(56px) saturate(190%) !important;
+  backdrop-filter: blur(56px) saturate(190%) !important;
 }
 
 .fullscreen-player-dialog,
 div#modal-fullscreen-player .fullscreen-player-dialog,
 div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
-  background: linear-gradient(145deg, rgba(20, 16, 34, 0.78) 0%, rgba(10, 8, 20, 0.68) 100%) !important;
-  backdrop-filter: blur(60px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(60px) saturate(180%) !important;
-  border: none !important;
-  box-shadow: none !important;
+  background: linear-gradient(145deg, rgba(22, 18, 38, 0.54) 0%, rgba(12, 10, 22, 0.46) 100%) !important;
+  -webkit-backdrop-filter: blur(52px) saturate(195%) !important;
+  backdrop-filter: blur(52px) saturate(195%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+.fs-queue-card {
+  background: rgba(255, 255, 255, 0.045) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+  backdrop-filter: blur(28px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.16) !important;
+}
+
+.spotify-context-menu,
+#spotify-context-menu {
+  background: linear-gradient(145deg, rgba(26, 20, 44, 0.52) 0%, rgba(14, 11, 26, 0.46) 100%) !important;
+  -webkit-backdrop-filter: blur(36px) saturate(200%) !important;
+  backdrop-filter: blur(36px) saturate(200%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.13) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.22) !important;
 }
 
 /* Correção definitiva do efeito estranho no hover dos botões de curtida (♥) e adicionar (+) na tracklist */
@@ -334,8 +351,8 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
   .album-card,
   .quick-card,
   .friend-activity-card {
-    backdrop-filter: blur(18px) saturate(175%) !important;
     -webkit-backdrop-filter: blur(18px) saturate(175%) !important;
+    backdrop-filter: blur(18px) saturate(175%) !important;
     background: rgba(22, 17, 36, 0.56) !important;
     border: none !important;
     box-shadow: none !important;
@@ -351,8 +368,8 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     height: 60px !important;
     z-index: 65 !important;
     background: rgba(20, 15, 34, 0.55) !important;
-    backdrop-filter: blur(28px) saturate(190%) !important;
     -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+    backdrop-filter: blur(28px) saturate(190%) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     border-top: 1px solid rgba(255, 255, 255, 0.22) !important;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
@@ -375,8 +392,8 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px)) !important;
     padding-bottom: env(safe-area-inset-bottom, 0px) !important;
     background: rgba(10, 8, 20, 0.72) !important;
-    backdrop-filter: blur(28px) saturate(190%) !important;
     -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+    backdrop-filter: blur(28px) saturate(190%) !important;
     border: none !important;
     border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
     outline: none !important;
@@ -417,8 +434,8 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
   padding: 2px 4px;
   border-radius: 4px;
   background: rgba(168, 85, 247, 0.32);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   flex-shrink: 0;
 }
 
@@ -757,8 +774,8 @@ img.album-hero-artwork.album-fallback-blur {
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
-  backdrop-filter: blur(18px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
   transition:
     background 0.22s cubic-bezier(0.22, 1, 0.36, 1),
     color 0.22s ease,
@@ -881,8 +898,8 @@ img.album-hero-artwork.album-fallback-blur {
   border: none !important;
   box-shadow: none !important;
   background: rgba(255, 255, 255, 0.03) !important;
-  backdrop-filter: var(--glass-blur-1) !important;
   -webkit-backdrop-filter: var(--glass-blur-1) !important;
+  backdrop-filter: var(--glass-blur-1) !important;
 }
 
 /* ==========================================================================
@@ -919,8 +936,8 @@ img.album-hero-artwork.album-fallback-blur {
   justify-content: center !important;
   text-align: center !important;
   background: rgba(18, 16, 28, 0.72) !important;
-  backdrop-filter: blur(32px) saturate(190%) !important;
   -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+  backdrop-filter: blur(32px) saturate(190%) !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
   transform: translateZ(0);
@@ -1010,8 +1027,8 @@ button[data-btn-add-track-to-pl] {
   padding: 0 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05) !important;
-  backdrop-filter: blur(18px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   color: rgba(244, 240, 255, 0.78) !important;
   font-size: 0.78rem;
@@ -1044,8 +1061,8 @@ button[data-btn-add-track-to-pl] {
   padding: 0 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06) !important;
-  backdrop-filter: blur(18px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
   border: 1px solid rgba(255, 255, 255, 0.09) !important;
   color: #e9d5ff !important;
   font-size: 0.76rem;
@@ -1083,8 +1100,8 @@ button[data-btn-add-track-to-pl] {
   padding: 2px 4px 2px 8px;
   border-radius: 999px;
   background-color: rgba(18, 16, 28, 0.76) !important;
-  backdrop-filter: blur(24px) saturate(185%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(185%) !important;
+  backdrop-filter: blur(24px) saturate(185%) !important;
   border: 1px solid rgba(255, 255, 255, 0.11) !important;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
   transform: translateZ(0);
@@ -1202,8 +1219,8 @@ input.ob-field-input:focus {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
   transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
