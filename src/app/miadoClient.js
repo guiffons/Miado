@@ -2412,6 +2412,9 @@ export function initMiadoClient() {
           }
 
           localStorage.setItem("miado_real_friends_v1", JSON.stringify(this.friends));
+          if (targetUid && window.miadoFirestore && typeof window.miadoFirestore.syncProfileFollow === "function") {
+            void window.miadoFirestore.syncProfileFollow(targetUid, nowFollowing);
+          }
           this.user.followingProfiles = this.friends.map(f => f.username);
           this.user.followingCount = (this.friends?.length || 0) + (this.followedArtists?.length || 0);
           this.saveUser();
@@ -3081,6 +3084,35 @@ export function initMiadoClient() {
           const allFollowedNames = this.followedArtists.map(a => a.name);
           this.user.followedArtists = allFollowedNames;
           this.user.favoriteArtists = allFollowedNames.slice(0, 60);
+          if (Array.isArray(data.followingProfiles) && data.followingProfiles.length > 0) {
+            const friendKeys = new Set((this.friends || []).map(f => String(f.uid || f.username || "").toLowerCase()));
+            data.followingProfiles.forEach(fp => {
+              if (!fp || !fp.username) return;
+              const fKey = String(fp.uid || fp.username).toLowerCase();
+              if (friendKeys.has(fKey) || friendKeys.has(String(fp.username).toLowerCase())) return;
+              friendKeys.add(fKey);
+              this.friends.push({
+                uid: fp.uid || "",
+                id: `prof_${fp.uid || String(fp.username).replace(/[^a-z0-9_]/gi, "")}`,
+                name: fp.name || String(fp.username).slice(1),
+                username: fp.username,
+                bio: fp.bio || "",
+                avatar: fp.avatarUrl,
+                avatarUrl: fp.avatarUrl,
+                bannerUrl: "",
+                favoriteArtists: Array.isArray(fp.favoriteArtists) ? fp.favoriteArtists : [],
+                followedArtists: [],
+                likedTracks: [],
+                playlists: [],
+                currentTrack: "Silencioso no momento",
+                trackObj: null,
+                albumId: INITIAL_ALBUMS[0].id,
+                online: false,
+                likedByMe: false
+              });
+            });
+            try { localStorage.setItem("miado_real_friends_v1", JSON.stringify(this.friends)); } catch (_e) {}
+          }
           this.user.followingCount = (this.friends?.length || 0) + (this.followedArtists?.length || 0);
           localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
           localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
@@ -9107,7 +9139,7 @@ export function initMiadoClient() {
           this.homeAlbumsPool = homeAlbumsPool;
 
           const quickCards = homeAlbumsPool.slice(0, 6);
-          const newReleasesAlbums = homeAlbumsPool.slice(0, 50);
+          const newReleasesAlbums = homeAlbumsPool.slice(0, activeFilter === "albums" ? 24 : 12);
           const globalAlbums = [];
 
           const chartSongs = (state.charts && Array.isArray(state.charts.topSongs) && state.charts.topSongs.length > 0)
@@ -9180,7 +9212,7 @@ export function initMiadoClient() {
           this.homeGlobalTopTracks = globalTopTracks;
           this.homeAlgoTracks = algoTracks;
 
-          this.homeTopTracksLimit = this.homeTopTracksLimit || 30;
+          this.homeTopTracksLimit = this.homeTopTracksLimit || 15;
           this.homeAlgoTracksLimit = this.homeAlgoTracksLimit || 30;
 
           const visibleTopTracks = globalTopTracks.slice(0, this.homeTopTracksLimit);
@@ -9239,7 +9271,7 @@ export function initMiadoClient() {
                 <div class="artist-bubbles-grid" id="home-artists-infinite-grid">
                   ${(() => {
                     const isMobile = window.innerWidth <= 860;
-                    const maxHomeArtists = activeFilter === "artists" ? 100 : (isMobile ? 18 : 12);
+                    const maxHomeArtists = activeFilter === "artists" ? 30 : (isMobile ? 12 : 10);
                     return homeArtistsList.slice(0, maxHomeArtists).map(art => `
                     <div class="artist-bubble-card" data-open-artist="${art.name}">
                       <div class="artist-avatar-wrap">
@@ -9264,7 +9296,7 @@ export function initMiadoClient() {
             ${showAlbumsSection ? `
               <section class="showcase-section">
                 <div class="section-head">
-                  <h2 class="section-title">Álbuns em Alta</h2>
+                  <h2 class="section-title">Álbuns para você</h2>
                   <button class="btn-see-all" id="btn-refresh-home-albums">Atualizar</button>
                 </div>
                 <div class="cards-grid-albums home-albums-grid-3rows home-albums-row-scroll" id="home-albums-infinite-grid">

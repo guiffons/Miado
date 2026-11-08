@@ -215,29 +215,24 @@
 }
 
 .ob-brand-mark {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.065);
-  backdrop-filter: blur(22px) saturate(185%);
-  -webkit-backdrop-filter: blur(22px) saturate(185%);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  width: 64px;
+  height: 52px;
+  background: transparent;
+  border: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: transparent;
-  overflow: hidden;
+  overflow: visible;
   flex-shrink: 0;
 }
 
 .ob-brand-logo-img {
-  width: 32px;
-  height: 32px;
+  width: 64px;
+  height: 48px;
   object-fit: contain;
   display: block;
 }
-
 .ob-brand-mark svg {
   display: none;
 }

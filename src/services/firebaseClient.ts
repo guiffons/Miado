@@ -382,11 +382,36 @@ export function initFirebaseClient(): void {
     const userDocRef = doc(db, "users", user.uid);
     const profDocRef = doc(db, "profiles", user.uid);
     const likesQ = query(collection(db, "users", user.uid, "likes"), limit(200));
-    const [snap, profSnap, likesSnap] = await Promise.all([
+    const followsQ = query(collection(db, "follows"), where("followerId", "==", user.uid), limit(200));
+    const [snap, profSnap, likesSnap, followsSnap] = await Promise.all([
       getDoc(userDocRef),
       getDoc(profDocRef),
       getDocs(likesQ).catch(() => null),
+      getDocs(followsQ).catch(() => null),
     ]);
+
+    const followingProfiles: any[] = [];
+    if (followsSnap && !followsSnap.empty) {
+      const followeeIds = followsSnap.docs
+        .map((d) => String((d.data() || {}).followeeId || ""))
+        .filter(Boolean);
+      const profDocs = await Promise.all(
+        followeeIds.map((fid) => getDoc(doc(db, "profiles", fid)).catch(() => null))
+      );
+      profDocs.forEach((ps, i) => {
+        if (!ps || !ps.exists()) return;
+        const pd: any = ps.data() || {};
+        const bare = normalizeBareHandle(String(pd.handle || ""), "user");
+        followingProfiles.push({
+          uid: followeeIds[i],
+          name: String(pd.name || bare),
+          username: `@${bare}`,
+          avatarUrl: pd.avatarUrl || "/api/cat-avatar?id=cat_1",
+          bio: String(pd.bio || ""),
+          favoriteArtists: Array.isArray(pd.favoriteArtists) ? pd.favoriteArtists : [],
+        });
+      });
+    }
 
     const firestoreLikes: any[] = [];
     if (likesSnap && !likesSnap.empty) {
@@ -497,6 +522,7 @@ export function initFirebaseClient(): void {
         favoriteArtists: combinedArtistNames.slice(0, 60),
         followedArtists: combinedArtistNames,
         ...(firestoreLikes.length > 0 ? { likedTracks: firestoreLikes } : {}),
+        ...(followingProfiles.length > 0 ? { followingProfiles } : {}),
         privacy: resolvedPrivacy,
         onboardingCompleted: Boolean(data.onboardingCompleted),
       };
@@ -780,6 +806,26 @@ export function initFirebaseClient(): void {
         }
       },
 
+      async syncProfileFollow(targetUid: string, isFollowing: boolean) {
+        const activeUser = auth.currentUser || this.currentUser;
+        const cleanTarget = String(targetUid || "").trim();
+        if (!activeUser || !cleanTarget || cleanTarget === activeUser.uid) return;
+        const followRef = doc(db, "follows", `${activeUser.uid}_${cleanTarget}`);
+        try {
+          if (isFollowing) {
+            await setDoc(followRef, {
+              followerId: activeUser.uid,
+              followeeId: cleanTarget,
+              createdAt: serverTimestamp(),
+            });
+          } else {
+            await deleteDoc(followRef);
+          }
+        } catch (err) {
+          console.warn("Firestore syncProfileFollow warning:", err);
+        }
+      },
+
       async syncTrackLike(track: any, isLiked: boolean) {
         const activeUser = auth.currentUser || this.currentUser;
         if (!activeUser || !track || !track.title) return;
@@ -801,15 +847,19 @@ export function initFirebaseClient(): void {
               durSec = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
             }
             durSec = Math.max(0, Math.min(7200, Math.round(durSec || 210)));
-            await setDoc(likeRef, {
+            const likePayload: Record<string, any> = {
               trackKey,
               title,
               artist,
               albumTitle,
-              coverUrl,
               durationSec: durSec,
               likedAt: serverTimestamp(),
-            });
+            };
+            // As regras do Firestore rejeitam coverUrl vazio; só envia quando houver uma URL válida
+            if (coverUrl && coverUrl.length >= 10) {
+              likePayload.coverUrl = coverUrl;
+            }
+            await setDoc(likeRef, likePayload);
             syncedLikesInSession.add(`${uid}:${trackKey}`);
           } else {
             await deleteDoc(likeRef);
