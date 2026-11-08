@@ -1449,22 +1449,59 @@ export function initMiadoClient() {
         }
 
         loadFollowedArtists() {
-          try {
-            const saved = localStorage.getItem("miado_followed_artists_v1");
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              if (Array.isArray(parsed)) {
-                return parsed.filter(a => a && a.name);
+          const seen = new Set();
+          const result = [];
+          const pushArtist = item => {
+            if (!item) return;
+            const name = typeof item === "string" ? item.trim() : String(item.name || "").trim();
+            if (!name) return;
+            const k = name.toLowerCase();
+            if (seen.has(k)) return;
+            seen.add(k);
+            const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
+            result.push({
+              name,
+              role: (typeof item === "object" && item.role) || (dirMatch && dirMatch.role) || "Artista Verificado",
+              coverUrl:
+                (typeof item === "object" && item.coverUrl) ||
+                (dirMatch && dirMatch.coverUrl) ||
+                `/api/artist-image?name=${encodeURIComponent(name)}`,
+              followedAt: (typeof item === "object" && item.followedAt) || new Date().toISOString()
+            });
+          };
+
+          for (const storageKey of ["miado_followed_artists_v1", "miado_followed_artists_v5"]) {
+            try {
+              const saved = localStorage.getItem(storageKey);
+              if (saved) {
+                const parsed = JSON.parse(saved);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach(pushArtist);
+                }
               }
+            } catch (_e) {}
+          }
+
+          if (result.length === 0 && this.user) {
+            if (Array.isArray(this.user.followedArtists)) {
+              this.user.followedArtists.forEach(pushArtist);
             }
-          } catch (e) {}
-          return [];
+            if (Array.isArray(this.user.favoriteArtists)) {
+              this.user.favoriteArtists.forEach(pushArtist);
+            }
+          }
+          return result;
         }
 
         saveFollowedArtists() {
-          localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
-          this.user.followedArtists = this.followedArtists.map(a => a.name);
+          const cleanNames = (this.followedArtists || [])
+            .map(a => String(a?.name || a || "").trim())
+            .filter(Boolean);
+          this.user.followedArtists = cleanNames;
+          this.user.favoriteArtists = cleanNames.slice(0, 60);
           this.user.followingCount = (this.friends?.length || 0) + (this.followedArtists?.length || 0);
+          localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
+          localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
           this.saveUser();
         }
 
@@ -1487,15 +1524,30 @@ export function initMiadoClient() {
           }
           if (!name) return false;
 
+          if (!this._sessionUnfollowedArtists) {
+            this._sessionUnfollowedArtists = new Set();
+          }
           const cleanKey = name.toLowerCase();
           const existingIdx = (this.followedArtists || []).findIndex(a => String(a.name || "").trim().toLowerCase() === cleanKey);
           let nowFollowing = false;
 
           if (existingIdx > -1) {
             this.followedArtists.splice(existingIdx, 1);
+            this._sessionUnfollowedArtists.add(cleanKey);
+            if (Array.isArray(this.user.favoriteArtists)) {
+              this.user.favoriteArtists = this.user.favoriteArtists.filter(
+                f => String(f || "").trim().toLowerCase() !== cleanKey
+              );
+            }
+            if (Array.isArray(this.user.followedArtists)) {
+              this.user.followedArtists = this.user.followedArtists.filter(
+                f => String(f || "").trim().toLowerCase() !== cleanKey
+              );
+            }
             nowFollowing = false;
             showToast(`Você deixou de seguir ${name}`);
           } else {
+            this._sessionUnfollowedArtists.delete(cleanKey);
             const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === cleanKey);
             this.followedArtists.unshift({
               name,
@@ -1521,107 +1573,206 @@ export function initMiadoClient() {
 
         applyLiveCommunityUpdate(incomingProfiles = []) {
           if (!Array.isArray(incomingProfiles)) return;
-          const byUid = new Map();
-          const uidByHandle = new Map();
+          const byHandle = new Map();
           const myUid = String(
             (this.user && this.user.uid) || localStorage.getItem("miado_user_uid") || ""
           ).trim();
+          const myHandle = String((this.user && (this.user.username || this.user.handle)) || "")
+            .trim()
+            .toLowerCase();
           const myTrackTitle =
             this.currentTrack && this.currentTrack.title
               ? `${this.currentTrack.title} - ${this.currentTrack.artist || "Artista"}`
               : "";
 
+          const isRealCustomAvatar = url => {
+            const s = typeof url === "string" ? url.trim() : "";
+            return Boolean(
+              s &&
+                s !== "/api/cat-avatar?id=cat_1" &&
+                !s.startsWith("data:image/svg") &&
+                !s.includes("placeholder")
+            );
+          };
+
+          const isRealFirebaseUid = u => {
+            const s = typeof u === "string" ? u.trim() : "";
+            return Boolean(s && !s.startsWith("prof_"));
+          };
+
+          const normalizeHandleKey = raw => {
+            const s = String(raw || "").trim().toLowerCase().replace(/\s+/g, "");
+            if (!s) return "";
+            return s.startsWith("@") ? s : `@${s}`;
+          };
+
           for (const existing of this.communityProfiles || []) {
             if (!existing || !existing.username || MiadoState.isLegacyFakeHandle(existing.username)) continue;
-            const hKey = String(existing.username).toLowerCase().trim();
-            const uidKey = String(existing.uid || existing.id || hKey).trim();
-            if (!uidKey) continue;
-            byUid.set(uidKey, { ...existing, uid: existing.uid || uidKey });
-            uidByHandle.set(hKey, uidKey);
+            const hKey = normalizeHandleKey(existing.username || existing.handle);
+            if (!hKey || hKey === "@visitante" || hKey === "@novo_usuario") continue;
+            byHandle.set(hKey, { ...existing, username: hKey, handle: hKey });
           }
 
           for (const inc of incomingProfiles) {
-            if (!inc || !inc.username || MiadoState.isLegacyFakeHandle(inc.username)) continue;
-            const hKey = String(inc.username).toLowerCase().trim();
-            const incUid = String(inc.uid || "").trim();
-            const existingKeyForHandle = uidByHandle.get(hKey);
-            const targetKey = incUid || existingKeyForHandle || String(inc.id || hKey).trim();
-            if (!targetKey) continue;
-
-            if (incUid && existingKeyForHandle && existingKeyForHandle !== incUid) {
-              const oldEntry = byUid.get(existingKeyForHandle);
-              if (oldEntry && !oldEntry.uid) {
-                byUid.delete(existingKeyForHandle);
-              }
+            if (!inc || !(inc.username || inc.handle)) continue;
+            const hKey = normalizeHandleKey(inc.username || inc.handle);
+            if (!hKey || hKey === "@visitante" || hKey === "@novo_usuario" || MiadoState.isLegacyFakeHandle(hKey)) {
+              continue;
             }
+            const incUid = String(inc.uid || "").trim();
+            const prev = byHandle.get(hKey) || {};
+            const resolvedUid = isRealFirebaseUid(incUid)
+              ? incUid
+              : isRealFirebaseUid(prev.uid)
+              ? String(prev.uid).trim()
+              : incUid || prev.uid || String(inc.id || prev.id || `prof_${hKey.slice(1)}`).trim();
 
-            const prev = byUid.get(targetKey) || {};
-            // Strict UID check: only treat as self if both UIDs exist and match
-            const isSelfProfile = Boolean(myUid && incUid && incUid === myUid);
+            const isSelfProfile = Boolean(
+              (myUid && isRealFirebaseUid(resolvedUid) && resolvedUid === myUid) ||
+                (!myUid && myHandle && hKey === myHandle)
+            );
+
+            const incHasLiveTrack = Boolean(
+              inc.online &&
+                typeof inc.currentTrack === "string" &&
+                inc.currentTrack.trim() !== "" &&
+                inc.currentTrack !== "Silencioso no momento" &&
+                inc.currentTrack !== "Ouvindo no Miado"
+            );
+            const prevHasLiveTrack = Boolean(
+              prev.online &&
+                typeof prev.currentTrack === "string" &&
+                prev.currentTrack.trim() !== "" &&
+                prev.currentTrack !== "Silencioso no momento" &&
+                prev.currentTrack !== "Ouvindo no Miado"
+            );
+            // If incoming is not from live Firestore and prev already has a live Firestore track, don't let stale /api/profiles wipe it
+            const keepPrevLive = Boolean(!inc._fromFirestore && !incHasLiveTrack && prev._fromFirestore && prevHasLiveTrack);
 
             const isOnlineNow = isSelfProfile
               ? Boolean(this.isPlaying && myTrackTitle)
-              : Boolean(
-                  inc.online &&
-                  typeof inc.currentTrack === "string" &&
-                  inc.currentTrack.trim() !== "" &&
-                  inc.currentTrack !== "Silencioso no momento" &&
-                  inc.currentTrack !== "Ouvindo no Miado"
-                );
+              : incHasLiveTrack || keepPrevLive;
             const nextTrackStr = isSelfProfile
               ? (this.isPlaying && myTrackTitle ? myTrackTitle : "")
-              : (isOnlineNow ? String(inc.currentTrack).trim() : "");
+              : incHasLiveTrack
+              ? String(inc.currentTrack).trim()
+              : keepPrevLive
+              ? String(prev.currentTrack).trim()
+              : "";
             const nextTrackObj = isSelfProfile
               ? (this.isPlaying && this.currentTrack ? this.currentTrack : null)
-              : (isOnlineNow ? (inc.trackObj || null) : null);
+              : incHasLiveTrack
+              ? inc.trackObj || prev.trackObj || null
+              : keepPrevLive
+              ? prev.trackObj || null
+              : null;
+
+            const bestAvatar = isRealCustomAvatar(inc.avatarUrl)
+              ? inc.avatarUrl
+              : isRealCustomAvatar(prev.avatarUrl)
+              ? prev.avatarUrl
+              : isSelfProfile && isRealCustomAvatar(this.user?.avatarUrl)
+              ? this.user.avatarUrl
+              : inc.avatarUrl || prev.avatarUrl || "/api/cat-avatar?id=cat_1";
+
+            const bestBanner = inc.bannerUrl || prev.bannerUrl || (isSelfProfile ? this.user?.bannerUrl || "" : "");
+            const mergedFavs = Array.from(
+              new Set([
+                ...(Array.isArray(inc.favoriteArtists) ? inc.favoriteArtists : []),
+                ...(Array.isArray(prev.favoriteArtists) ? prev.favoriteArtists : [])
+              ])
+            );
 
             const mergedProfile = {
               ...prev,
               ...inc,
-              uid: incUid || prev.uid || targetKey,
+              uid: resolvedUid,
+              id: isRealFirebaseUid(resolvedUid) ? `prof_${resolvedUid}` : (inc.id || prev.id || `prof_${hKey.slice(1)}`),
+              username: hKey,
+              handle: hKey,
+              name: String(inc.name || prev.name || hKey.slice(1)).trim(),
+              bio: String(inc.bio || prev.bio || "").trim(),
               isSelf: isSelfProfile,
+              _fromFirestore: Boolean(inc._fromFirestore || prev._fromFirestore),
               online: isOnlineNow,
               currentTrack: nextTrackStr,
               trackObj: nextTrackObj,
-              avatarUrl: inc.avatarUrl || prev.avatarUrl || "/api/cat-avatar?id=cat_1",
-              favoriteArtists: Array.isArray(inc.favoriteArtists)
-                ? inc.favoriteArtists
-                : prev.favoriteArtists || [],
-              followedArtists: Array.isArray(inc.followedArtists)
-                ? inc.followedArtists
-                : prev.followedArtists || [],
-              likedTracks: Array.isArray(inc.likedTracks)
-                ? inc.likedTracks
-                : prev.likedTracks || [],
-              playlists: Array.isArray(inc.playlists)
-                ? inc.playlists
-                : prev.playlists || [],
-              recentHistory: Array.isArray(inc.recentHistory)
-                ? inc.recentHistory
-                : prev.recentHistory || []
+              avatarUrl: bestAvatar,
+              bannerUrl: bestBanner,
+              favoriteArtists: mergedFavs,
+              followedArtists:
+                Array.isArray(inc.followedArtists) && inc.followedArtists.length > 0
+                  ? inc.followedArtists
+                  : Array.isArray(prev.followedArtists) && prev.followedArtists.length > 0
+                  ? prev.followedArtists
+                  : mergedFavs.map(a => ({
+                      name: a,
+                      role: "Artista Favorito",
+                      coverUrl: `/api/artist-image?name=${encodeURIComponent(a)}`
+                    })),
+              likedTracks:
+                Array.isArray(inc.likedTracks) && inc.likedTracks.length > 0
+                  ? inc.likedTracks
+                  : prev.likedTracks || [],
+              playlists:
+                Array.isArray(inc.playlists) && inc.playlists.length > 0
+                  ? inc.playlists
+                  : prev.playlists || [],
+              recentHistory:
+                Array.isArray(inc.recentHistory) && inc.recentHistory.length > 0
+                  ? inc.recentHistory
+                  : prev.recentHistory || []
             };
 
-            byUid.set(targetKey, mergedProfile);
-            uidByHandle.set(hKey, targetKey);
+            byHandle.set(hKey, mergedProfile);
           }
 
-          this.communityProfiles = Array.from(byUid.values());
+          // Secondary deduplication pass: if two different handles have the exact same display name and one is an inactive shell with default avatar, merge into the real profile
+          const handleByName = new Map();
+          for (const [hKey, prof] of Array.from(byHandle.entries())) {
+            const normName = String(prof.name || "").trim().toLowerCase();
+            if (!normName || normName === "ouvinte miado" || normName === "ouvinte" || normName === "visitante") continue;
+            const prevHKey = handleByName.get(normName);
+            if (!prevHKey || prevHKey === hKey) {
+              handleByName.set(normName, hKey);
+              continue;
+            }
+            const prevProf = byHandle.get(prevHKey);
+            if (!prevProf) continue;
+            const prevIsShell = !isRealCustomAvatar(prevProf.avatarUrl) && !prevProf.online && !prevProf.isSelf;
+            const currIsShell = !isRealCustomAvatar(prof.avatarUrl) && !prof.online && !prof.isSelf;
+            if (prevIsShell && !currIsShell) {
+              byHandle.delete(prevHKey);
+              handleByName.set(normName, hKey);
+            } else if (currIsShell && !prevIsShell) {
+              byHandle.delete(hKey);
+            }
+          }
+
+          this.communityProfiles = Array.from(byHandle.values());
+
+          const byUidLookup = new Map();
+          for (const p of this.communityProfiles) {
+            if (p.uid) byUidLookup.set(String(p.uid).trim(), p);
+          }
 
           const updatedFriends = [];
-          const seenFriendUids = new Set();
+          const seenFriendKeys = new Set();
           for (const f of this.friends || []) {
             if (!f || !f.username || MiadoState.isLegacyFakeHandle(f.username)) continue;
-            const fHandle = String(f.username).toLowerCase().trim();
-            const resolvedUid = String(f.uid || uidByHandle.get(fHandle) || "").trim();
+            const fHandle = normalizeHandleKey(f.username);
+            const liveByHandle = byHandle.get(fHandle);
+            const resolvedUid = String(
+              (liveByHandle && liveByHandle.uid) || f.uid || ""
+            ).trim();
             // Never include the logged-in user inside their own friends list
-            if (myUid && resolvedUid && resolvedUid === myUid) continue;
+            if ((myUid && resolvedUid && resolvedUid === myUid) || (myHandle && fHandle === myHandle)) continue;
 
-            const dedupKey = resolvedUid || fHandle;
-            if (seenFriendUids.has(dedupKey)) continue;
-            seenFriendUids.add(dedupKey);
+            const dedupKey = fHandle || resolvedUid;
+            if (seenFriendKeys.has(dedupKey)) continue;
+            seenFriendKeys.add(dedupKey);
 
-            // Inject 'escutando agora' strictly by the friend's UID record
-            const live = resolvedUid ? byUid.get(resolvedUid) : null;
+            const live = liveByHandle || (resolvedUid ? byUidLookup.get(resolvedUid) : null);
             if (live && (!myUid || live.uid !== myUid)) {
               const isFriendPlaying = Boolean(
                 live.online &&
@@ -1635,8 +1786,18 @@ export function initMiadoClient() {
                 ...f,
                 ...live,
                 uid: live.uid || resolvedUid,
+                username: live.username || fHandle,
                 online: isFriendPlaying,
-                avatar: live.avatarUrl || f.avatar || f.avatarUrl || "/api/cat-avatar?id=cat_1",
+                avatar: isRealCustomAvatar(live.avatarUrl)
+                  ? live.avatarUrl
+                  : isRealCustomAvatar(f.avatar || f.avatarUrl)
+                  ? f.avatar || f.avatarUrl
+                  : live.avatarUrl || f.avatar || f.avatarUrl || "/api/cat-avatar?id=cat_1",
+                avatarUrl: isRealCustomAvatar(live.avatarUrl)
+                  ? live.avatarUrl
+                  : isRealCustomAvatar(f.avatarUrl || f.avatar)
+                  ? f.avatarUrl || f.avatar
+                  : live.avatarUrl || f.avatarUrl || f.avatar || "/api/cat-avatar?id=cat_1",
                 currentTrack: liveTrackStr,
                 trackObj: liveTrackObj
               });
@@ -1670,6 +1831,17 @@ export function initMiadoClient() {
                 window.miadoUI.renderSocialView();
                 if (scrollWrap) scrollWrap.scrollTop = prevScroll;
               }
+            } else if (this.activeView === "profile") {
+              const activeEl = document.activeElement;
+              const isTypingInProfile =
+                activeEl &&
+                (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA");
+              if (!isTypingInProfile) {
+                const scrollWrap = document.getElementById("main-content-scroll");
+                const prevScroll = scrollWrap ? scrollWrap.scrollTop : 0;
+                window.miadoUI.renderProfileView(this.viewingTargetProfile);
+                if (scrollWrap) scrollWrap.scrollTop = prevScroll;
+              }
             }
           }
         }
@@ -1695,11 +1867,11 @@ export function initMiadoClient() {
                   bannerUrl: this.user.bannerUrl || "",
                   favoriteArtists: this.user.favoriteArtists || [],
                   currentTrack:
-                    activeTrack && activeTrack.title
+                    isPlaying && activeTrack && activeTrack.title
                       ? `${activeTrack.title} - ${activeTrack.artist || "Artista"}`
-                      : "",
+                      : "Silencioso no momento",
                   trackObj:
-                    activeTrack && activeTrack.title
+                    isPlaying && activeTrack && activeTrack.title
                       ? {
                           id: activeTrack.id,
                           title: activeTrack.title,
@@ -1745,7 +1917,7 @@ export function initMiadoClient() {
             if (this.isPlaying && this.currentTrack) {
               this.broadcastLivePlaybackState(this.currentTrack, true);
             }
-          }, 7000);
+          }, 4000);
         }
 
         async fetchCommunityProfiles(searchQuery = "") {
@@ -1904,11 +2076,36 @@ export function initMiadoClient() {
         }
 
         async saveFavoriteArtists(artistsList, genresList = []) {
-          const clean = Array.isArray(artistsList) ? artistsList.filter(Boolean) : [];
+          const clean = Array.isArray(artistsList)
+            ? Array.from(
+                new Set(
+                  artistsList
+                    .map(a => (typeof a === "string" ? a.trim() : String(a?.name || "").trim()))
+                    .filter(Boolean)
+                )
+              )
+            : [];
           const cleanGenres = Array.isArray(genresList) ? genresList.filter(Boolean) : (this.user.favoriteGenres || []);
           this.user.favoriteArtists = clean;
+          this.user.followedArtists = clean;
           this.user.favoriteGenres = cleanGenres;
           this.user.onboardingCompleted = true;
+          this.followedArtists = clean.map(name => {
+            const k = name.toLowerCase();
+            const existing = (this.followedArtists || []).find(
+              a => String(a?.name || "").trim().toLowerCase() === k
+            );
+            if (existing) return existing;
+            const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
+            return {
+              name,
+              role: (dirMatch && dirMatch.role) || "Artista Verificado",
+              coverUrl: (dirMatch && dirMatch.coverUrl) || `/api/artist-image?name=${encodeURIComponent(name)}`,
+              followedAt: new Date().toISOString()
+            };
+          });
+          localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
+          localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
           this.saveUser();
           try {
             await fetch("/api/user/preferences", {
@@ -2021,6 +2218,7 @@ export function initMiadoClient() {
          */
         setIsPlaying(playing) {
           const nextVal = Boolean(playing);
+          const changed = this.isPlaying !== nextVal;
           this.isPlaying = nextVal;
           if (window.miadoEngine) {
             window.miadoEngine.updatePlayStateUI(nextVal);
@@ -2028,6 +2226,9 @@ export function initMiadoClient() {
           if (window.miadoUI) {
             window.miadoUI.highlightPlayingTrackInDOM();
             window.miadoUI.renderFullscreenUpNext();
+          }
+          if (changed) {
+            this.broadcastLivePlaybackState(this.currentTrack, nextVal);
           }
         }
 
@@ -2193,21 +2394,23 @@ export function initMiadoClient() {
             }
             let updated = false;
 
-            const rawFollowed = Array.isArray(db.followedArtists)
+            const rawFollowed = Array.isArray(db.followedArtists) && db.followedArtists.length > 0
               ? db.followedArtists
-              : Array.isArray(db.user.followedArtists)
+              : Array.isArray(db.user.followedArtists) && db.user.followedArtists.length > 0
               ? db.user.followedArtists
-              : Array.isArray(db.user.favoriteArtists)
+              : Array.isArray(db.user.favoriteArtists) && db.user.favoriteArtists.length > 0
               ? db.user.favoriteArtists
               : [];
 
+            const unfollowedSet = this._sessionUnfollowedArtists || new Set();
             const seenArt = new Set();
             const mergedFollowed = [];
-            rawFollowed.forEach(item => {
+            // Merge local followedArtists first so newly followed artists in current session are never lost
+            [...(this.followedArtists || []), ...rawFollowed].forEach(item => {
               const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
               if (!name) return;
               const k = name.toLowerCase();
-              if (seenArt.has(k)) return;
+              if (seenArt.has(k) || unfollowedSet.has(k)) return;
               seenArt.add(k);
               const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
               mergedFollowed.push({
@@ -2226,18 +2429,26 @@ export function initMiadoClient() {
               : Array.isArray(db.user.likedTracks)
               ? db.user.likedTracks
               : [];
+            const unlikedSet = this._sessionUnlikedKeys || new Set();
+            const combinedLikes = [...(this.user.likedTracks || []), ...serverLikes].filter(tr => {
+              if (!tr) return false;
+              const k = normalizeTrackKey(tr);
+              return !unlikedSet.has(k);
+            });
             const cleanName = String(db.user.name || this.user.name || "Ouvinte").trim();
             const cleanHandle = sanitizeCleanHandle(db.user.username || db.user.handle || this.user.username, cleanName);
+            const followedNamesList = (this.followedArtists || []).map(a => a.name);
             this.user = {
               ...this.user,
               ...db.user,
               name: cleanName,
               username: cleanHandle,
               handle: cleanHandle,
-              followedArtists: (this.followedArtists || []).map(a => a.name),
+              favoriteArtists: followedNamesList.slice(0, 60),
+              followedArtists: followedNamesList,
               followingCount: (this.friends?.length || 0) + (this.followedArtists?.length || 0),
               followersCount: db.user.followersCount === 1280 ? 0 : (db.user.followersCount || 0),
-              likedTracks: deduplicateTracks((serverLikes || []).map(tr => ({
+              likedTracks: deduplicateTracks(combinedLikes.map(tr => ({
                 ...tr,
                 coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
               })))
@@ -2249,14 +2460,14 @@ export function initMiadoClient() {
             localStorage.setItem("miado_active_session_v1", "true");
             updated = true;
 
-            if (Array.isArray(db.recentHistory)) {
-              this.recentHistory = db.recentHistory.slice(0, 50).map(tr => ({
+            if (Array.isArray(db.recentHistory) && db.recentHistory.length > 0) {
+              this.recentHistory = deduplicateTracks([...(this.recentHistory || []), ...db.recentHistory]).slice(0, 50).map(tr => ({
                 ...tr,
                 coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
               }));
               updated = true;
             }
-            if (Array.isArray(db.playlists)) {
+            if (Array.isArray(db.playlists) && db.playlists.length > 0) {
               const filteredPlaylists = db.playlists
                 .filter(pl => pl && !DEFAULT_LEGACY_PLAYLIST_IDS.has(String(pl.id || "")))
                 .map(pl => ({
@@ -2270,9 +2481,11 @@ export function initMiadoClient() {
                       : tr.addedBy
                   }))
                 }));
-              this.playlists = filteredPlaylists;
-              localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
-              updated = true;
+              if (filteredPlaylists.length >= (this.playlists?.length || 0)) {
+                this.playlists = filteredPlaylists;
+                localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
+                updated = true;
+              }
             }
             if (db.customAlbumCovers && typeof db.customAlbumCovers === "object") {
               this.customAlbumCovers = { ...db.customAlbumCovers, ...(this.customAlbumCovers || {}) };
@@ -2307,6 +2520,10 @@ export function initMiadoClient() {
           );
           if (!hasRealAccount) return;
 
+          const followedNamesList = (this.followedArtists || []).map(a => a.name).filter(Boolean);
+          this.user.followedArtists = followedNamesList;
+          this.user.favoriteArtists = followedNamesList.slice(0, 60);
+
           try {
             const token = localStorage.getItem("miado_auth_token") || "";
             const headers = { "Content-Type": "application/json" };
@@ -2318,9 +2535,11 @@ export function initMiadoClient() {
                 accountEmail: this.user.email || "",
                 user: {
                   ...this.user,
-                  followedArtists: (this.followedArtists || []).map(a => a.name),
+                  favoriteArtists: this.user.favoriteArtists,
+                  followedArtists: followedNamesList,
                   followingProfiles: (this.friends || []).map(f => f.username)
                 },
+                favoriteArtists: this.user.favoriteArtists,
                 followedArtists: this.followedArtists || [],
                 followingProfiles: this.friends || [],
                 likedTracks: this.user.likedTracks || [],
@@ -2376,6 +2595,7 @@ export function initMiadoClient() {
                 catId: this.user.avatarId || "cat_1",
                 avatarUrl: this.user.avatarUrl || "",
                 favoriteArtists: this.user.favoriteArtists || [],
+                followedArtists: this.followedArtists || [],
                 likedTracks: this.user.likedTracks || [],
                 playlists: (this.playlists || []).filter(pl => pl && !DEFAULT_LEGACY_PLAYLIST_IDS.has(String(pl.id || ""))),
                 recentHistory: this.recentHistory || []
@@ -2394,6 +2614,8 @@ export function initMiadoClient() {
             Boolean((incomingEmail && prevEmail && incomingEmail !== prevEmail) || (incomingUid && prevUid && incomingUid !== prevUid));
 
           if (isAccountSwitch) {
+            if (this._sessionUnfollowedArtists) this._sessionUnfollowedArtists.clear();
+            if (this._sessionUnlikedKeys) this._sessionUnlikedKeys.clear();
             this.followedArtists = [];
             this.friends = [];
             this.recentHistory = [];
@@ -2433,36 +2655,69 @@ export function initMiadoClient() {
           if (typeof data.onboardingCompleted === "boolean") {
             this.user.onboardingCompleted = data.onboardingCompleted;
           }
-          this.user.favoriteArtists = Array.isArray(data.favoriteArtists) ? data.favoriteArtists : [];
           if (Array.isArray(data.favoriteGenres)) {
             this.user.favoriteGenres = data.favoriteGenres;
           }
-          const rawFollowedSource =
-            Array.isArray(data.followedArtists) && data.followedArtists.length > 0
-              ? data.followedArtists
-              : Array.isArray(data.favoriteArtists)
-              ? data.favoriteArtists
-              : [];
-          this.followedArtists = rawFollowedSource.map(item =>
-            typeof item === "string"
-              ? {
-                  name: item,
-                  role: "Artista",
-                  coverUrl: `/api/artist-image?name=${encodeURIComponent(item)}`,
-                  followedAt: new Date().toISOString()
-                }
-              : item
+
+          const remoteFollowedSource = [
+            ...(Array.isArray(data.followedArtists) ? data.followedArtists : []),
+            ...(Array.isArray(data.favoriteArtists) ? data.favoriteArtists : [])
+          ];
+          const unfollowedSet = this._sessionUnfollowedArtists || new Set();
+          const seenArt = new Set();
+          const mergedFollowed = [];
+          const localToKeep = isAccountSwitch ? [] : (this.followedArtists || []);
+          let hasLocalUnsyncedArtists = false;
+          const remoteArtistKeys = new Set(
+            remoteFollowedSource
+              .map(item => (typeof item === "string" ? item.trim() : String(item?.name || "").trim()).toLowerCase())
+              .filter(Boolean)
           );
+
+          [...localToKeep, ...remoteFollowedSource].forEach(item => {
+            const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
+            if (!name) return;
+            const k = name.toLowerCase();
+            if (seenArt.has(k) || unfollowedSet.has(k)) return;
+            seenArt.add(k);
+            if (!remoteArtistKeys.has(k)) {
+              hasLocalUnsyncedArtists = true;
+            }
+            const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
+            mergedFollowed.push({
+              name,
+              role: (typeof item === "object" && item?.role) || (dirMatch && dirMatch.role) || "Artista Verificado",
+              coverUrl:
+                (typeof item === "object" && item?.coverUrl) ||
+                (dirMatch && dirMatch.coverUrl) ||
+                `/api/artist-image?name=${encodeURIComponent(name)}`,
+              followedAt: (typeof item === "object" && item?.followedAt) || new Date().toISOString()
+            });
+          });
+
+          this.followedArtists = mergedFollowed;
+          const allFollowedNames = this.followedArtists.map(a => a.name);
+          this.user.followedArtists = allFollowedNames;
+          this.user.favoriteArtists = allFollowedNames.slice(0, 60);
+          this.user.followingCount = (this.friends?.length || 0) + (this.followedArtists?.length || 0);
           localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
           localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
 
-          if (Array.isArray(data.likedTracks)) {
-            this.user.likedTracks = deduplicateTracks(data.likedTracks.map(t => ({
+          const unlikedSet = this._sessionUnlikedKeys || new Set();
+          const localLikesToKeep = isAccountSwitch ? [] : (this.user.likedTracks || []);
+          const incomingLikes = Array.isArray(data.likedTracks) ? data.likedTracks : [];
+          const combinedLikes = [...localLikesToKeep, ...incomingLikes].filter(t => {
+            if (!t) return false;
+            return !unlikedSet.has(normalizeTrackKey(t));
+          });
+          this.user.likedTracks = deduplicateTracks(
+            combinedLikes.map(t => ({
               ...t,
               coverUrl: ensureTrackCoverUrl(t, t.title, t.artist)
-            })));
-          }
-          if (Array.isArray(data.playlists)) {
+            }))
+          );
+
+          if (Array.isArray(data.playlists) && (isAccountSwitch || data.playlists.length > 0)) {
             this.playlists = data.playlists
               .filter(pl => pl && !DEFAULT_LEGACY_PLAYLIST_IDS.has(String(pl.id || "")))
               .map(pl => ({
@@ -2474,7 +2729,7 @@ export function initMiadoClient() {
                 }))
               }));
           }
-          if (Array.isArray(data.recentHistory)) {
+          if (Array.isArray(data.recentHistory) && (isAccountSwitch || data.recentHistory.length > 0)) {
             this.recentHistory = deduplicateTracks(data.recentHistory.map(t => ({
               ...t,
               coverUrl: ensureTrackCoverUrl(t, t.title, t.artist)
@@ -2484,6 +2739,16 @@ export function initMiadoClient() {
           localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
           localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
           localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
+
+          // If local had artists or likes that weren't in Firestore yet, push them to Firestore now
+          if (
+            !isAccountSwitch &&
+            (hasLocalUnsyncedArtists || (localLikesToKeep.length > incomingLikes.length)) &&
+            window.miadoFirestore &&
+            typeof window.miadoFirestore.saveUserState === "function"
+          ) {
+            window.miadoFirestore.saveUserState(this);
+          }
 
           if (window.miadoEngine) window.miadoEngine.updateLikeButtonUI();
           if (window.miadoUI) {
@@ -2783,6 +3048,9 @@ export function initMiadoClient() {
           if (!Array.isArray(this.user.likedTracks)) {
             this.user.likedTracks = [];
           }
+          if (!this._sessionUnlikedKeys) {
+            this._sessionUnlikedKeys = new Set();
+          }
           const idStr = String(track.id || "");
           const targetKey = normalizeTrackKey(track);
           const idx = this.user.likedTracks.findIndex(t => {
@@ -2792,24 +3060,40 @@ export function initMiadoClient() {
             return false;
           });
           let nowLiked = false;
+          let likedTrackObj = track;
           if (idx > -1) {
-            this.user.likedTracks.splice(idx, 1);
+            const removed = this.user.likedTracks.splice(idx, 1)[0];
+            if (targetKey && targetKey !== "__") {
+              this._sessionUnlikedKeys.add(targetKey);
+            }
+            if (removed) {
+              const remKey = normalizeTrackKey(removed);
+              if (remKey && remKey !== "__") this._sessionUnlikedKeys.add(remKey);
+            }
             nowLiked = false;
             showToast(`"${track.title || "Música"}" removida das Músicas Curtidas`);
           } else {
-            this.user.likedTracks.unshift({
+            if (targetKey && targetKey !== "__") {
+              this._sessionUnlikedKeys.delete(targetKey);
+            }
+            likedTrackObj = {
               id: idStr || `like_${Date.now()}`,
               title: track.title || "Faixa Miau",
               artist: track.artist || "Artista",
               duration: track.duration || "3:30",
+              durationSec: track.durationSec || 210,
               previewUrl: track.previewUrl || track.streamUrl || "",
               streamUrl: track.streamUrl || track.previewUrl || "",
               rawPreviewUrl: track.rawPreviewUrl || "",
               coverUrl: ensureTrackCoverUrl(track, track.title, track.artist, this.currentAlbum && this.currentAlbum.coverUrl),
               albumTitle: track.albumTitle || (this.currentAlbum && this.currentAlbum.title) || "Single"
-            });
+            };
+            this.user.likedTracks.unshift(likedTrackObj);
             nowLiked = true;
             showToast(`"${track.title || "Música"}" salva nas Músicas Curtidas!`);
+          }
+          if (window.miadoFirestore && typeof window.miadoFirestore.syncTrackLike === "function") {
+            void window.miadoFirestore.syncTrackLike(likedTrackObj, nowLiked);
           }
           this.saveUser();
           if (window.miadoEngine) {
@@ -2906,14 +3190,14 @@ export function initMiadoClient() {
           /\bpar[oó]dia\b/i
         ];
 
-        static MIN_STUDIO_DURATION_SEC = 60;
+        static MIN_STUDIO_DURATION_SEC = 45;
         static MAX_STUDIO_DURATION_SEC = 720;
 
         // Mapa de durações de referência da versão original de estúdio ('Studio Version')
         static STUDIO_REFERENCE_DURATIONS = new Map();
 
         static registerStudioReferenceDuration(title, artist, durationSec) {
-          if (!title || !durationSec || durationSec < 95 || durationSec > 600) return;
+          if (!title || !durationSec || durationSec < 60 || durationSec > 600) return;
           const key = normalizeTrackKey(title, artist);
           if (key && !MiadoMusicResolver.STUDIO_REFERENCE_DURATIONS.has(key)) {
             MiadoMusicResolver.STUDIO_REFERENCE_DURATIONS.set(key, durationSec);
@@ -2959,15 +3243,7 @@ export function initMiadoClient() {
           }
 
           if (
-            combined.includes("remix") ||
-            combined.includes("live") ||
-            combined.includes("karaoke") ||
-            combined.includes("karaokê") ||
-            combined.includes("ao vivo") ||
-            combined.includes("aovivo") ||
-            combined.includes("en vivo") ||
-            combined.includes("superturne") ||
-            combined.includes("superturnê")
+            /\b(remix|karaoke|karaokê|ao vivo|aovivo|en vivo|superturne|superturnê)\b/i.test(combined)
           ) {
             return true;
           }
@@ -4714,16 +4990,21 @@ export function initMiadoClient() {
             avatarEl.src = state.user.avatarUrl || CAT_AVATAR_PRESETS[0].url;
           }
           const authBtn = document.getElementById("btn-open-auth-modal");
+          const profileBtn = document.getElementById("btn-user-profile");
           const labelText = isLogged ? "Minha Conta" : "Entrar / Criar Conta";
           ["top-auth-label", "top-auth-btn-label"].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = labelText;
           });
           if (authBtn) {
-            authBtn.style.display = "inline-flex";
-            authBtn.title = isLogged
-              ? `Conectado como ${state.user.name} (${state.user.username}) — clique para gerenciar conta`
-              : "Entrar ou criar sua conta";
+            authBtn.style.display = isLogged ? "none" : "inline-flex";
+            authBtn.title = "Entrar ou criar sua conta";
+          }
+          if (profileBtn) {
+            profileBtn.style.display = isLogged ? "inline-flex" : "none";
+            profileBtn.title = isLogged
+              ? `${state.user.name || "Meu Perfil"} (${state.user.username || "@user"})`
+              : "Seu Perfil";
           }
           const statusBanner = document.getElementById("auth-logged-status-banner") || document.getElementById("auth-logged-banner");
           const loggedEmailEl = document.getElementById("auth-logged-email") || document.getElementById("auth-logged-banner-email");
@@ -5409,8 +5690,23 @@ export function initMiadoClient() {
         }
 
         openAuthModal(_defaultMode = "login", _step = 1) {
+          const isLogged = Boolean(
+            state.user &&
+            state.user.email &&
+            state.user.email !== "usr_guest@miado.app" &&
+            state.user.onboardingCompleted !== false
+          );
+          if (isLogged) {
+            this.closeAllModals();
+            this.syncHeaderUserUI();
+            const modalAuth = document.getElementById("modal-auth");
+            if (modalAuth) {
+              modalAuth.classList.add("active");
+              return;
+            }
+          }
           if (typeof window.miadoMountOnboarding === "function") {
-            window.miadoMountOnboarding();
+            window.miadoMountOnboarding(true);
             return;
           }
         }
@@ -6358,85 +6654,85 @@ export function initMiadoClient() {
 
           container.innerHTML = `
             <!-- Cabeçalho da Música Selecionada -->
-            <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; background-color:var(--bg-base); border:1px solid var(--glass-border-strong); border-radius:12px; margin-bottom:4px;">
-              <img src="${cleanTrack.coverUrl}" alt="${cleanTrack.title}" style="width:56px; height:56px; border-radius:10px; object-fit:cover; border:1px solid var(--glass-border);" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${String(cleanTrack.title || "").replace(/'/g, "")}', '${String(cleanTrack.artist || "").replace(/'/g, "")}')" />
+            <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:14px; margin-bottom:4px;">
+              <img src="${cleanTrack.coverUrl}" alt="${cleanTrack.title}" style="width:52px; height:52px; border-radius:10px; object-fit:cover; flex-shrink:0;" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${String(cleanTrack.title || "").replace(/'/g, "")}', '${String(cleanTrack.artist || "").replace(/'/g, "")}')" />
               <div style="flex:1; min-width:0;">
-                <div style="font-weight:800; font-size:0.98rem; color:#ffffff;" class="text-truncate">${cleanTrack.title}</div>
-                <div style="font-size:0.82rem; color:var(--accent-hover); font-weight:700; margin-top:2px;" class="text-truncate">${cleanTrack.artist}</div>
-                <div style="font-size:0.74rem; color:var(--text-muted); margin-top:2px;" class="text-truncate">${cleanTrack.albumTitle || (albumContext && albumContext.title) || "Single Oficial HD"} · ${cleanTrack.duration || "3:30"}</div>
+                <div style="font-weight:700; font-size:0.95rem; color:#ffffff;" class="text-truncate">${cleanTrack.title}</div>
+                <div style="font-size:0.8rem; color:var(--accent-hover); font-weight:600; margin-top:2px;" class="text-truncate">${cleanTrack.artist}</div>
+                <div style="font-size:0.73rem; color:var(--text-muted); margin-top:2px;" class="text-truncate">${cleanTrack.albumTitle || (albumContext && albumContext.title) || "Single Oficial HD"} · ${cleanTrack.duration || "3:30"}</div>
               </div>
             </div>
 
             <!-- Ações Rápidas -->
-            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin-bottom:8px;">
-              <button class="album-action-btn primary" id="opt-btn-play-now" style="height:40px; font-size:0.78rem; padding:0 6px;">
+            <div class="track-opt-actions-grid" style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; margin-bottom:6px;">
+              <button class="album-action-btn primary" id="opt-btn-play-now" style="height:40px; font-size:0.8rem; padding:0 12px; width:100%;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-                Tocar
+                <span>Tocar Agora</span>
               </button>
-              <button class="album-action-btn" id="opt-btn-play-next" style="height:40px; font-size:0.78rem; padding:0 6px;" title="Tocar logo em seguida da faixa atual">
+              <button class="album-action-btn" id="opt-btn-play-next" style="height:40px; font-size:0.8rem; padding:0 12px; width:100%;" title="Tocar logo em seguida da faixa atual">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
-                A Seguir
+                <span>Tocar a Seguir</span>
               </button>
-              <button class="album-action-btn" id="opt-btn-add-queue" style="height:40px; font-size:0.78rem; padding:0 6px;" title="Adicionar ao fim da fila">
+              <button class="album-action-btn" id="opt-btn-add-queue" style="height:40px; font-size:0.8rem; padding:0 12px; width:100%;" title="Adicionar ao fim da fila">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
-                Fim Fila
+                <span>Fim da Fila</span>
               </button>
-              <button class="album-action-btn" id="opt-btn-toggle-like" style="height:40px; font-size:0.78rem; padding:0 6px;">
+              <button class="album-action-btn" id="opt-btn-toggle-like" style="height:40px; font-size:0.8rem; padding:0 12px; width:100%;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                ${isLiked ? "Curtida" : "Curtir"}
+                <span>${isLiked ? "Curtida" : "Curtir Faixa"}</span>
               </button>
             </div>
 
             <!-- Publicar no Feed Miau & Destacar no Perfil -->
-            <div style="background-color:rgba(139,92,246,0.1); border:1px solid rgba(167,139,250,0.3); border-radius:12px; padding:12px; margin-bottom:8px; display:flex; flex-direction:column; gap:8px;">
-              <div style="font-size:0.74rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover);">
+            <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.09); border-radius:14px; padding:12px; margin-bottom:6px; display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:0.73rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover);">
                 Publicar no Feed Miau & Perfil
               </div>
-              <div style="display:flex; gap:8px;">
-                <input type="text" id="opt-input-feed-caption" placeholder="Escreva um comentário opcional sobre esta música..." style="flex:1; height:38px; font-size:0.82rem;" />
-                <button class="btn-modal-confirm" id="opt-btn-post-miau" style="height:38px; padding:0 14px; font-size:0.8rem; white-space:nowrap;">Publicar no Miau</button>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input type="text" id="opt-input-feed-caption" placeholder="Comentário opcional sobre esta música..." style="flex:1 1 180px; min-width:0; height:38px; font-size:0.82rem;" />
+                <button class="btn-modal-confirm" id="opt-btn-post-miau" style="flex:0 0 auto; height:38px; padding:0 16px; font-size:0.8rem; white-space:nowrap;">Publicar no Miau</button>
               </div>
-              <div style="display:flex; gap:8px;">
-                <button class="album-action-btn" id="opt-btn-save-profile" style="flex:1; height:36px; font-size:0.78rem;">
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:8px;">
+                <button class="album-action-btn" id="opt-btn-save-profile" style="height:36px; font-size:0.78rem; padding:0 12px; width:100%;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="${isLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                  ${isLiked ? "Já Salva no Seu Perfil" : "+ Salvar / Destacar no Meu Perfil"}
+                  <span>${isLiked ? "Salva no Perfil" : "Destacar no Perfil"}</span>
                 </button>
-                <button class="album-action-btn" id="opt-btn-go-album" style="flex:1; height:36px; font-size:0.78rem;">
-                  Ir para o Álbum
+                <button class="album-action-btn" id="opt-btn-go-album" style="height:36px; font-size:0.78rem; padding:0 12px; width:100%;">
+                  <span>Ir para o Álbum</span>
                 </button>
               </div>
             </div>
 
             <!-- Criar Nova Playlist e Já Adicionar Esta Música -->
-            <div style="background-color:var(--bg-base); border:1px solid var(--glass-border); border-radius:12px; padding:12px;">
-              <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover); margin-bottom:8px;">
-                + Criar Nova Playlist com Esta Música
+            <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.09); border-radius:14px; padding:12px;">
+              <div style="font-size:0.73rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover); margin-bottom:8px;">
+                Criar Nova Playlist com Esta Música
               </div>
-              <div style="display:flex; gap:8px;">
-                <input type="text" id="input-quick-new-pl-name" placeholder="Nome da nova playlist (ex: Favoritas Miau)..." style="flex:1; height:38px; font-size:0.84rem;" />
-                <button class="btn-modal-confirm" id="btn-quick-create-pl-add" style="height:38px; padding:0 14px; font-size:0.82rem; white-space:nowrap;">Criar & Adicionar</button>
+              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input type="text" id="input-quick-new-pl-name" placeholder="Nome da nova playlist..." style="flex:1 1 180px; min-width:0; height:38px; font-size:0.84rem;" />
+                <button class="btn-modal-confirm" id="btn-quick-create-pl-add" style="flex:0 0 auto; height:38px; padding:0 16px; font-size:0.82rem; white-space:nowrap;">Criar & Adicionar</button>
               </div>
             </div>
 
             <!-- Lista de Playlists Existentes -->
-            <div style="font-size:0.76rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-top:4px;">
-              Escolha uma Playlist para Adicionar (${state.playlists.length}):
+            <div style="font-size:0.74rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-top:4px;">
+              Escolha uma Playlist para Adicionar (${state.playlists.length})
             </div>
             <div style="display:flex; flex-direction:column; gap:8px;">
               ${state.playlists.map(pl => {
                 const plCover = pl.customCoverUrl || pl.coverUrl || (pl.tracks && pl.tracks[0] && ensureTrackCoverUrl(pl.tracks[0])) || INITIAL_ALBUMS[0].coverUrl;
                 const alreadyIn = (pl.tracks || []).some(t => String(t.id) === String(cleanTrack.id) || normalizeTrackKey(t) === trackKey);
                 return `
-                  <div class="track-row" style="min-height:54px; padding:8px 12px; background-color:var(--bg-base); border:1px solid ${alreadyIn ? 'var(--accent)' : 'var(--glass-border)'}; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-target-pl="${pl.id}">
+                  <div class="track-row" style="min-height:54px; padding:8px 12px; background:rgba(255,255,255,0.04); border:1px solid ${alreadyIn ? 'rgba(168,85,247,0.45)' : 'rgba(255,255,255,0.08)'}; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-target-pl="${pl.id}">
                     <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
-                      <img src="${plCover}" alt="${pl.name}" style="width:40px; height:40px; border-radius:8px; object-fit:cover; border:1px solid var(--glass-border);" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${pl.name.replace(/'/g, "")}', 'Playlist')" />
+                      <img src="${plCover}" alt="${pl.name}" style="width:40px; height:40px; border-radius:8px; object-fit:cover; flex-shrink:0;" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${pl.name.replace(/'/g, "")}', 'Playlist')" />
                       <div style="min-width:0; flex:1;">
-                        <div style="font-weight:700; font-size:0.9rem; color:#ffffff;" class="text-truncate">${pl.name}</div>
-                        <div style="font-size:0.75rem; color:var(--text-secondary);">${pl.isCollaborative ? "Conjunta · " : ""}${pl.tracks.length} músicas</div>
+                        <div style="font-weight:700; font-size:0.88rem; color:#ffffff;" class="text-truncate">${pl.name}</div>
+                        <div style="font-size:0.74rem; color:var(--text-secondary);">${pl.isCollaborative ? "Conjunta · " : ""}${pl.tracks.length} músicas</div>
                       </div>
                     </div>
-                    <button class="album-action-btn ${alreadyIn ? '' : 'primary'}" style="flex:0 0 auto; height:34px; padding:0 14px; font-size:0.78rem;">
-                      ${alreadyIn ? `${ICON_CHECK_SVG}Já na Playlist` : "+ Adicionar"}
+                    <button type="button" class="album-action-btn ${alreadyIn ? '' : 'primary'}" style="flex:0 0 auto !important; width:auto !important; min-width:116px; height:34px; padding:0 14px; font-size:0.78rem; white-space:nowrap;">
+                      ${alreadyIn ? `${ICON_CHECK_SVG}<span>Na Playlist</span>` : `<span>+ Adicionar</span>`}
                     </button>
                   </div>
                 `;
@@ -6960,11 +7256,20 @@ export function initMiadoClient() {
                     </div>
 
                     <!-- Status de Ouvindo Agora -->
-                    <div id="prof-now-playing-box" style="background-color:var(--bg-base); border:1px solid var(--glass-border-strong); border-radius:14px; padding:10px 14px; display:flex; align-items:center; gap:12px; min-width:270px; max-width:340px; cursor:${currentTrack.title !== 'Silencioso no momento' ? 'pointer' : 'default'};" title="${currentTrack.title !== 'Silencioso no momento' ? 'Clique para tocar e abrir o álbum desta música' : 'Silencioso no momento'}">
-                      <img src="${currentTrackCover}" alt="${currentTrack.title}" style="width:44px; height:44px; border-radius:8px; object-fit:cover;" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${String(currentTrack.title || "").replace(/'/g, "")}', '${String(currentTrack.artist || "").replace(/'/g, "")}')" />
+                    <div id="prof-now-playing-box" style="background:rgba(255,255,255,0.05); backdrop-filter:blur(22px) saturate(180%); -webkit-backdrop-filter:blur(22px) saturate(180%); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:10px 14px; display:flex; align-items:center; gap:12px; min-width:270px; max-width:340px; cursor:${currentTrack.title !== 'Silencioso no momento' ? 'pointer' : 'default'};" title="${currentTrack.title !== 'Silencioso no momento' ? 'Clique para tocar e abrir o álbum desta música' : 'Silencioso no momento'}">
+                      <img src="${currentTrackCover}" alt="${currentTrack.title}" style="width:44px; height:44px; border-radius:10px; object-fit:cover; flex-shrink:0;" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${String(currentTrack.title || "").replace(/'/g, "")}', '${String(currentTrack.artist || "").replace(/'/g, "")}')" />
                       <div style="flex:1; min-width:0;">
-                        <div style="font-size:0.65rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover);">Ouvindo no Fone</div>
-                        <div style="font-size:0.84rem; font-weight:700; color:#ffffff;" class="text-truncate">${currentTrack.title}</div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                          <span style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover);">Tocando Agora</span>
+                          ${currentTrack.title !== 'Silencioso no momento' ? `
+                            <div class="sound-wave-badge" style="height:12px; padding:1px 3px;">
+                              <span class="sw-bar"></span>
+                              <span class="sw-bar"></span>
+                              <span class="sw-bar"></span>
+                            </div>
+                          ` : ""}
+                        </div>
+                        <div style="font-size:0.85rem; font-weight:700; color:#ffffff; margin-top:1px;" class="text-truncate">${currentTrack.title}</div>
                         <div style="font-size:0.74rem; color:var(--text-secondary);" class="text-truncate">${currentTrack.artist}</div>
                       </div>
                       <button class="btn-main-play" id="prof-btn-play-status" style="width:34px; height:34px; flex:0 0 auto;" title="Tocar música e abrir álbum">
@@ -7007,6 +7312,10 @@ export function initMiadoClient() {
                 <button type="button" class="category-pill ${activeSectionTab === 'following' ? 'active' : ''}" data-prof-nav-tab="following">Seguindo (${followingUsers.length})</button>
                 <button type="button" class="category-pill ${activeSectionTab === 'playlists' ? 'active' : ''}" data-prof-nav-tab="playlists">Playlists (${userPlaylists.length})</button>
                 ${isMe ? `<button type="button" class="category-pill ${activeSectionTab === 'edit' ? 'active' : ''}" data-prof-nav-tab="edit">Personalizar & Gatinho</button>` : ""}
+                <button type="button" class="category-pill" data-pwa-install-btn onclick="window.triggerPwaInstall && window.triggerPwaInstall()" style="display:inline-flex; align-items:center; gap:6px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Instalar App</span>
+                </button>
               </div>
 
               <!-- CONTEÚDO DA ABA SELECIONADA -->
@@ -8351,13 +8660,15 @@ export function initMiadoClient() {
             album.coverUrl = state.customAlbumCovers[albumCustomKey];
           }
 
-          if ((!album.tracks || album.tracks.length < 4 || !album._studioOrderVerified) && (album.collectionId || album.dzAlbumId || album.searchQuery || album.title)) {
-            if (!album.tracks || album.tracks.length < 4) {
+          const isSingleOrEpAlbum = /\b(single|ep)\b/i.test(String(album.title || ""));
+          const minExistingTracks = isSingleOrEpAlbum ? 1 : 4;
+          if ((!album.tracks || album.tracks.length < minExistingTracks || !album._studioOrderVerified) && (album.collectionId || album.dzAlbumId || album.searchQuery || album.title)) {
+            if (!album.tracks || album.tracks.length === 0) {
               this.scrollContainer.innerHTML = `<div style="padding:40px; text-align:center; color:var(--text-secondary);">Carregando álbum...</div>`;
             }
             try {
               const details = await MiadoMusicResolver.fetchAlbumDetails(album);
-              if (details && Array.isArray(details.tracks) && details.tracks.length >= 4) {
+              if (details && Array.isArray(details.tracks) && details.tracks.length >= 1) {
                 album.tracks = MiadoMusicResolver.filterStudioOnlyTracks(details.tracks);
                 album._studioOrderVerified = true;
                 if (details.coverUrl && !hasCustomAlbumCover && (!album.coverUrl || album.coverUrl.startsWith("data:"))) {
@@ -8370,9 +8681,20 @@ export function initMiadoClient() {
                 const q = album.searchQuery || `${album.artist} ${album.title}`;
                 const res = await MiadoMusicResolver.searchCatalog(q);
                 if (res.songs && res.songs.length > 0) {
-                  album.tracks = MiadoMusicResolver.filterStudioOnlyTracks(res.songs);
+                  const targetArtNorm = normalizeTextKey(album.artist || "");
+                  const isYunLi = ["yun li", "yung lixo", "gemaplys", "victor gemaplys", "mc vv"].includes(targetArtNorm);
+                  const matchingArtistSongs = res.songs.filter(s => {
+                    const sArtNorm = normalizeTextKey(s.artist || "");
+                    if (!targetArtNorm) return true;
+                    if (isYunLi) {
+                      return ["yun li", "yung lixo", "gemaplys", "victor gemaplys", "mc vv"].some(al => sArtNorm.includes(al));
+                    }
+                    return sArtNorm === targetArtNorm || sArtNorm.includes(targetArtNorm) || targetArtNorm.includes(sArtNorm);
+                  });
+                  const chosenSongs = matchingArtistSongs.length > 0 ? matchingArtistSongs : res.songs.slice(0, 1);
+                  album.tracks = MiadoMusicResolver.filterStudioOnlyTracks(chosenSongs);
                   if (!hasCustomAlbumCover && (!album.coverUrl || album.coverUrl.startsWith("data:"))) {
-                    album.coverUrl = res.songs[0].coverUrl;
+                    album.coverUrl = chosenSongs[0].coverUrl;
                   }
                 }
               }
@@ -9268,7 +9590,7 @@ export function initMiadoClient() {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                           </button>
                         </div>
-                        <div data-open-friend-track-idx="${fIdx}" style="background-color:var(--bg-base); border:1px solid var(--glass-border); padding:10px 12px; border-radius:10px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:${isPlayingNow ? 'pointer' : 'default'};" title="Clique para tocar e abrir o álbum desta música">
+                        <div data-open-friend-track-idx="${fIdx}" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.09); padding:10px 12px; border-radius:12px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:${isPlayingNow ? 'pointer' : 'default'};" title="Clique para tocar e abrir o álbum desta música">
                           ${isPlayingNow ? `
                             <div style="position:relative; width:40px; height:40px; border-radius:8px; overflow:hidden; flex-shrink:0;">
                               <img src="${escapeHtml(friendTrackCover)}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;" alt="Capa" onerror="window.handleImgError(this, '${escapeHtml(liveFriendTrack)}', '')" />
@@ -9938,15 +10260,15 @@ export function initMiadoClient() {
             }
 
             addResultsContainer.innerHTML = matches.map((tr, mIdx) => `
-              <div class="track-row" style="padding:6px 10px; border-radius:10px; background:rgba(255,255,255,0.02); min-height:48px;" data-pl-add-candidate="${mIdx}">
-                <img src="${ensureTrackCoverUrl(tr, tr.title, tr.artist)}" referrerpolicy="no-referrer" style="width:36px; height:36px; border-radius:6px; object-fit:cover; margin-right:10px; flex-shrink:0;" onerror="window.handleImgError(this, '${tr.title.replace(/'/g, "")}', '${tr.artist.replace(/'/g, "")}')" />
+              <div class="track-row" style="padding:6px 10px; border-radius:10px; background:rgba(255,255,255,0.03); min-height:48px; display:flex; align-items:center; gap:10px;" data-pl-add-candidate="${mIdx}">
+                <img src="${ensureTrackCoverUrl(tr, tr.title, tr.artist)}" referrerpolicy="no-referrer" style="width:36px; height:36px; border-radius:6px; object-fit:cover; flex-shrink:0;" onerror="window.handleImgError(this, '${tr.title.replace(/'/g, "")}', '${tr.artist.replace(/'/g, "")}')" />
                 <div style="flex:1; min-width:0;">
                   <div style="font-size:0.85rem; font-weight:700; color:#fff;" class="text-truncate">${tr.title}</div>
                   <div style="font-size:0.73rem; color:var(--text-secondary);" class="text-truncate">${tr.artist}</div>
                 </div>
-                <div style="font-size:0.75rem; color:var(--text-muted); margin-right:8px;">${tr.duration || "3:30"}</div>
-                <button type="button" class="album-action-btn primary" data-btn-add-track-to-pl="${mIdx}" style="height:30px; font-size:0.75rem; padding:0 12px; flex-shrink:0;">
-                  + Adicionar
+                <div style="font-size:0.75rem; color:var(--text-muted); flex-shrink:0;">${tr.duration || "3:30"}</div>
+                <button type="button" class="album-action-btn primary" data-btn-add-track-to-pl="${mIdx}" style="flex:0 0 auto !important; width:auto !important; min-width:104px; height:32px; font-size:0.76rem; padding:0 14px; white-space:nowrap;">
+                  <span>+ Adicionar</span>
                 </button>
               </div>
             `).join("");
@@ -10723,16 +11045,23 @@ export function initMiadoClient() {
 
             <!-- 1. TOCANDO AGORA -->
             ${currentTr ? `
-              <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover); margin-bottom:6px;">Tocando Agora</div>
-              <div class="track-row playing" style="min-height:48px; padding:6px 8px; border-radius:10px; margin-bottom:12px; gap:8px;" data-queue-idx="${currentIdx}">
-                <img class="track-row-cover" style="width:38px; height:38px; border-radius:6px;" src="${ensureTrackCoverUrl(currentTr)}" alt="${currentTr.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${currentTr.title.replace(/'/g, "")}', '${currentTr.artist.replace(/'/g, "")}')" />
-                <div class="track-info-col">
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                <span style="font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover);">Tocando Agora</span>
+                <div class="sound-wave-badge" style="height:12px; padding:1px 3px;">
+                  <span class="sw-bar"></span>
+                  <span class="sw-bar"></span>
+                  <span class="sw-bar"></span>
+                </div>
+              </div>
+              <div class="track-row playing" style="min-height:52px; padding:8px 10px; border-radius:12px; margin-bottom:14px; gap:10px; background:rgba(168,85,247,0.12); border:1px solid rgba(168,85,247,0.22);" data-queue-idx="${currentIdx}">
+                <img class="track-row-cover" style="width:38px; height:38px; border-radius:8px; margin-right:0;" src="${ensureTrackCoverUrl(currentTr)}" alt="${currentTr.title}" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${currentTr.title.replace(/'/g, "")}', '${currentTr.artist.replace(/'/g, "")}')" />
+                <div class="track-info-col" style="padding-right:4px;">
                   <div class="track-title" style="font-size:0.85rem; color:#fff; font-weight:700;">${currentTr.title}</div>
                   <div class="track-artist" style="font-size:0.73rem;">${currentTr.artist}</div>
                 </div>
-                <div style="display:flex; align-items:center; gap:2px; margin-right:4px;">
-                  <button class="track-icon-btn" style="width:28px; height:28px;" data-queue-addpl="${currentIdx}" title="Adicionar à Playlist">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                  <button class="track-icon-btn" style="width:32px; height:32px;" data-queue-addpl="${currentIdx}" title="Adicionar à Playlist">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   </button>
                 </div>
               </div>

@@ -30,15 +30,11 @@
 
 html,
 body {
-  margin: 0;
-  padding: 0;
   width: 100%;
   height: 100dvh;
-  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #07060b;
   overflow: hidden;
-  background-color: #050505;
-  background-image: radial-gradient(circle at 15% 50%, rgba(88, 28, 135, 0.15), transparent 50%), radial-gradient(circle at 85% 30%, rgba(147, 51, 234, 0.15), transparent 50%);
-  background-attachment: fixed;
 }
 
 #app-container {
@@ -122,37 +118,23 @@ body {
 .sidebar-left,
 .sidebar-right,
 .top-bar {
-  background-color: rgba(18, 18, 22, 0.65) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  background: var(--glass-bg-2) !important;
+  backdrop-filter: var(--glass-blur-2) !important;
+  -webkit-backdrop-filter: var(--glass-blur-2) !important;
   border: none !important;
   box-shadow: none !important;
-  transform: translateZ(0);
-  -webkit-transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  will-change: transform, backdrop-filter;
 }
 
 .player-footer {
-  background-color: rgba(18, 18, 22, 0.65) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  background: rgba(14, 10, 26, 0.54) !important;
+  backdrop-filter: blur(32px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
   border: none !important;
   border-top: none !important;
   outline: none !important;
   box-shadow: none !important;
   transform: translateZ(0) !important;
-  -webkit-transform: translate3d(0, 0, 0) !important;
-  backface-visibility: hidden !important;
-  -webkit-backface-visibility: hidden !important;
   will-change: backdrop-filter, transform !important;
-}
-
-.glass-panel {
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
-  transform: translate3d(0,0,0) !important;
 }
 
 .album-card,
@@ -244,12 +226,16 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
 
 .track-icon-btn {
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  flex-shrink: 0 !important;
+  border-radius: 50% !important;
   border: none !important;
   background: transparent;
   color: var(--text-secondary);
@@ -364,9 +350,9 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     width: auto !important;
     height: 60px !important;
     z-index: 65 !important;
-    background-color: rgba(18, 18, 22, 0.65) !important;
-    backdrop-filter: blur(24px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+    background: rgba(20, 15, 34, 0.55) !important;
+    backdrop-filter: blur(28px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     border-top: 1px solid rgba(255, 255, 255, 0.22) !important;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
@@ -374,9 +360,6 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     padding: 0 12px !important;
     overflow: hidden !important;
     transform: translateZ(0) !important;
-    -webkit-transform: translate3d(0, 0, 0) !important;
-    backface-visibility: hidden !important;
-    -webkit-backface-visibility: hidden !important;
     will-change: transform, backdrop-filter !important;
   }
 
@@ -391,20 +374,17 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     width: 100% !important;
     height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px)) !important;
     padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-    background-color: rgba(18, 18, 22, 0.65) !important;
-    backdrop-filter: blur(24px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+    background: rgba(10, 8, 20, 0.72) !important;
+    backdrop-filter: blur(28px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
     border: none !important;
     border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
     outline: none !important;
     box-shadow: none !important;
-    z-index: 99999 !important;
+    z-index: 70 !important;
     pointer-events: auto !important;
     transform: translateZ(0) !important;
-    -webkit-transform: translate3d(0, 0, 0) !important;
-    backface-visibility: hidden !important;
-    -webkit-backface-visibility: hidden !important;
-    will-change: transform, backdrop-filter !important;
+    will-change: backdrop-filter !important;
   }
 
   .bottom-tab-item,
@@ -421,8 +401,10 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
   }
 
   .track-icon-btn {
-    min-width: 40px;
-    min-height: 40px;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
   }
 }
 
@@ -902,5 +884,288 @@ img.album-hero-artwork.album-fallback-blur {
   backdrop-filter: var(--glass-blur-1) !important;
   -webkit-backdrop-filter: var(--glass-blur-1) !important;
 }
+
+/* ==========================================================================
+   Centralização de #miado-welcome-screen e Estilo Unificado de Botões / PWA
+   ========================================================================== */
+#miado-welcome-screen,
+.miado-welcome-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  z-index: 100000 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px !important;
+  box-sizing: border-box !important;
+}
+
+#miado-welcome-screen.active,
+.miado-welcome-overlay.active {
+  display: flex !important;
+}
+
+.miado-welcome-card {
+  margin: auto !important;
+  width: 100% !important;
+  max-width: 420px !important;
+  padding: 36px 28px 30px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  background: rgba(18, 16, 28, 0.72) !important;
+  backdrop-filter: blur(32px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  transform: translateZ(0);
+}
+
+@media (max-width: 480px) {
+  #miado-welcome-screen,
+  .miado-welcome-overlay {
+    padding: 16px !important;
+  }
+  .miado-welcome-card {
+    padding: 28px 20px 24px !important;
+    border-radius: 24px !important;
+  }
+}
+
+/* Alinhamento estrito do botão Adicionar à Playlist (+) e ações em listas */
+.track-actions-col {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+  flex-shrink: 0 !important;
+}
+
+button[data-btn-add-track-to-pl] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  line-height: 1 !important;
+}
+
+/* Componente discreto de Instalar App (PWA) — Menu Lateral, Topo e Aba Flutuante no Rodapé */
+.brand-logo-img {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  min-height: 42px !important;
+  max-height: 42px !important;
+  border-radius: 12px !important;
+  object-fit: cover !important;
+  display: block !important;
+  flex-shrink: 0 !important;
+}
+
+.pwa-install-mini-logo {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  max-width: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  border-radius: 5px !important;
+  object-fit: cover !important;
+  display: block !important;
+  flex-shrink: 0 !important;
+}
+
+.pwa-floating-tab-logo {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
+  min-height: 16px !important;
+  max-height: 16px !important;
+  border-radius: 4px !important;
+  object-fit: cover !important;
+  display: block !important;
+  flex-shrink: 0 !important;
+}
+
+.sidebar-pwa-install-wrap {
+  padding: 10px 12px 14px;
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+.pwa-install-discrete-btn {
+  width: 100%;
+  height: 36px;
+  max-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: rgba(244, 240, 255, 0.78) !important;
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.18s ease;
+  transform: translateZ(0);
+}
+
+.pwa-install-discrete-btn svg {
+  color: #c084fc;
+  flex-shrink: 0;
+}
+
+.pwa-install-discrete-btn:hover {
+  background: rgba(168, 85, 247, 0.18) !important;
+  border-color: rgba(168, 85, 247, 0.36) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) translateZ(0);
+}
+
+.top-pwa-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(18px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  color: #e9d5ff !important;
+  font-size: 0.76rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.18s ease;
+  transform: translateZ(0);
+}
+
+.top-pwa-btn:hover {
+  background: rgba(168, 85, 247, 0.22) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) translateZ(0);
+}
+
+/* Aba flutuante discreta no rodapé para instalar o app no celular/desktop */
+.pwa-floating-footer-tab {
+  position: fixed;
+  right: 12px;
+  bottom: calc(var(--player-height) + 10px);
+  z-index: 64;
+  height: 28px !important;
+  max-height: 28px !important;
+  max-width: 156px !important;
+  overflow: hidden !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 999px;
+  background-color: rgba(18, 16, 28, 0.76) !important;
+  backdrop-filter: blur(24px) saturate(185%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(185%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.11) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  transform: translateZ(0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform, backdrop-filter;
+  transition: opacity 0.22s ease, transform 0.22s ease, background-color 0.2s ease;
+}
+
+.pwa-floating-footer-tab:hover {
+  background-color: rgba(26, 20, 42, 0.84) !important;
+  border-color: rgba(168, 85, 247, 0.35) !important;
+}
+
+.pwa-floating-tab-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 4px 0 0;
+  color: #f3e8ff;
+  font-size: 0.71rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pwa-floating-tab-trigger svg {
+  color: #c084fc;
+  flex-shrink: 0;
+}
+
+.pwa-floating-tab-close {
+  width: 19px !important;
+  height: 19px !important;
+  min-width: 19px !important;
+  min-height: 19px !important;
+  padding: 0 !important;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.62rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.pwa-floating-tab-close:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff;
+}
+
+@media (max-width: 900px) {
+  .top-pwa-btn {
+    display: none !important;
+  }
+  .pwa-floating-footer-tab {
+    right: 12px;
+    bottom: calc(var(--bottom-nav-height) + 74px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+.ob-field-input,
+input.ob-field-input,
+.ob-field-input:focus,
+input.ob-field-input:focus {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+
 
 

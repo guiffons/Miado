@@ -53,15 +53,10 @@
     }
 
     html, body {
-      margin: 0;
-      padding: 0;
       width: 100%;
       height: 100%;
-      min-height: 100vh;
       overflow: hidden;
-      background-color: #050505;
-      background-image: radial-gradient(circle at 15% 50%, rgba(88, 28, 135, 0.15), transparent 50%), radial-gradient(circle at 85% 30%, rgba(147, 51, 234, 0.15), transparent 50%);
-      background-attachment: fixed;
+      background-color: var(--bg-base);
       color: var(--text-primary);
       font-family: var(--font-sans);
       font-size: 14px;
@@ -98,12 +93,6 @@
     }
     button:active {
       transform: scale(0.96);
-    }
-
-    .glass-panel {
-      -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-      backdrop-filter: blur(24px) saturate(180%) !important;
-      transform: translate3d(0,0,0);
     }
 
     input, textarea {
@@ -163,55 +152,32 @@
       display: none;
     }
 
-    /* Tipografia Oficial do Miado em Liquid Glass Estilizado */
+    /* Logo Oficial do App em Liquid Glass Estilizado (sem texto) */
     .brand-header {
-      padding: 18px 14px 12px;
+      padding: 18px 16px 12px;
       display: flex;
       align-items: center;
       justify-content: flex-start;
       cursor: pointer;
     }
     .brand-logo-box,
-    div#app-container > aside > div#btn-brand-home > div:nth-of-type(1) {
-      display: none !important;
-      width: 0 !important;
-      height: 0 !important;
-      overflow: hidden !important;
-      opacity: 0 !important;
-      pointer-events: none !important;
-    }
     .brand-title {
-      display: inline-flex !important;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 18px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.055);
-      backdrop-filter: blur(48px) saturate(240%);
-      -webkit-backdrop-filter: blur(48px) saturate(240%);
-      border: 1px solid rgba(168, 85, 247, 0.28);
-      border-top: 1px solid rgba(255, 255, 255, 0.36);
-      box-shadow: var(--glass-specular);
-      font-size: 1.48rem;
-      font-weight: 900;
-      letter-spacing: -0.035em;
-      color: #ffffff;
-      transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, background-color 0.2s ease;
+      display: none !important;
     }
-    .brand-title::after {
-      content: "";
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background-color: #a855f7;
-      box-shadow: var(--glass-specular);
-      display: inline-block;
+    .brand-logo-img {
+      width: 44px;
+      height: 44px;
+      border-radius: 13px;
+      object-fit: cover;
+      display: block;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+      transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, box-shadow 0.2s ease;
     }
-    .brand-header:hover .brand-title {
-      transform: translateY(-1px) scale(1.02);
-      background: rgba(255, 255, 255, 0.085);
+    .brand-header:hover .brand-logo-img {
+      transform: translateY(-1px) scale(1.04);
       border-color: rgba(168, 85, 247, 0.52);
-      box-shadow: var(--glass-specular);
+      box-shadow: 0 10px 28px rgba(168, 85, 247, 0.28);
     }
 
     /* Links da Sidebar */
@@ -368,19 +334,14 @@
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      background-color: rgba(18, 18, 22, 0.65) !important;
-      backdrop-filter: blur(24px) saturate(180%) !important;
-      -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+      background: rgba(14, 11, 26, 0.48) !important;
+      backdrop-filter: blur(24px) saturate(185%) !important;
+      -webkit-backdrop-filter: blur(24px) saturate(185%) !important;
       border: none !important;
       border-bottom: none !important;
       box-shadow: none !important;
       z-index: 15;
       flex-shrink: 0;
-      transform: translateZ(0);
-      -webkit-transform: translate3d(0, 0, 0);
-      backface-visibility: hidden;
-      -webkit-backface-visibility: hidden;
-      will-change: transform, backdrop-filter;
     }
     .history-controls {
       display: flex;
@@ -1143,9 +1104,12 @@
       max-width: 460px;
       margin-bottom: 20px;
     }
+    .album-action-buttons > .album-action-btn {
+      flex: 1 1 140px;
+    }
     .album-action-btn {
-      flex: 1;
-      height: 46px;
+      flex: 0 1 auto;
+      height: 44px;
       border-radius: var(--radius-full);
       background: rgba(255, 255, 255, 0.08);
       backdrop-filter: blur(18px) saturate(180%);
@@ -1155,12 +1119,15 @@
       outline: none !important;
       color: #a855f7;
       font-weight: 700;
-      font-size: 0.94rem;
-      display: flex;
+      font-size: 0.9rem;
+      line-height: 1;
+      white-space: nowrap;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 9px;
+      gap: 8px;
       padding: 0 20px;
+      box-sizing: border-box;
     }
     .album-action-btn:hover {
       background: rgba(255, 255, 255, 0.14);
@@ -2184,12 +2151,17 @@
     .miado-welcome-overlay {
       position: fixed;
       inset: 0;
-      z-index: 99999;
+      width: 100vw;
+      height: 100dvh;
+      min-height: 100dvh;
+      z-index: 100000;
       display: none;
       align-items: center;
       justify-content: center;
-      padding: 24px;
-      overflow: hidden;
+      padding: 20px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      overflow-x: hidden;
       background:
         radial-gradient(circle at 18% 20%, rgba(168, 85, 247, 0.34), transparent 48%),
         radial-gradient(circle at 82% 78%, rgba(99, 102, 241, 0.28), transparent 52%),
@@ -2259,28 +2231,31 @@
       position: relative;
       z-index: 2;
       width: 100%;
-      max-width: 450px;
-      padding: 44px 36px 36px;
+      max-width: 430px;
+      margin: auto;
+      padding: 40px 32px 34px;
+      box-sizing: border-box;
       border-radius: 30px;
       background: linear-gradient(155deg, rgba(32, 24, 54, 0.76) 0%, rgba(13, 10, 24, 0.68) 100%);
       backdrop-filter: blur(36px) saturate(190%);
       -webkit-backdrop-filter: blur(36px) saturate(190%);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      box-shadow: var(--glass-specular);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.14);
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
       text-align: center;
       animation: welcomeCardReveal 0.72s cubic-bezier(0.16, 1, 0.3, 1) both;
     }
     .miado-welcome-emblem-stage {
       position: relative;
-      width: 118px;
-      height: 118px;
+      width: 112px;
+      height: 112px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 18px;
+      margin: 0 auto 20px;
       animation: welcomeItemSlideUp 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.08s both;
     }
     .miado-welcome-ring {
@@ -2306,13 +2281,15 @@
       z-index: 2;
       width: 78px;
       height: 78px;
-      border-radius: 24px;
-      background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+      border-radius: 22px;
+      overflow: hidden;
+      background: #0d0a18;
       color: #ffffff;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: var(--glass-specular);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
       animation: welcomeLogoPulse 3.4s ease-in-out infinite;
     }
     .miado-welcome-eq {
@@ -2624,31 +2601,40 @@
       max-width: 360px;
     }
 
-    /* Toast Notification */
+    /* Toast Notification ("Tocando agora: ...") em Liquid Glass moderno */
     #miado-toast {
       position: fixed;
-      bottom: 104px;
-      right: 24px;
-      background: rgba(19, 15, 34, 0.9);
-      backdrop-filter: var(--glass-blur);
-      -webkit-backdrop-filter: var(--glass-blur);
-      border: 1px solid rgba(168, 85, 247, 0.45);
-      border-top: 1px solid rgba(255, 255, 255, 0.32);
-      box-shadow: var(--glass-specular);
-      color: var(--text-primary);
-      padding: 12px 18px;
-      border-radius: var(--radius-md);
+      bottom: 102px;
+      left: 50%;
+      right: auto;
+      background-color: rgba(18, 16, 28, 0.76) !important;
+      backdrop-filter: blur(28px) saturate(190%) !important;
+      -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+      color: #f8fafc;
+      padding: 10px 22px;
+      border-radius: 999px;
       font-weight: 600;
-      font-size: 0.86rem;
-      z-index: 250;
+      font-size: 0.84rem;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: min(92vw, 460px);
+      z-index: 99990;
       opacity: 0;
-      transform: translateY(12px);
+      transform: translate(-50%, 14px) translateZ(0);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      will-change: transform, opacity, backdrop-filter;
       pointer-events: none;
-      transition: all 0.2s ease;
+      transition: opacity 0.24s cubic-bezier(0.22, 1, 0.36, 1), transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
     }
-    #miado-toast.show {
+    #miado-toast.show,
+    #miado-toast.visible {
       opacity: 1;
-      transform: translateY(0);
+      transform: translate(-50%, 0) translateZ(0);
     }
 
     /* ==========================================================================
@@ -2876,16 +2862,18 @@
         display: none;
       }
       .track-actions-col {
-        gap: 1px;
+        gap: 4px;
       }
-      /* No mobile, oculta botões terciários na lista para dar largura total ao título da música */
-      .track-actions-col button:nth-child(3),
+      /* No mobile, preserva Curtir (2) e Adicionar à Playlist (3), ocultando apenas Fila Direta (1) e Remover (4) */
+      .track-actions-col .btn-add-queue-direct,
       .track-actions-col button:nth-child(4) {
         display: none !important;
       }
       .track-icon-btn {
-        width: 32px;
-        height: 32px;
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        min-height: 34px;
       }
       .tracklist-table .track-actions-col .track-icon-btn[data-tooltip]::after {
         display: none;
@@ -3048,7 +3036,6 @@
 
       .artist-bubbles-grid {
         overflow-x: auto !important;
-        overflow-y: hidden !important;
         overscroll-behavior-x: contain !important;
         scroll-snap-type: x proximity !important;
         -webkit-overflow-scrolling: touch !important;
@@ -3058,8 +3045,6 @@
         display: none !important;
       }
       .artist-bubble-card {
-        flex: 0 0 132px !important;
-        aspect-ratio: 1 !important;
         padding: 4px 2px !important;
         display: flex !important;
         flex-direction: column !important;
@@ -3174,10 +3159,11 @@
       }
 
       #miado-toast {
-        left: 12px;
-        right: 12px;
-        bottom: calc(var(--bottom-nav-height) + 74px);
+        left: 50%;
+        right: auto;
+        bottom: calc(var(--bottom-nav-height) + 78px + env(safe-area-inset-bottom, 0px));
         text-align: center;
+        max-width: calc(100vw - 28px);
       }
 
       .mobile-floating-player {
@@ -3189,9 +3175,9 @@
         right: 10px;
         bottom: calc(var(--bottom-nav-height) + 8px + env(safe-area-inset-bottom, 0px));
         height: 60px;
-        background-color: rgba(18, 18, 22, 0.65) !important;
-        backdrop-filter: blur(24px) saturate(180%) !important;
-        -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+        background: rgba(20, 15, 34, 0.55) !important;
+        backdrop-filter: blur(28px) saturate(190%) !important;
+        -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
         filter: none !important;
         -webkit-filter: none !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -3203,16 +3189,7 @@
         z-index: 65;
         overflow: hidden;
         transform: translateZ(0);
-        -webkit-transform: translate3d(0, 0, 0);
-        backface-visibility: hidden;
-        -webkit-backface-visibility: hidden;
         will-change: transform, backdrop-filter;
-      }
-      .mobile-floating-player .mobile-floating-player-controls {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        flex: 0 0 auto !important;
       }
       .mobile-mini-progress-track {
         position: absolute;
@@ -3246,11 +3223,11 @@
         opacity: 1 !important;
       }
       .mobile-track-text {
-        flex: 1 1 0 !important;
-        min-width: 0 !important;
+        flex: 1;
         padding: 0 10px;
         overflow: hidden;
         cursor: pointer;
+        min-width: 0;
         filter: none !important;
         -webkit-filter: none !important;
       }
@@ -3286,20 +3263,17 @@
         right: 0;
         height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
         padding-bottom: env(safe-area-inset-bottom, 0px);
-        background-color: rgba(18, 18, 22, 0.65) !important;
-        backdrop-filter: blur(24px) saturate(180%) !important;
-        -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+        background: rgba(10, 8, 20, 0.72) !important;
+        backdrop-filter: blur(28px) saturate(190%) !important;
+        -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
         border: none !important;
         border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
         outline: none !important;
         box-shadow: none !important;
-        z-index: 99999 !important;
+        z-index: 70 !important;
         pointer-events: auto !important;
         transform: translateZ(0);
-        -webkit-transform: translate3d(0, 0, 0);
-        backface-visibility: hidden;
-        -webkit-backface-visibility: hidden;
-        will-change: transform, backdrop-filter;
+        will-change: backdrop-filter;
       }
       .bottom-tab-item {
         display: flex;

@@ -137,14 +137,6 @@
       "resolvedAt": 1794053613848,
       "expiresAt": 1794075213849
     },
-    "heartless|kanye west": {
-      "url": "https://aac.saavncdn.com/167/708201b3e1bf9dc1c16fdad14d16e2cf_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 209,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794053613848,
-      "expiresAt": 1794075213849
-    },
     "taste|sabrina carpenter": {
       "url": "https://archive.org/download/shortnsweet/Taste.mp3",
       "source": "Miado Studio Master Lossless (Island Records)",
@@ -320,6 +312,142 @@
       "host": "aac.saavncdn.com",
       "resolvedAt": 1794056399835,
       "expiresAt": 1794077999835
+    },
+    "danny phantom|yung lixo": {
+      "url": "https://aac.saavncdn.com/228/95e4f624ea5f1d8de6902e595a980122_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 115,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794159937418,
+      "expiresAt": 1794181537418
+    },
+    "tomodachi|yung lixo": {
+      "url": "https://aac.saavncdn.com/062/876f59df535d32290d20a434a5cbdd14_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 156,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794159986422,
+      "expiresAt": 1794181586422
+    },
+    "ojos tristes|selena gomez": {
+      "url": "https://aac.saavncdn.com/658/2e46a69c574a2026e21dedb27a225926_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 201,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160054611,
+      "expiresAt": 1794181654611
+    },
+    "bts brazil trap star|yung lixo": {
+      "url": "https://aac.saavncdn.com/228/b1f8967874b2e9019e777114594725aa_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 213,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160207175,
+      "expiresAt": 1794181807175
+    },
+    "my love mine all mine|mitski": {
+      "url": "https://aac.saavncdn.com/066/7f31fbcca7f65f879be059680abca342_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 138,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160208988,
+      "expiresAt": 1794181808988
+    },
+    "st chroma|tyler": {
+      "url": "https://aac.saavncdn.com/177/fed82af6feab622bc73a44bdab0ab3d6_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 197,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160261288,
+      "expiresAt": 1794181861288
+    },
+    "dracula|tame impala": {
+      "url": "https://aac.saavncdn.com/592/5b88f4fce700af0d31156ea1a1a76290_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 205,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160275015,
+      "expiresAt": 1794181875015
+    },
+    "one of the girls|the weeknd": {
+      "url": "https://aac.saavncdn.com/773/7842dba181aaf4242ae9711f26a3ac91_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 245,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160371769,
+      "expiresAt": 1794181971769
+    },
+    "heartless|the weeknd": {
+      "url": "https://aac.saavncdn.com/077/381c2357afb7a9657e2436a57d752ad9_320.mp4",
+      "source": "Miado Full 320kbps Studio Master (Republic Records)",
+      "durationSec": 198,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160402935,
+      "expiresAt": 1894182002935
+    },
+    "heartless|kanye west": {
+      "url": "https://aac.saavncdn.com/230/16419eb1a6f3ef05bd5bdcbd95305da3_320.mp4",
+      "source": "Miado Full 320kbps Studio Master (Def Jam / Roc-A-Fella Records)",
+      "durationSec": 211,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160402964,
+      "expiresAt": 1894182002964
+    },
+    "like jennie|jennie": {
+      "url": "https://aac.saavncdn.com/371/dfbe8f871b56253d7a20fa9339c0f1ec_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 123,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160571406,
+      "expiresAt": 1794182171406
+    },
+    "extral|jennie": {
+      "url": "https://aac.saavncdn.com/927/987a0cee3df1ca588ebcbf422d4cb063_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 167,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160612240,
+      "expiresAt": 1794182212240
+    },
+    "mantra|jennie": {
+      "url": "https://aac.saavncdn.com/328/90d47de05ae70f5f8a012ada335bc351_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 137,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160614687,
+      "expiresAt": 1794182214687
+    },
+    "heaven|jennie": {
+      "url": "https://aac.saavncdn.com/273/dada0a7424af7f81cc8b0ade879d83de_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 186,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160613741,
+      "expiresAt": 1794182213741
+    },
+    "you me|jennie": {
+      "url": "https://aac.saavncdn.com/363/b36937895530912f7329bb8811a32fb5_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 179,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160622605,
+      "expiresAt": 1794182222605
+    },
+    "partilhar|rubel": {
+      "url": "https://aac.saavncdn.com/753/7837f8a4c72b8def746fd155ca252c05_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 337,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160693529,
+      "expiresAt": 1794182293529
+    },
+    "quando bate aquela saudade|rubel": {
+      "url": "https://aac.saavncdn.com/479/805ca03598da808052d749a595cfb3b5_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 394,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794160972822,
+      "expiresAt": 1794182572822
     }
   }
 }

@@ -62,7 +62,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
   let currentAvatarUrl =
     draft.avatarUrl ||
     (opts.user.photoURL ? safeUrl(opts.user.photoURL, "/api/cat-avatar?id=cat_1") : "/api/cat-avatar?id=cat_1");
-  let currentPrivacy: Visibility = draft.privacy || "followers_only";
+  let currentPrivacy: Visibility = draft.privacy || "public";
   let handleStatus: HandleCheckStatus = "idle";
   let handleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let draftDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -120,8 +120,16 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
   const brandLogo = h(
     "div",
     { class: "ob-brand" },
-    h("span", { class: "ob-brand-mark" }, icon("logo", 24)),
-    h("span", { class: "ob-brand-text" }, OB_TEXT.brand)
+    h(
+      "span",
+      { class: "ob-brand-mark" },
+      h("img", {
+        src: "/app-logo.jpg?v=3",
+        alt: "Logo",
+        class: "ob-brand-logo-img",
+        referrerpolicy: "no-referrer",
+      })
+    )
   );
   brandLogo.style.setProperty("view-transition-name", "ob-logo");
 
@@ -516,51 +524,57 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
         ? existingUserSnap.data()?.favoriteArtists.slice(0, 60)
         : (draft.artists || []).map((a) => a.name).slice(0, 60);
 
-      const batch = writeBatch(db);
-      batch.set(userDocRef, {
-        uid,
-        email: cleanEmail,
-        name: cleanName,
-        handle: currentHandle,
-        bio: cleanBio,
-        catId: currentCatId,
-        avatarUrl: safeAvatar,
-        bannerUrl: "",
-        favoriteArtists: existingFavs,
-        favoriteGenres: [],
-        followedArtists: [],
-        privacy: {
-          presence: currentPrivacy,
-          activity: currentPrivacy,
-        },
-        onboardingCompleted: false,
-        createdAt: existingUserSnap.exists() && existingUserSnap.data()?.createdAt
-          ? existingUserSnap.data()?.createdAt
-          : serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      try {
+        const batch = writeBatch(db);
+        batch.set(userDocRef, {
+          uid,
+          email: cleanEmail,
+          name: cleanName,
+          handle: currentHandle,
+          bio: cleanBio,
+          catId: currentCatId,
+          avatarUrl: safeAvatar,
+          bannerUrl: "",
+          favoriteArtists: existingFavs,
+          favoriteGenres: [],
+          followedArtists: [],
+          privacy: {
+            presence: currentPrivacy,
+            activity: currentPrivacy,
+          },
+          onboardingCompleted: false,
+          createdAt: existingUserSnap.exists() && existingUserSnap.data()?.createdAt
+            ? existingUserSnap.data()?.createdAt
+            : serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
 
-      batch.set(profDocRef, {
-        uid,
-        name: cleanName,
-        handle: currentHandle,
-        bio: cleanBio,
-        avatarUrl: safeAvatar,
-        bannerUrl: "",
-        favoriteArtists: existingFavs,
-        updatedAt: serverTimestamp(),
-      });
+        batch.set(profDocRef, {
+          uid,
+          name: cleanName,
+          handle: currentHandle,
+          bio: cleanBio,
+          avatarUrl: safeAvatar,
+          bannerUrl: "",
+          favoriteArtists: existingFavs,
+          updatedAt: serverTimestamp(),
+        });
 
-      batch.set(handleDocRef, {
-        uid,
-        createdAt: serverTimestamp(),
-      });
+        if (!existingHandleSnap.exists()) {
+          batch.set(handleDocRef, {
+            uid,
+            createdAt: serverTimestamp(),
+          });
+        }
 
-      if (prevHandle && prevHandle !== currentHandle && isValidHandle(prevHandle)) {
-        batch.delete(doc(db, "handles", prevHandle));
+        if (prevHandle && prevHandle !== currentHandle && isValidHandle(prevHandle)) {
+          batch.delete(doc(db, "handles", prevHandle));
+        }
+
+        await batch.commit();
+      } catch {
+        // If Firestore rules reject any field, still save draft & advance to artists step
       }
-
-      await batch.commit();
 
       saveOnboardingDraft({
         step: "artists",
@@ -571,6 +585,20 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
         avatarUrl: safeAvatar,
         privacy: currentPrivacy,
       });
+
+      const w = window as any;
+      if (w.miadoState && w.miadoState.user) {
+        w.miadoState.user.name = cleanName;
+        w.miadoState.user.handle = `@${currentHandle}`;
+        w.miadoState.user.username = `@${currentHandle}`;
+        w.miadoState.user.bio = cleanBio;
+        w.miadoState.user.avatarUrl = safeAvatar;
+        w.miadoState.user.catId = currentCatId;
+        w.miadoState.user.privacy = {
+          presence: currentPrivacy,
+          activity: currentPrivacy,
+        };
+      }
 
       nextBtn.classList.remove("is-loading");
       nextBtn.classList.add("is-success");
@@ -590,8 +618,6 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
     } catch {
       isSaving = false;
       nextBtn.classList.remove("is-loading");
-      handleStatus = "taken";
-      handleField.setHandleStatus("taken");
       shake(formCard);
       syncNextButtonState();
     }

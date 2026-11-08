@@ -69,24 +69,51 @@ export function mountOnboarding(
   };
 
   const inspectUserOnboardingStep = async (
-    user: User | null
+    user: User | null,
+    isExplicitLogin = false
   ): Promise<{ step: OnboardingStep; existingHandle?: string }> => {
     if (!user) return { step: "auth" };
     try {
       const [userSnap, profileSnap] = await Promise.all([
-        getDoc(doc(db, "users", user.uid)),
-        getDoc(doc(db, "profiles", user.uid)),
+        getDoc(doc(db, "users", user.uid)).catch(() => null),
+        getDoc(doc(db, "profiles", user.uid)).catch(() => null),
       ]);
-      const userData = userSnap.exists() ? userSnap.data() : null;
-      const profileData = profileSnap.exists() ? profileSnap.data() : null;
+      const userData = userSnap && userSnap.exists() ? userSnap.data() : null;
+      const profileData = profileSnap && profileSnap.exists() ? profileSnap.data() : null;
 
-      const rawHandle = String(profileData?.handle || userData?.handle || "");
-      const bareHandle = normalizeHandle(rawHandle);
-      const rawName = String(profileData?.name || userData?.name || "").trim();
-      const hasProfile = Boolean(
-        profileSnap.exists() && isValidHandle(bareHandle) && rawName.length >= 1
+      const w = window as any;
+      const stateUser = w.miadoState?.user;
+      const stateHasEmail = Boolean(
+        stateUser?.email &&
+          stateUser.email !== "usr_guest@miado.app" &&
+          (!user.email || stateUser.email.toLowerCase() === user.email.toLowerCase())
       );
-      const onboardingCompleted = Boolean(userData && userData.onboardingCompleted === true);
+
+      const rawHandle = String(
+        profileData?.handle ||
+          userData?.handle ||
+          (stateHasEmail ? stateUser?.username || stateUser?.handle : "") ||
+          ""
+      );
+      const bareHandle = normalizeHandle(rawHandle);
+      const rawName = String(
+        profileData?.name ||
+          userData?.name ||
+          (stateHasEmail && stateUser?.name !== "Visitante" ? stateUser?.name : "") ||
+          user.displayName ||
+          ""
+      ).trim();
+
+      const hasProfile = Boolean(
+        ((profileSnap && profileSnap.exists()) || (userSnap && userSnap.exists()) || stateHasEmail) &&
+          isValidHandle(bareHandle) &&
+          rawName.length >= 1
+      );
+      const onboardingCompleted = Boolean(
+        (userData && userData.onboardingCompleted === true) ||
+          (isExplicitLogin && hasProfile) ||
+          (stateHasEmail && stateUser?.onboardingCompleted === true)
+      );
 
       if (hasProfile && !onboardingCompleted) {
         saveOnboardingDraft({
@@ -100,6 +127,10 @@ export function mountOnboarding(
         });
       }
 
+      if (isExplicitLogin && (hasProfile || userSnap?.exists() || profileSnap?.exists() || stateHasEmail)) {
+        return { step: "done", existingHandle: bareHandle };
+      }
+
       const step = resolveInitialStep({
         isAuthenticated: true,
         hasProfile,
@@ -109,15 +140,24 @@ export function mountOnboarding(
 
       return { step, existingHandle: bareHandle };
     } catch {
-      return { step: "profile" };
+      return { step: isExplicitLogin ? "done" : "profile" };
     }
   };
 
   const finishOnboarding = async (user: User | null) => {
     if (unmounted) return;
     clearOnboardingDraft();
+    localStorage.setItem("miado_active_session_v1", "true");
+    localStorage.setItem("miado_user_onboarded_v1", "true");
+    if (user?.uid) {
+      localStorage.setItem("miado_user_uid", user.uid);
+    }
+    const welcomeEl = document.getElementById("miado-welcome-screen");
+    if (welcomeEl) {
+      welcomeEl.classList.remove("active", "closing");
+    }
     rootEl.classList.add("is-exiting");
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 240));
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 200));
     const uid = user?.uid || "";
     unmount();
     if (options.onComplete) {
@@ -131,11 +171,12 @@ export function mountOnboarding(
     userOverride?: User | null,
     existingHandle?: string
   ) => {
-    if (unmounted || isTransitioning) return;
+    if (unmounted) return;
     if (nextStep === "done") {
       await finishOnboarding(userOverride !== undefined ? userOverride : auth.currentUser);
       return;
     }
+    if (isTransitioning) return;
 
     isTransitioning = true;
     const prevEl = activeStepEl;
@@ -155,12 +196,19 @@ export function mountOnboarding(
         signal,
         onAuthenticated: async (authedUser, isNewRegistration) => {
           if (unmounted) return;
+          isTransitioning = false;
           if (isNewRegistration) {
             saveOnboardingDraft({ step: "profile" });
             await renderStep("profile", "forward", authedUser);
             return;
           }
-          const inspected = await inspectUserOnboardingStep(authedUser);
+          const w = window as any;
+          if (w.miadoFirestore && typeof w.miadoFirestore.hydrateCurrentUser === "function") {
+            try {
+              await w.miadoFirestore.hydrateCurrentUser();
+            } catch {}
+          }
+          const inspected = await inspectUserOnboardingStep(authedUser, true);
           await renderStep(inspected.step, "forward", authedUser, inspected.existingHandle);
         },
       });
@@ -240,13 +288,8 @@ export function mountOnboarding(
   const unsubAuth = onAuthStateChanged(auth, async (user) => {
     if (unmounted) return;
     if (!currentStepId) {
-      const inspected = await inspectUserOnboardingStep(user);
+      const inspected = await inspectUserOnboardingStep(user, false);
       await renderStep(inspected.step, "forward", user, inspected.existingHandle);
-    } else if (user && currentStepId === "auth" && !isTransitioning) {
-      const inspected = await inspectUserOnboardingStep(user);
-      if (inspected.step !== "auth") {
-        await renderStep(inspected.step, "forward", user, inspected.existingHandle);
-      }
     }
   });
 

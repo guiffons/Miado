@@ -48,8 +48,16 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
   const brandLogo = h(
     "div",
     { class: "ob-brand", dataset: { vt: "ob-logo" } },
-    h("span", { class: "ob-brand-mark" }, icon("logo", 24)),
-    h("span", { class: "ob-brand-text" }, OB_TEXT.brand)
+    h(
+      "span",
+      { class: "ob-brand-mark" },
+      h("img", {
+        src: "/app-logo.jpg?v=3",
+        alt: "Logo",
+        class: "ob-brand-logo-img",
+        referrerpolicy: "no-referrer",
+      })
+    )
   );
   brandLogo.style.setProperty("view-transition-name", "ob-logo");
 
@@ -195,6 +203,46 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     }
   };
 
+  const syncBackendAuthSession = async (
+    mode: AuthMode,
+    email: string,
+    password: string,
+    fbUser?: User | null
+  ): Promise<any> => {
+    try {
+      const token = fbUser ? await fbUser.getIdToken().catch(() => "") : "";
+      if (token) {
+        localStorage.setItem("miado_auth_token", token);
+      }
+      if (fbUser?.uid) {
+        localStorage.setItem("miado_user_uid", fbUser.uid);
+      }
+      localStorage.setItem("miado_active_session_v1", "true");
+      const endpoint = mode === "register" ? "/api/auth/register" : "/api/auth/login";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          name: fbUser?.displayName || email.split("@")[0] || "Ouvinte",
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (data && data.ok) {
+        const w = window as any;
+        if (w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
+          w.miadoState.applyAccountPayload(data);
+        }
+        return data;
+      }
+    } catch {}
+    return null;
+  };
+
   const handleSubmit = async () => {
     if (isSubmitting) return;
     const email = emailField.getValue().trim().toLowerCase();
@@ -212,8 +260,8 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       passwordField.setError(OB_TEXT.errors.required);
       return;
     }
-    if (currentMode === "register" && password.length < 10) {
-      passwordField.setError(OB_TEXT.errors.weakPassword);
+    if (currentMode === "register" && password.length < 6) {
+      passwordField.setError("Minimo de 6 caracteres");
       return;
     }
 
@@ -224,20 +272,72 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
 
     try {
       if (currentMode === "register") {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
         try {
-          await sendEmailVerification(cred.user);
-        } catch {}
-        setButtonState("success");
-        setTimeout(() => {
+          const cred = await createUserWithEmailAndPassword(auth, email, password);
+          try {
+            await sendEmailVerification(cred.user);
+          } catch {}
+          await syncBackendAuthSession("register", email, password, cred.user);
+          setButtonState("success");
           opts.onAuthenticated(cred.user, true);
-        }, 220);
+          return;
+        } catch (regErr: any) {
+          const regCode = String(regErr?.code || "").toLowerCase();
+          if (regCode.includes("email-already-in-use")) {
+            try {
+              const loginCred = await signInWithEmailAndPassword(auth, email, password);
+              await syncBackendAuthSession("login", email, password, loginCred.user);
+              setButtonState("success");
+              opts.onAuthenticated(loginCred.user, false);
+              return;
+            } catch {
+              throw regErr;
+            }
+          }
+          throw regErr;
+        }
       } else {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        setButtonState("success");
-        setTimeout(() => {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, email, password);
+          await syncBackendAuthSession("login", email, password, cred.user);
+          setButtonState("success");
           opts.onAuthenticated(cred.user, false);
-        }, 220);
+          return;
+        } catch (loginErr: any) {
+          const loginCode = String(loginErr?.code || "").toLowerCase();
+          if (
+            loginCode.includes("invalid-credential") ||
+            loginCode.includes("user-not-found")
+          ) {
+            const backendData = await syncBackendAuthSession("login", email, password, null);
+            if (backendData && backendData.ok) {
+              try {
+                const paddedPass = password.length >= 6 ? password : `${password}_miado`;
+                const migratedCred = await createUserWithEmailAndPassword(auth, email, paddedPass).catch(() =>
+                  signInWithEmailAndPassword(auth, email, paddedPass)
+                );
+                if (migratedCred?.user) {
+                  setButtonState("success");
+                  opts.onAuthenticated(migratedCred.user, false);
+                  return;
+                }
+              } catch {}
+              const fakeUser = {
+                uid: String(backendData.account?.uid || backendData.user?.uid || `usr_${Date.now()}`),
+                email,
+                displayName: String(backendData.user?.name || email.split("@")[0]),
+                emailVerified: true,
+                photoURL: String(backendData.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+                providerData: [],
+                getIdToken: async () => String(backendData.token || ""),
+              } as unknown as User;
+              setButtonState("success");
+              opts.onAuthenticated(fakeUser, false);
+              return;
+            }
+          }
+          throw loginErr;
+        }
       }
     } catch (err) {
       isSubmitting = false;

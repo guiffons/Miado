@@ -9,6 +9,7 @@ import { escapeHtml, safeUrl, h } from "./ui/dom";
 import { bindImageFallback } from "./ui/images";
 import { createCarousel } from "./ui/carousel";
 import { mountOnboarding } from "./ui/onboarding";
+import { initPwaInstall } from "./ui/pwaInstall";
 
 function bootstrapMiadoApp() {
   const w = window as any;
@@ -26,11 +27,20 @@ function bootstrapMiadoApp() {
     return el;
   };
 
-  w.miadoMountOnboarding = () => {
-    if (activeOnboardingUnmount) {
-      return activeOnboardingUnmount;
-    }
+  w.miadoMountOnboarding = (forceRemount = false) => {
     const container = ensureOnboardingContainer();
+    if (activeOnboardingUnmount) {
+      if (!forceRemount && container.querySelector(".ob-root:not(.is-exiting)")) {
+        return activeOnboardingUnmount;
+      }
+      try {
+        activeOnboardingUnmount();
+      } catch {
+        // ignore unmount error
+      }
+      activeOnboardingUnmount = null;
+    }
+    container.style.display = "block";
     activeOnboardingUnmount = mountOnboarding(container, {
       onComplete: async () => {
         activeOnboardingUnmount = null;
@@ -62,6 +72,7 @@ function bootstrapMiadoApp() {
     }
   });
 
+  initPwaInstall();
   initFirebaseClient();
   initMiadoClient();
   initEnhancements();

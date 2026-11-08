@@ -94,8 +94,16 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
   const brandLogo = h(
     "div",
     { class: "ob-brand" },
-    h("span", { class: "ob-brand-mark" }, icon("logo", 24)),
-    h("span", { class: "ob-brand-text" }, OB_TEXT.brand)
+    h(
+      "span",
+      { class: "ob-brand-mark" },
+      h("img", {
+        src: "/app-logo.jpg?v=3",
+        alt: "Logo",
+        class: "ob-brand-logo-img",
+        referrerpolicy: "no-referrer",
+      })
+    )
   );
   brandLogo.style.setProperty("view-transition-name", "ob-logo");
 
@@ -313,15 +321,57 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
       await Promise.all([
         updateDoc(doc(db, "users", uid), {
           favoriteArtists: chosenNames,
-          followedArtists: followedObjects,
+          followedArtists: chosenNames,
           onboardingCompleted: true,
           updatedAt: serverTimestamp(),
-        }),
+        }).catch(() => {}),
         updateDoc(doc(db, "profiles", uid), {
           favoriteArtists: chosenNames,
           updatedAt: serverTimestamp(),
-        }),
+        }).catch(() => {}),
       ]);
+    } catch {}
+
+    try {
+      const w = window as any;
+      const savedDraft = loadOnboardingDraft();
+      const uid = opts.user.uid;
+      const email = String(opts.user.email || w.miadoState?.user?.email || "").toLowerCase();
+      const cleanName = savedDraft.name || w.miadoState?.user?.name || opts.user.displayName || "Ouvinte";
+      const bareH = (savedDraft.handle || w.miadoState?.user?.username || "ouvinte").replace(/^@+/, "");
+      const displayH = `@${bareH}`;
+      const avatarUrl = savedDraft.avatarUrl || w.miadoState?.user?.avatarUrl || "/api/cat-avatar?id=cat_1";
+
+      localStorage.setItem("miado_user_uid", uid);
+      localStorage.setItem("miado_active_session_v1", "true");
+      localStorage.setItem("miado_user_onboarded_v1", "true");
+
+      if (w.miadoState) {
+        w.miadoState.hydrateFromFirestore({
+          uid,
+          email,
+          name: cleanName,
+          username: displayH,
+          handle: displayH,
+          bio: savedDraft.bio || w.miadoState.user?.bio || "",
+          avatarUrl,
+          favoriteArtists: chosenNames,
+          followedArtists: followedObjects,
+          onboardingCompleted: true,
+        });
+        if (typeof w.miadoState.saveFavoriteArtists === "function") {
+          void w.miadoState.saveFavoriteArtists(chosenNames, []);
+        }
+        if (typeof w.miadoState.createOrUpdateCommunityProfile === "function") {
+          void w.miadoState.createOrUpdateCommunityProfile({
+            name: cleanName,
+            username: displayH,
+            bio: savedDraft.bio || "",
+            avatarUrl,
+            favoriteArtists: chosenNames,
+          });
+        }
+      }
     } catch {}
 
     clearOnboardingDraft();

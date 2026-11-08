@@ -1,0 +1,25 @@
+{
+  "name": "Miado - Streaming de Música & Rede Social",
+  "short_name": "Miado",
+  "description": "Plataforma de streaming de música pura e rede social independente com capas em alta definição, zero anúncios e arquitetura responsiva.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#050508",
+  "theme_color": "#050508",
+  "icons": [
+    {
+      "src": "/app-logo.jpg?v=3",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app-logo.jpg?v=3",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["music", "entertainment", "social"]
+}
