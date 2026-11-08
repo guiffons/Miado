@@ -12,7 +12,7 @@ import { createField } from "../components/field";
 import { createSegmented } from "../components/segmented";
 import { createShowcaseWall } from "../components/showcaseWall";
 import { h } from "../dom";
-import { icon } from "../icons";
+import { icon, MIADO_CAT_LOGO_DATA_URI } from "../icons";
 import { drawCheck, shake } from "../motion";
 import {
   evaluatePasswordStrength,
@@ -52,10 +52,10 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       "span",
       { class: "ob-brand-mark" },
       h("img", {
-        src: "/app-logo.svg",
-        alt: "Logo",
+        src: MIADO_CAT_LOGO_DATA_URI,
+        alt: "Miado Logo",
         class: "ob-brand-logo-img",
-        referrerpolicy: "no-referrer",
+        draggable: "false",
       })
     )
   );

@@ -331,40 +331,43 @@
     </div>
   </div>
 
-  <!-- MODAL: PLAYLIST CONJUNTA -->
+  <!-- MODAL: CRIAR / IMPORTAR PLAYLIST NO ESTILO LIQUID GLASS -->
   <div class="modal-overlay" id="modal-collab-playlist">
-    <div class="modal-dialog">
+    <div class="modal-dialog" style="max-width: 480px;">
       <div class="modal-header">
-        <div class="modal-title">Playlists Colaborativas Miau</div>
-        <button class="track-icon-btn close-modal-btn">
+        <div class="modal-title" id="collab-modal-title">Criar Nova Playlist</div>
+        <button class="track-icon-btn close-modal-btn" title="Fechar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div class="modal-body">
-        <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.5;">
-          Crie uma nova playlist ou importe o código Base64 de um amigo exibindo o gatinho real de quem adicionou cada música.
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+        <div id="collab-modal-description" style="font-size:0.86rem; color:var(--text-secondary); line-height:1.5;">
+          Dê um nome para a sua nova playlist e adicione uma capa personalizada.
         </div>
-        <div style="border-top:1px solid var(--glass-border); padding-top:14px;">
-          <label style="font-weight:700; font-size:0.85rem; color:#fff; display:block; margin-bottom:6px;">Criar Nova Playlist</label>
-          <input type="text" id="input-new-collab-name" placeholder="Nome da playlist (ex: Festa Miau)..." style="width:100%; margin-bottom:10px;" />
-          <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:10px; border-radius:12px; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border);">
-            <img id="new-collab-cover-preview" src="/api/cover?title=Sabrina+Carpenter&artist=Short+n+Sweet" alt="Capa" referrerpolicy="no-referrer" style="width:52px; height:52px; border-radius:10px; object-fit:cover; border:1px solid var(--glass-border-strong); flex-shrink:0;" />
-            <div style="flex:1; min-width:0;">
-              <div style="font-size:0.8rem; font-weight:700; color:#ffffff; margin-bottom:4px;">Capa Personalizada (Opcional)</div>
-              <label for="input-new-collab-cover-file" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:8px; background:rgba(168,85,247,0.18); border:1px solid var(--accent-hover); color:#ffffff; font-size:0.78rem; font-weight:700; cursor:pointer;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                Escolher da Galeria
-              </label>
-              <input type="file" id="input-new-collab-cover-file" accept="image/*" style="display:none;" />
-            </div>
+        <div>
+          <label style="font-weight:700; font-size:0.8rem; color:#ffffff; display:block; margin-bottom:6px;">Nome da Playlist</label>
+          <input type="text" id="input-new-collab-name" placeholder="Minha Playlist Especial..." style="width:100%; border-radius:12px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); padding:10px 14px; color:#fff;" />
+        </div>
+        <div style="display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:14px; background:rgba(255,255,255,0.035); border:1px solid var(--glass-border);">
+          <div style="position:relative; width:56px; height:56px; border-radius:12px; overflow:hidden; border:1px solid var(--glass-border-strong); flex-shrink:0; background:rgba(255,255,255,0.05); display:flex; align-items:center; justify-content:center;">
+            <img id="new-collab-cover-preview" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' width='48' height='48' fill='none'><rect width='48' height='48' rx='10' fill='%23191924'/><path d='M20 16v13.5a3.5 3.5 0 1 1-2.5-3.35V19.5l11-2.2v9.2a3.5 3.5 0 1 1-2.5-3.35V14l-6 2z' fill='%23b45aff'/></svg>" alt="Capa" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover; display:block;" />
           </div>
-          <button class="btn-modal-confirm" id="btn-create-collab-submit" style="width:100%;">Criar Playlist Agora</button>
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:0.82rem; font-weight:700; color:#ffffff; margin-bottom:4px;">Capa Personalizada (Opcional)</div>
+            <div style="font-size:0.72rem; color:var(--text-tertiary); margin-bottom:8px;">Formatos JPG, PNG ou WebP</div>
+            <label for="input-new-collab-cover-file" style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:10px; background:rgba(168,85,247,0.18); border:1px solid rgba(168,85,247,0.45); color:#ffffff; font-size:0.78rem; font-weight:700; cursor:pointer; transition:background 0.2s;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Escolher da Galeria
+            </label>
+            <input type="file" id="input-new-collab-cover-file" accept="image/*" style="display:none;" />
+          </div>
         </div>
-        <div style="border-top:1px solid var(--glass-border); padding-top:14px;">
-          <label style="font-weight:700; font-size:0.85rem; color:#fff; display:block; margin-bottom:6px;">Importar Código Base64 de Amigo</label>
+        <button class="btn-modal-confirm" id="btn-create-collab-submit" style="width:100%; height:44px; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:800; font-size:0.92rem;">Criar Playlist</button>
+        <div id="collab-import-section" style="border-top:1px solid var(--glass-border); padding-top:14px; margin-top:4px;">
+          <label style="font-weight:700; font-size:0.8rem; color:#ffffff; display:block; margin-bottom:6px;">Importar Código de Playlist Compartilhada</label>
           <div style="display:flex; gap:8px;">
-            <input type="text" id="input-import-collab-code" placeholder="Cole o código miado-sync:..." style="flex:1;" />
-            <button class="btn-modal-confirm" id="btn-import-collab-submit">Importar</button>
+            <input type="text" id="input-import-collab-code" placeholder="Cole o código miado-sync:..." style="flex:1; border-radius:12px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); padding:10px 14px; color:#fff;" />
+            <button class="btn-modal-confirm" id="btn-import-collab-submit" style="white-space:nowrap; padding:0 18px;">Importar</button>
           </div>
         </div>
       </div>
@@ -601,11 +604,9 @@
             </div>
             <div style="flex:1; min-width:0;">
               <div style="font-size:0.74rem; color:var(--accent-hover); font-weight:800; text-transform:uppercase;">Foto & Perfil</div>
-              <div style="font-size:0.9rem; font-weight:700; color:#fff;">Escolha um avatar ou envie sua foto</div>
+              <div style="font-size:0.9rem; font-weight:700; color:#fff;">Envie sua foto de perfil personalizada</div>
             </div>
           </div>
-
-          <div class="cat-avatar-picker-grid" id="onboard-cat-grid"></div>
 
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <div>
@@ -619,8 +620,11 @@
           </div>
 
           <div>
-            <label style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px;">Bio</label>
-            <input type="text" id="onboard-input-bio" placeholder="Sua bio..." style="width:100%;" />
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <label style="font-size:0.75rem; font-weight:700; color:var(--text-secondary);">Bio</label>
+              <span id="onboard-bio-char-counter" style="font-size:0.72rem; color:var(--text-tertiary);">0/100</span>
+            </div>
+            <textarea id="onboard-input-bio" placeholder="Sua bio..." maxlength="100" rows="2" style="width:100%; resize:none !important; height:68px; border-radius:10px;"></textarea>
           </div>
 
           <div style="display:flex; justify-content:space-between; gap:8px;">

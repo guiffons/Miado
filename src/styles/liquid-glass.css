@@ -346,6 +346,16 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
   box-sizing: border-box !important;
 }
 
+#prof-page-input-bio,
+#onboard-input-bio,
+.profile-edit-card textarea {
+  resize: none !important;
+  height: 76px !important;
+  min-height: 76px !important;
+  max-height: 76px !important;
+  box-sizing: border-box !important;
+}
+
 /* Otimização Mobile: Liquid Glass puro sem borda e sem sombra/halo no mini player, botões e rodapé */
 @media (max-width: 900px) {
   .album-card,

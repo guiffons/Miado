@@ -225,6 +225,13 @@ export function initMiadoClient() {
         if (target && target.tagName === "IMG") {
           if (target.dataset && target.dataset.errorHandled === "done") return;
           target.dataset.errorHandled = "done";
+          if (
+            (target.classList && (target.classList.contains("ob-brand-logo-img") || target.classList.contains("brand-logo-img") || target.classList.contains("pwa-floating-tab-logo"))) ||
+            (target.getAttribute && (target.getAttribute("alt") === "Logo" || target.getAttribute("alt") === "Miado Logo"))
+          ) {
+            target.src = "/app-logo.svg";
+            return;
+          }
           if ((target.classList && target.classList.contains("user-pill-avatar")) || target.id === "top-user-avatar" || target.id === "prof-hero-avatar") {
             window.handleCatAvatarError(target);
           } else if (
@@ -2823,12 +2830,16 @@ export function initMiadoClient() {
             const cleanName = String(db.user.name || this.user.name || "Ouvinte").trim();
             const cleanHandle = sanitizeCleanHandle(db.user.username || db.user.handle || this.user.username, cleanName);
             const followedNamesList = (this.followedArtists || []).map(a => a.name);
+            const resolvedBio = (typeof db.user.bio === "string" && db.user.bio.trim() !== "")
+              ? db.user.bio.trim().slice(0, 100)
+              : (this.user.bio || "").slice(0, 100);
             this.user = {
               ...this.user,
               ...db.user,
               name: cleanName,
               username: cleanHandle,
               handle: cleanHandle,
+              bio: resolvedBio,
               favoriteArtists: followedNamesList.slice(0, 60),
               followedArtists: followedNamesList,
               followingCount: (this.friends?.length || 0) + (this.followedArtists?.length || 0),
@@ -3250,6 +3261,9 @@ export function initMiadoClient() {
           localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
           this.saveCurrentAccountToSwitcher();
           this.syncServerDb();
+          if (window.miadoFirestore && typeof window.miadoFirestore.saveUserState === "function") {
+            window.miadoFirestore.saveUserState(this).catch(err => console.warn("Firestore saveUserState warning:", err));
+          }
         }
 
         loadSavedAccounts() {
@@ -5734,12 +5748,22 @@ export function initMiadoClient() {
           const titleEl = modal.querySelector(".modal-title");
           if (titleEl) {
             titleEl.textContent = isCollaborative
-              ? "Criar ou Importar Playlist Colaborativa"
-              : "Criar Nova Playlist no Miado";
+              ? "Playlist Colaborativa"
+              : "Criar Nova Playlist";
+          }
+          const descEl = document.getElementById("collab-modal-description");
+          if (descEl) {
+            descEl.textContent = isCollaborative
+              ? "Crie uma playlist em grupo com amigos ou sincronize com um código compartilhado."
+              : "Dê um nome para a sua nova playlist e adicione uma capa personalizada.";
+          }
+          const importSec = document.getElementById("collab-import-section");
+          if (importSec) {
+            importSec.style.display = isCollaborative ? "block" : "none";
           }
           const submitBtn = document.getElementById("btn-create-collab-submit");
           if (submitBtn) {
-            submitBtn.textContent = isCollaborative ? "Criar Conjunta" : "Criar Playlist";
+            submitBtn.textContent = isCollaborative ? "Criar Playlist Colaborativa" : "Criar Playlist";
           }
           modal.classList.add("active");
           setTimeout(() => {
@@ -8269,7 +8293,7 @@ export function initMiadoClient() {
                 <button type="button" class="category-pill ${activeSectionTab === 'followers' ? 'active' : ''}" data-prof-nav-tab="followers">Seguidores (${followerUsers.length})</button>
                 <button type="button" class="category-pill ${activeSectionTab === 'following' ? 'active' : ''}" data-prof-nav-tab="following">Seguindo (${followingUsers.length})</button>
                 <button type="button" class="category-pill ${activeSectionTab === 'playlists' ? 'active' : ''}" data-prof-nav-tab="playlists">Playlists (${userPlaylists.length})</button>
-                ${isMe ? `<button type="button" class="category-pill ${activeSectionTab === 'edit' ? 'active' : ''}" data-prof-nav-tab="edit">Personalizar & Gatinho</button>` : ""}
+                ${isMe ? `<button type="button" class="category-pill ${activeSectionTab === 'edit' ? 'active' : ''}" data-prof-nav-tab="edit">Personalizar Perfil</button>` : ""}
                 <button type="button" class="category-pill" data-pwa-install-btn onclick="window.triggerPwaInstall && window.triggerPwaInstall()" style="display:inline-flex; align-items:center; gap:6px;">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   <span>Instalar App</span>
@@ -8470,19 +8494,7 @@ export function initMiadoClient() {
                 <div id="prof-pane-edit" style="display:${activeSectionTab === 'edit' ? 'block' : 'none'}; width:100%;">
                   <div class="album-card profile-edit-card" style="padding:20px 16px; cursor:default; display:flex; flex-direction:column; gap:16px; width:100%; max-width:100%; min-width:0; margin:0 auto; box-sizing:border-box;">
                     <div style="text-align:center; width:100%;">
-                      <h2 class="section-title" style="text-align:center; margin:0 auto;">Personalização do Seu Perfil & Gatinho</h2>
-                    </div>
-
-                    <div class="cat-avatar-picker-grid" id="prof-page-cat-grid" style="width:100%; margin:0 auto;">
-                      ${CAT_AVATAR_PRESETS.map((cat, idx) => {
-                        const isSelected = userAvatar === cat.url;
-                        return `
-                          <div class="cat-avatar-option ${isSelected ? 'selected' : ''}" data-prof-cat-idx="${idx}">
-                            <img src="${cat.url}" alt="${cat.name}" referrerpolicy="no-referrer" onerror="window.handleCatAvatarError(this)" />
-                            <span>${cat.name}</span>
-                          </div>
-                        `;
-                      }).join("")}
+                      <h2 class="section-title" style="text-align:center; margin:0 auto;">Personalização do Seu Perfil</h2>
                     </div>
 
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; width:100%;">
@@ -8497,8 +8509,11 @@ export function initMiadoClient() {
                     </div>
 
                     <div style="width:100%;">
-                      <label style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; display:block; margin-bottom:4px;">Bio</label>
-                      <textarea id="prof-page-input-bio" rows="2" style="width:100%;">${escapeHtml(state.user.bio || "")}</textarea>
+                      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <label style="font-size:0.75rem; color:var(--text-secondary); font-weight:700;">Bio</label>
+                        <span id="prof-bio-char-counter" style="font-size:0.72rem; color:var(--text-tertiary);">${Math.min(100, (state.user.bio || "").length)}/100</span>
+                      </div>
+                      <textarea id="prof-page-input-bio" rows="2" maxlength="100" style="width:100%; resize:none !important; height:76px; min-height:76px; max-height:76px; box-sizing:border-box;" placeholder="Conte um pouco sobre você...">${escapeHtml((state.user.bio || "").slice(0, 100))}</textarea>
                     </div>
 
                     <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; width:100%;">
@@ -8716,17 +8731,13 @@ export function initMiadoClient() {
               });
             }
 
-            this.scrollContainer.querySelectorAll("[data-prof-cat-idx]").forEach(card => {
-              card.addEventListener("click", () => {
-                const preset = CAT_AVATAR_PRESETS[parseInt(card.dataset.profCatIdx)];
-                if (!preset) return;
-                state.user.avatarUrl = preset.url;
-                state.saveUser();
-                this.syncHeaderUserUI();
-                this.renderProfileView();
-                showToast(`Gatinho "${preset.name}" aplicado!`);
+            const bioInpEl = document.getElementById("prof-page-input-bio");
+            const bioCounterEl = document.getElementById("prof-bio-char-counter");
+            if (bioInpEl && bioCounterEl) {
+              bioInpEl.addEventListener("input", () => {
+                bioCounterEl.textContent = `${Math.min(100, bioInpEl.value.length)}/100`;
               });
-            });
+            }
 
             const btnSaveProfile = document.getElementById("prof-page-btn-save");
             if (btnSaveProfile) {
@@ -8739,7 +8750,7 @@ export function initMiadoClient() {
                 if (handleInp && handleInp.value.trim()) {
                   newHandle = sanitizeCleanHandle(handleInp.value.trim(), newName);
                 }
-                const newBio = bioInp ? bioInp.value.trim() : (state.user.bio || "");
+                const newBio = (bioInp ? bioInp.value.trim() : (state.user.bio || "")).slice(0, 100);
 
                 try {
                   const token = localStorage.getItem("miado_auth_token") || "";
@@ -8781,6 +8792,13 @@ export function initMiadoClient() {
                 const heroBioEl = document.getElementById("prof-hero-bio");
                 if (heroBioEl) heroBioEl.textContent = newBio;
                 state.saveUser();
+                if (window.miadoFirestore && typeof window.miadoFirestore.saveUserState === "function") {
+                  try {
+                    await window.miadoFirestore.saveUserState(state);
+                  } catch (e) {
+                    console.warn("Firestore saveUserState in edit profile error:", e);
+                  }
+                }
                 state.createOrUpdateCommunityProfile({
                   name: state.user.name,
                   username: state.user.username,

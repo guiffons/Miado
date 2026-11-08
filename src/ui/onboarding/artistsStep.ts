@@ -7,7 +7,7 @@ import { createGenreChips, type GenreOption } from "../components/genreChips";
 import { createSelectedTray } from "../components/selectedTray";
 import { createStepper } from "../components/stepper";
 import { h } from "../dom";
-import { icon } from "../icons";
+import { icon, MIADO_CAT_LOGO_DATA_URI } from "../icons";
 import { applyDynamicAccent, extractDominantHsl, staggerIn } from "../motion";
 import {
   clearOnboardingDraft,
@@ -98,10 +98,10 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
       "span",
       { class: "ob-brand-mark" },
       h("img", {
-        src: "/app-logo.svg",
-        alt: "Logo",
+        src: MIADO_CAT_LOGO_DATA_URI,
+        alt: "Miado Logo",
         class: "ob-brand-logo-img",
-        referrerpolicy: "no-referrer",
+        draggable: "false",
       })
     )
   );

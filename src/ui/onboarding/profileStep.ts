@@ -8,7 +8,7 @@ import { createProfilePreview } from "../components/profilePreview";
 import { createSegmented } from "../components/segmented";
 import { createStepper } from "../components/stepper";
 import { h, safeUrl } from "../dom";
-import { icon } from "../icons";
+import { icon, MIADO_CAT_LOGO_DATA_URI } from "../icons";
 import { bindImageFallback } from "../images";
 import { applyDynamicAccent, drawCheck, extractDominantHsl, shake } from "../motion";
 import {
@@ -124,10 +124,10 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
       "span",
       { class: "ob-brand-mark" },
       h("img", {
-        src: "/app-logo.svg",
-        alt: "Logo",
+        src: MIADO_CAT_LOGO_DATA_URI,
+        alt: "Miado Logo",
         class: "ob-brand-logo-img",
-        referrerpolicy: "no-referrer",
+        draggable: "false",
       })
     )
   );
@@ -287,7 +287,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
   const avatarSection = h(
     "div",
     { class: "ob-avatar-section" },
-    h("div", { class: "ob-avatar-picker-row" }, avatarPickerBtn, fileInput, catRow),
+    h("div", { class: "ob-avatar-picker-row" }, avatarPickerBtn, fileInput),
     avatarErrorMsg
   );
 
@@ -412,12 +412,12 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
     id: "ob-profile-bio",
     label: OB_TEXT.profile.bio,
     type: "text",
-    maxLength: 300,
+    maxLength: 100,
     value: currentBio,
-    showBioCounterFrom: 250,
+    showBioCounterFrom: 1,
     signal: opts.signal,
     onInput: (val) => {
-      currentBio = val.slice(0, 300);
+      currentBio = val.slice(0, 100);
       preview.updateText({ bio: currentBio });
       scheduleDraftSave();
     },
@@ -519,7 +519,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
         "/api/cat-avatar?id=cat_1"
       );
       const cleanName = currentName.trim().slice(0, 80);
-      const cleanBio = currentBio.trim().slice(0, 300);
+      const cleanBio = currentBio.trim().slice(0, 100);
       const existingFavs = existingUserSnap.exists() && Array.isArray(existingUserSnap.data()?.favoriteArtists)
         ? existingUserSnap.data()?.favoriteArtists.slice(0, 60)
         : (draft.artists || []).map((a) => a.name).slice(0, 60);

@@ -77,7 +77,7 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
 
   const captionTitle = h("span", { class: "ob-wall-caption-title" });
   const captionArtist = h("span", { class: "ob-wall-caption-artist" });
-  const captionStatus = h("span", { class: "ob-wall-caption-status" }, "Clique em um álbum para ouvir");
+  const captionStatus = h("span", { class: "ob-wall-caption-status" }, "Carregando destaques...");
   const captionBox = h("div", { class: "ob-wall-caption" }, captionTitle, captionArtist, captionStatus);
 
   const col1Wrap = h("div", { class: "ob-wall-col" }, col1Inner);
@@ -98,9 +98,11 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
   );
 
   let focusTimer: ReturnType<typeof setInterval> | null = null;
+  let rafId: number | null = null;
   let previewAudio: HTMLAudioElement | null = null;
   let playingIndex: number | null = null;
-  let userInteracted = false;
+  const userHoveredCols = new Set<HTMLElement>();
+  const userInteractingCols = new Set<HTMLElement>();
 
   const stopPreviewAudio = () => {
     if (previewAudio) {
@@ -110,7 +112,10 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
       } catch {}
     }
     playingIndex = null;
-    root.querySelectorAll(".ob-wall-tile.is-playing").forEach((el) => el.classList.remove("is-playing"));
+    root.querySelectorAll(".ob-wall-tile.is-playing, .ob-wall-tile.is-spotlight").forEach((el) => {
+      el.classList.remove("is-playing");
+      el.classList.remove("is-spotlight");
+    });
     captionStatus.textContent = "Clique na capa para prévia";
   };
 
@@ -149,7 +154,6 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
           `/api/cover?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}`;
         const coverKey = rawCover ? normalizeCoverDedupKey(rawCover) : `${titleKey}|${artistKey}`;
 
-        // Impede qualquer capa repetida, música repetida ou artista repetido na vitrine
         if (seenTitles.has(titleKey) || seenArtists.has(artistKey) || seenCovers.has(coverKey)) {
           continue;
         }
@@ -183,7 +187,9 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
         const safeIdx = ((index % allTileRecords.length) + allTileRecords.length) % allTileRecords.length;
         focusIdx = safeIdx;
         allTileRecords.forEach((rec, i) => {
-          rec.tile.classList.toggle("is-focused", i === safeIdx);
+          const isTarget = i === safeIdx;
+          rec.tile.classList.toggle("is-focused", isTarget);
+          rec.tile.classList.toggle("is-spotlight", isTarget);
         });
         const focused = allTileRecords[safeIdx];
         if (focused) {
@@ -197,8 +203,74 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
         }
       };
 
+      const playTileAudio = (recordIndex: number, soft = true) => {
+        const rec = allTileRecords[recordIndex];
+        if (!rec) return;
+
+        stopPreviewAudio();
+        playingIndex = recordIndex;
+        rec.tile.classList.add("is-playing");
+        rec.tile.classList.add("is-spotlight");
+        captionStatus.textContent = "Tocando baixinho · 30s de prévia";
+
+        if (!previewAudio) {
+          previewAudio = new Audio();
+          previewAudio.addEventListener("ended", () => {
+            stopPreviewAudio();
+            spotlightRandomSong(true);
+          });
+          previewAudio.addEventListener("error", () => {
+            if (playingIndex === recordIndex) {
+              rec.tile.classList.remove("is-playing");
+              captionStatus.textContent = "Álbum em destaque";
+            }
+          });
+        }
+
+        // Toca baixinho de fundo (~0.16) como pedido
+        previewAudio.volume = soft ? 0.16 : 0.45;
+        previewAudio.src = `/api/stream?title=${encodeURIComponent(rec.item.title)}&artist=${encodeURIComponent(rec.item.artist)}`;
+
+        const playPromise = previewAudio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            // Autoplay bloqueado pelo navegador antes do primeiro gesto
+            captionStatus.textContent = "Clique para tocar prévia";
+            const unlockAudio = () => {
+              window.removeEventListener("pointerdown", unlockAudio);
+              window.removeEventListener("keydown", unlockAudio);
+              if (previewAudio && previewAudio.src) {
+                previewAudio.play().catch(() => {});
+                captionStatus.textContent = "Tocando baixinho · 30s de prévia";
+              }
+            };
+            window.addEventListener("pointerdown", unlockAudio, { once: true });
+            window.addEventListener("keydown", unlockAudio, { once: true });
+          });
+        }
+      };
+
+      const spotlightRandomSong = (autoPlay = true) => {
+        if (allTileRecords.length === 0 || opts.signal.aborted) return;
+        let nextIdx = Math.floor(Math.random() * allTileRecords.length);
+        if (allTileRecords.length > 1 && nextIdx === focusIdx) {
+          nextIdx = (nextIdx + 1) % allTileRecords.length;
+        }
+        setFocusedTile(nextIdx);
+        if (autoPlay) {
+          playTileAudio(nextIdx, true);
+        }
+      };
+
+      const schedule30sSpotlightTimer = () => {
+        if (focusTimer) clearInterval(focusTimer);
+        focusTimer = setInterval(() => {
+          if (opts.signal.aborted) return;
+          spotlightRandomSong(true);
+        }, 30000);
+      };
+
       const toggleTilePreview = (recordIndex: number) => {
-        userInteracted = true;
         setFocusedTile(recordIndex);
         const rec = allTileRecords[recordIndex];
         if (!rec) return;
@@ -208,39 +280,17 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
           return;
         }
 
-        stopPreviewAudio();
-        playingIndex = recordIndex;
-        rec.tile.classList.add("is-playing");
-        captionStatus.textContent = "Carregando prévia...";
-
-        if (!previewAudio) {
-          previewAudio = new Audio();
-          previewAudio.volume = 0.65;
-          previewAudio.addEventListener("playing", () => {
-            captionStatus.textContent = "Tocando prévia · clique para pausar";
-          });
-          previewAudio.addEventListener("ended", () => {
-            stopPreviewAudio();
-          });
-          previewAudio.addEventListener("error", () => {
-            captionStatus.textContent = "Álbum selecionado";
-            rec.tile.classList.remove("is-playing");
-            playingIndex = null;
-          });
-        }
-
-        previewAudio.src = `/api/stream?title=${encodeURIComponent(rec.item.title)}&artist=${encodeURIComponent(rec.item.artist)}`;
-        previewAudio.play().catch(() => {
-          captionStatus.textContent = "Álbum em destaque";
-          rec.tile.classList.remove("is-playing");
-          playingIndex = null;
-        });
+        playTileAudio(recordIndex, true);
+        schedule30sSpotlightTimer();
       };
 
       const buildColumnTiles = (colTrack: HTMLElement, list: ShowcaseItem[]) => {
-        // Renderiza apenas capas únicas na coluna (sem duplicar a lista para não repetir capa igual)
-        list.forEach((item) => {
-          const recordIndex = allTileRecords.length;
+        // Renderiza duas passadas para permitir scroll infinito contínuo e sem costuras
+        const fullList = [...list, ...list];
+        fullList.forEach((item, passIdx) => {
+          const isPrimaryPass = passIdx < list.length;
+          const assignedIndex = isPrimaryPass ? allTileRecords.length : (passIdx % list.length);
+
           const img = h("img", {
             class: "ob-wall-cover-img",
             alt: `${item.title} - ${item.artist}`,
@@ -275,16 +325,63 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
           tile.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            toggleTilePreview(recordIndex);
+            toggleTilePreview(assignedIndex);
           });
           colTrack.appendChild(tile);
-          allTileRecords.push({ tile, item });
+
+          if (isPrimaryPass) {
+            allTileRecords.push({ tile, item });
+          }
         });
       };
 
       buildColumnTiles(col1Inner, colBuckets[0]);
       buildColumnTiles(col2Inner, colBuckets[1]);
       buildColumnTiles(col3Inner, colBuckets[2]);
+
+      // Configura pausa suave no scroll quando o usuário passa o mouse ou interage
+      const colWraps = [col1Wrap, col2Wrap, col3Wrap];
+      colWraps.forEach((wrap) => {
+        wrap.addEventListener("pointerenter", () => userHoveredCols.add(wrap));
+        wrap.addEventListener("pointerleave", () => userHoveredCols.delete(wrap));
+
+        let wheelTimer: ReturnType<typeof setTimeout> | null = null;
+        const markInteracting = () => {
+          userInteractingCols.add(wrap);
+          if (wheelTimer) clearTimeout(wheelTimer);
+          wheelTimer = setTimeout(() => {
+            userInteractingCols.delete(wrap);
+          }, 3200);
+        };
+        wrap.addEventListener("wheel", markInteracting, { passive: true });
+        wrap.addEventListener("touchstart", markInteracting, { passive: true });
+      });
+
+      // Posição inicial da coluna do meio ligeiramente deslocada para efeito parallax estético
+      col2Wrap.scrollTop = 450;
+
+      // Loop de movimentação contínua das 3 colunas em velocidades diferentes
+      const speeds = [0.42, -0.32, 0.54]; // Coluna 1 desce, Coluna 2 sobe, Coluna 3 desce mais rápido
+      const runScrollLoop = () => {
+        if (opts.signal.aborted) return;
+        if (!prefersReducedMotion()) {
+          colWraps.forEach((wrap, i) => {
+            if (userHoveredCols.has(wrap) || userInteractingCols.has(wrap)) return;
+            const spd = speeds[i];
+            wrap.scrollTop += spd;
+            const halfHeight = wrap.scrollHeight / 2;
+            if (halfHeight > 100) {
+              if (wrap.scrollTop >= halfHeight) {
+                wrap.scrollTop -= halfHeight;
+              } else if (wrap.scrollTop <= 0 && spd < 0) {
+                wrap.scrollTop += halfHeight;
+              }
+            }
+          });
+        }
+        rafId = requestAnimationFrame(runScrollLoop);
+      };
+      rafId = requestAnimationFrame(runScrollLoop);
 
       captionBox.addEventListener("click", () => {
         if (allTileRecords.length > 0) {
@@ -294,12 +391,9 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
 
       root.classList.remove("is-loading");
 
-      setFocusedTile(0);
-      focusTimer = setInterval(() => {
-        if (opts.signal.aborted || userInteracted) return;
-        focusIdx = (focusIdx + 1) % Math.max(1, allTileRecords.length);
-        setFocusedTile(focusIdx);
-      }, 6000);
+      // Inicia com um álbum em destaque e toca baixinho de fundo
+      spotlightRandomSong(true);
+      schedule30sSpotlightTimer();
     } catch {
       root.classList.add("is-hidden");
     }
@@ -314,6 +408,10 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
       if (focusTimer) {
         clearInterval(focusTimer);
         focusTimer = null;
+      }
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
       }
     },
   };
