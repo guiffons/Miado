@@ -489,6 +489,17 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
     formErrorEl.className = "ob-form-error";
     formErrorEl.textContent = "";
 
+    const safeGetDoc = async (docRef: any, timeoutMs = 1500): Promise<any> => {
+      try {
+        return await Promise.race([
+          getDoc(docRef),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+        ]);
+      } catch {
+        return null;
+      }
+    };
+
     try {
       const uid = opts.user.uid;
       const userDocRef = doc(db, "users", uid);
@@ -496,11 +507,11 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
       const handleDocRef = doc(db, "handles", currentHandle);
 
       const [existingUserSnap, existingHandleSnap] = await Promise.all([
-        getDoc(userDocRef),
-        getDoc(handleDocRef),
+        safeGetDoc(userDocRef),
+        safeGetDoc(handleDocRef),
       ]);
 
-      if (existingHandleSnap.exists() && existingHandleSnap.data()?.uid !== uid) {
+      if (existingHandleSnap && existingHandleSnap.exists() && existingHandleSnap.data()?.uid !== uid) {
         isSaving = false;
         nextBtn.classList.remove("is-loading");
         handleStatus = "taken";
@@ -509,7 +520,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
         return;
       }
 
-      const prevHandle = existingUserSnap.exists()
+      const prevHandle = existingUserSnap && existingUserSnap.exists()
         ? normalizeHandle(existingUserSnap.data()?.handle || "")
         : "";
       const cleanEmail = String(opts.user.email || "").toLowerCase();
@@ -520,7 +531,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
       );
       const cleanName = currentName.trim().slice(0, 80);
       const cleanBio = currentBio.trim().slice(0, 100);
-      const existingFavs = existingUserSnap.exists() && Array.isArray(existingUserSnap.data()?.favoriteArtists)
+      const existingFavs = existingUserSnap && existingUserSnap.exists() && Array.isArray(existingUserSnap.data()?.favoriteArtists)
         ? existingUserSnap.data()?.favoriteArtists.slice(0, 60)
         : (draft.artists || []).map((a) => a.name).slice(0, 60);
 
@@ -543,7 +554,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
             activity: currentPrivacy,
           },
           onboardingCompleted: false,
-          createdAt: existingUserSnap.exists() && existingUserSnap.data()?.createdAt
+          createdAt: existingUserSnap && existingUserSnap.exists() && existingUserSnap.data()?.createdAt
             ? existingUserSnap.data()?.createdAt
             : serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -560,7 +571,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
           updatedAt: serverTimestamp(),
         });
 
-        if (!existingHandleSnap.exists()) {
+        if (!existingHandleSnap || !existingHandleSnap.exists()) {
           batch.set(handleDocRef, {
             uid,
             createdAt: serverTimestamp(),
@@ -571,9 +582,13 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
           batch.delete(doc(db, "handles", prevHandle));
         }
 
-        await batch.commit();
-      } catch {
-        // If Firestore rules reject any field, still save draft & advance to artists step
+        await Promise.race([
+          batch.commit(),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]);
+      } catch (batchErr) {
+        // If Firestore rules or offline delay occurs, still proceed with draft & local state
+        console.warn("Firestore save fallback:", batchErr);
       }
 
       saveOnboardingDraft({
@@ -615,11 +630,32 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
           privacy: currentPrivacy,
         });
       }, 220);
-    } catch {
-      isSaving = false;
-      nextBtn.classList.remove("is-loading");
-      shake(formCard);
-      syncNextButtonState();
+    } catch (err) {
+      console.warn("Profile step caught error, fallback to advance:", err);
+      const cleanName = currentName.trim().slice(0, 80);
+      const cleanBio = currentBio.trim().slice(0, 100);
+      const safeAvatar = sanitizeImageForRules(
+        currentAvatarUrl,
+        100000,
+        "/api/cat-avatar?id=cat_1"
+      );
+      saveOnboardingDraft({
+        step: "artists",
+        name: cleanName,
+        handle: currentHandle,
+        bio: cleanBio,
+        catId: currentCatId,
+        avatarUrl: safeAvatar,
+        privacy: currentPrivacy,
+      });
+      opts.onNext({
+        name: cleanName,
+        handle: currentHandle,
+        bio: cleanBio,
+        catId: currentCatId,
+        avatarUrl: safeAvatar,
+        privacy: currentPrivacy,
+      });
     }
   };
 

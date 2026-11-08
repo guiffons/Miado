@@ -1342,7 +1342,7 @@ input.ob-field-input:focus {
 .ob-crop-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 9800;
+  z-index: 200000 !important;
   background: rgba(7, 7, 11, 0.78);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -1435,7 +1435,7 @@ input.ob-field-input:focus {
 
 .ob-step-artists {
   width: 100%;
-  max-width: 1320px;
+  max-width: 1540px;
   margin: 0 auto;
   padding: 24px 20px 104px;
 }
@@ -1543,7 +1543,7 @@ input.ob-field-input:focus {
 /* Artists Grid */
 .ob-artists-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(144px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 16px;
 }
 
@@ -1591,8 +1591,9 @@ input.ob-field-input:focus {
 
 .ob-artist-avatar-wrap {
   position: relative;
-  width: 104px;
-  height: 104px;
+  width: 116px;
+  height: 116px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   border-radius: 50%;
 }
 

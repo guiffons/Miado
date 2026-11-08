@@ -359,24 +359,29 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
 
       // Posição inicial da coluna do meio ligeiramente deslocada para efeito parallax estético
       col2Wrap.scrollTop = 450;
+      const colScrollAccumulator = [0, 450, 0];
 
-      // Loop de movimentação contínua das 3 colunas em velocidades diferentes
-      const speeds = [0.42, -0.32, 0.54]; // Coluna 1 desce, Coluna 2 sobe, Coluna 3 desce mais rápido
+      // Loop de movimentação contínua e suave das 3 colunas em velocidades relaxadas
+      const speeds = [0.18, -0.14, 0.22]; // Coluna 1 desce suave, Coluna 2 sobe suave, Coluna 3 desce sutilmente
       const runScrollLoop = () => {
         if (opts.signal.aborted) return;
         if (!prefersReducedMotion()) {
           colWraps.forEach((wrap, i) => {
-            if (userHoveredCols.has(wrap) || userInteractingCols.has(wrap)) return;
+            if (userHoveredCols.has(wrap) || userInteractingCols.has(wrap)) {
+              colScrollAccumulator[i] = wrap.scrollTop;
+              return;
+            }
             const spd = speeds[i];
-            wrap.scrollTop += spd;
+            colScrollAccumulator[i] += spd;
             const halfHeight = wrap.scrollHeight / 2;
             if (halfHeight > 100) {
-              if (wrap.scrollTop >= halfHeight) {
-                wrap.scrollTop -= halfHeight;
-              } else if (wrap.scrollTop <= 0 && spd < 0) {
-                wrap.scrollTop += halfHeight;
+              if (colScrollAccumulator[i] >= halfHeight) {
+                colScrollAccumulator[i] -= halfHeight;
+              } else if (colScrollAccumulator[i] <= 0 && spd < 0) {
+                colScrollAccumulator[i] += halfHeight;
               }
             }
+            wrap.scrollTop = Math.round(colScrollAccumulator[i]);
           });
         }
         rafId = requestAnimationFrame(runScrollLoop);

@@ -126,11 +126,11 @@ export function mountOnboarding(
           isValidHandle(bareHandle) &&
           rawName.length >= 1
       );
-      const onboardingCompleted = Boolean(
-        (userData && userData.onboardingCompleted === true) ||
-          (isExplicitLogin && hasProfile) ||
-          (stateHasEmail && stateUser?.onboardingCompleted === true)
+      const hasCompletedArtists = Boolean(
+        (userData && userData.onboardingCompleted === true && Array.isArray(userData.favoriteArtists) && userData.favoriteArtists.length >= 3) ||
+        (stateHasEmail && stateUser?.onboardingCompleted === true && Array.isArray(stateUser?.favoriteArtists) && stateUser.favoriteArtists.length >= 3)
       );
+      const onboardingCompleted = hasCompletedArtists;
 
       if (hasProfile && !onboardingCompleted) {
         saveOnboardingDraft({
@@ -144,10 +144,6 @@ export function mountOnboarding(
         });
       }
 
-      if (isExplicitLogin && (hasProfile || userSnap?.exists() || profileSnap?.exists() || stateHasEmail)) {
-        return { step: "done", existingHandle: bareHandle };
-      }
-
       const step = resolveInitialStep({
         isAuthenticated: true,
         hasProfile,
@@ -157,7 +153,7 @@ export function mountOnboarding(
 
       return { step, existingHandle: bareHandle };
     } catch {
-      return { step: isExplicitLogin ? "done" : "profile" };
+      return { step: "profile" };
     }
   };
 

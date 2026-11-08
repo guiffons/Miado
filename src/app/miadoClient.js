@@ -8516,6 +8516,22 @@ export function initMiadoClient() {
                       <textarea id="prof-page-input-bio" rows="2" maxlength="100" style="width:100%; resize:none !important; height:76px; min-height:76px; max-height:76px; box-sizing:border-box;" placeholder="Conte um pouco sobre você...">${escapeHtml((state.user.bio || "").slice(0, 100))}</textarea>
                     </div>
 
+                    <!-- QUEM VÊ O QUE VOCÊ OUVE (PRIVACIDADE) -->
+                    <div style="width:100%;">
+                      <label style="font-size:0.75rem; color:var(--text-secondary); font-weight:700; display:block; margin-bottom:6px;">Quem vê o que você ouve</label>
+                      <div class="prof-privacy-segmented" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:6px; background:rgba(255,255,255,0.04); padding:4px; border-radius:12px; border:1px solid rgba(255,255,255,0.08); box-shadow:inset 0 1px 0 rgba(255,255,255,0.06);">
+                        <button type="button" class="prof-privacy-choice ${((state.user?.privacy && state.user.privacy.presence) || 'public') === 'public' ? 'active' : ''}" data-privacy="public" style="height:36px; border-radius:8px; border:none; cursor:pointer; font-size:0.8rem; font-weight:700; transition:all 0.2s; color:${((state.user?.privacy && state.user.privacy.presence) || 'public') === 'public' ? '#ffffff' : 'var(--text-secondary)'}; background:${((state.user?.privacy && state.user.privacy.presence) || 'public') === 'public' ? 'rgba(168,85,247,0.32)' : 'transparent'};">
+                          Todos
+                        </button>
+                        <button type="button" class="prof-privacy-choice ${state.user?.privacy?.presence === 'followers_only' ? 'active' : ''}" data-privacy="followers_only" style="height:36px; border-radius:8px; border:none; cursor:pointer; font-size:0.8rem; font-weight:700; transition:all 0.2s; color:${state.user?.privacy?.presence === 'followers_only' ? '#ffffff' : 'var(--text-secondary)'}; background:${state.user?.privacy?.presence === 'followers_only' ? 'rgba(168,85,247,0.32)' : 'transparent'};">
+                          Seguidores
+                        </button>
+                        <button type="button" class="prof-privacy-choice ${state.user?.privacy?.presence === 'private' ? 'active' : ''}" data-privacy="private" style="height:36px; border-radius:8px; border:none; cursor:pointer; font-size:0.8rem; font-weight:700; transition:all 0.2s; color:${state.user?.privacy?.presence === 'private' ? '#ffffff' : 'var(--text-secondary)'}; background:${state.user?.privacy?.presence === 'private' ? 'rgba(168,85,247,0.32)' : 'transparent'};">
+                          Ninguém
+                        </button>
+                      </div>
+                    </div>
+
                     <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; width:100%;">
                       <button type="button" class="album-action-btn" id="btn-prof-upload-avatar-btn" style="flex:1 1 180px; justify-content:center;">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -8739,6 +8755,19 @@ export function initMiadoClient() {
               });
             }
 
+            let selectedPrivacy = (state.user?.privacy && state.user.privacy.presence) || "public";
+            this.scrollContainer.querySelectorAll(".prof-privacy-choice").forEach(btn => {
+              btn.addEventListener("click", () => {
+                selectedPrivacy = btn.dataset.privacy;
+                this.scrollContainer.querySelectorAll(".prof-privacy-choice").forEach(b => {
+                  const isAct = b.dataset.privacy === selectedPrivacy;
+                  b.classList.toggle("active", isAct);
+                  b.style.color = isAct ? "#ffffff" : "var(--text-secondary)";
+                  b.style.background = isAct ? "rgba(168,85,247,0.32)" : "transparent";
+                });
+              });
+            });
+
             const btnSaveProfile = document.getElementById("prof-page-btn-save");
             if (btnSaveProfile) {
               btnSaveProfile.addEventListener("click", async () => {
@@ -8764,6 +8793,10 @@ export function initMiadoClient() {
                       name: newName,
                       handle: newHandle,
                       bio: newBio,
+                      privacy: {
+                        presence: selectedPrivacy,
+                        activity: selectedPrivacy
+                      },
                       customAvatar: state.user.avatarUrl,
                       customBanner: state.user.bannerUrl,
                       favoriteArtists: state.user.favoriteArtists || [],
@@ -8784,6 +8817,10 @@ export function initMiadoClient() {
                 state.user.username = newHandle;
                 state.user.handle = newHandle;
                 state.user.bio = newBio;
+                state.user.privacy = {
+                  presence: selectedPrivacy,
+                  activity: selectedPrivacy,
+                };
                 if (handleInp) handleInp.value = newHandle;
                 const heroNameEl = document.getElementById("prof-hero-name");
                 if (heroNameEl) heroNameEl.textContent = newName;
