@@ -118,22 +118,30 @@ body {
 .sidebar-left,
 .sidebar-right,
 .top-bar {
-  background: var(--glass-bg-2) !important;
-  backdrop-filter: var(--glass-blur-2) !important;
-  -webkit-backdrop-filter: var(--glass-blur-2) !important;
+  background-color: rgba(18, 18, 22, 0.65) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
   border: none !important;
   box-shadow: none !important;
+  transform: translateZ(0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform, backdrop-filter;
 }
 
 .player-footer {
-  background: rgba(14, 10, 26, 0.54) !important;
-  backdrop-filter: blur(32px) saturate(190%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+  background-color: rgba(18, 18, 22, 0.65) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
   border: none !important;
   border-top: none !important;
   outline: none !important;
   box-shadow: none !important;
   transform: translateZ(0) !important;
+  -webkit-transform: translate3d(0, 0, 0) !important;
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
   will-change: backdrop-filter, transform !important;
 }
 
@@ -346,9 +354,9 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     width: auto !important;
     height: 60px !important;
     z-index: 65 !important;
-    background: rgba(20, 15, 34, 0.55) !important;
-    backdrop-filter: blur(28px) saturate(190%) !important;
-    -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+    background-color: rgba(18, 18, 22, 0.65) !important;
+    backdrop-filter: blur(24px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     border-top: 1px solid rgba(255, 255, 255, 0.22) !important;
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
@@ -356,6 +364,9 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     padding: 0 12px !important;
     overflow: hidden !important;
     transform: translateZ(0) !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
+    backface-visibility: hidden !important;
+    -webkit-backface-visibility: hidden !important;
     will-change: transform, backdrop-filter !important;
   }
 
@@ -370,9 +381,9 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     width: 100% !important;
     height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px)) !important;
     padding-bottom: env(safe-area-inset-bottom, 0px) !important;
-    background: rgba(10, 8, 20, 0.72) !important;
-    backdrop-filter: blur(28px) saturate(190%) !important;
-    -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+    background-color: rgba(18, 18, 22, 0.65) !important;
+    backdrop-filter: blur(24px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
     border: none !important;
     border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
     outline: none !important;
@@ -380,7 +391,10 @@ div#modal-fullscreen-player:nth-of-type(6) > div.fullscreen-player-dialog {
     z-index: 99999 !important;
     pointer-events: auto !important;
     transform: translateZ(0) !important;
-    will-change: backdrop-filter !important;
+    -webkit-transform: translate3d(0, 0, 0) !important;
+    backface-visibility: hidden !important;
+    -webkit-backface-visibility: hidden !important;
+    will-change: transform, backdrop-filter !important;
   }
 
   .bottom-tab-item,
