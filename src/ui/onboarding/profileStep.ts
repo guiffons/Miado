@@ -124,7 +124,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
       "span",
       { class: "ob-brand-mark" },
       h("img", {
-        src: "/app-logo.jpg?v=3",
+        src: "/app-logo.svg",
         alt: "Logo",
         class: "ob-brand-logo-img",
         referrerpolicy: "no-referrer",

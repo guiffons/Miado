@@ -105,18 +105,63 @@ function mapDeezerTrack(d: any, idx: number): ChartTrackItem | null {
   };
 }
 
+const GLOBAL_FALLBACK_TRACKS: Array<{ title: string; artist: string; albumTitle: string; duration: string; durationSec: number }> = [
+  { title: "Die With A Smile", artist: "Lady Gaga & Bruno Mars", albumTitle: "MAYHEM", duration: "4:11", durationSec: 251 },
+  { title: "BIRDS OF A FEATHER", artist: "Billie Eilish", albumTitle: "HIT ME HARD AND SOFT", duration: "3:30", durationSec: 210 },
+  { title: "Espresso", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", duration: "2:55", durationSec: 175 },
+  { title: "APT.", artist: "ROSÉ & Bruno Mars", albumTitle: "rosie", duration: "2:49", durationSec: 169 },
+  { title: "Luther", artist: "Kendrick Lamar & SZA", albumTitle: "GNX", duration: "2:57", durationSec: 177 },
+  { title: "Timeless", artist: "The Weeknd & Playboi Carti", albumTitle: "Hurry Up Tomorrow", duration: "4:16", durationSec: 256 },
+  { title: "Abracadabra", artist: "Lady Gaga", albumTitle: "MAYHEM", duration: "3:43", durationSec: 223 },
+  { title: "Good Luck, Babe!", artist: "Chappell Roan", albumTitle: "Good Luck, Babe!", duration: "3:38", durationSec: 218 },
+  { title: "Taste", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", duration: "2:37", durationSec: 157 },
+  { title: "WILDFLOWER", artist: "Billie Eilish", albumTitle: "HIT ME HARD AND SOFT", duration: "4:21", durationSec: 261 },
+  { title: "Not Like Us", artist: "Kendrick Lamar", albumTitle: "Not Like Us", duration: "4:34", durationSec: 274 },
+  { title: "Please Please Please", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", duration: "3:06", durationSec: 186 },
+  { title: "CHIHIRO", artist: "Billie Eilish", albumTitle: "HIT ME HARD AND SOFT", duration: "5:03", durationSec: 303 },
+  { title: "Cry For Me", artist: "The Weeknd", albumTitle: "Hurry Up Tomorrow", duration: "3:44", durationSec: 224 },
+  { title: "Beautiful Things", artist: "Benson Boone", albumTitle: "Fireworks & Rollerblades", duration: "3:00", durationSec: 180 },
+  { title: "Lose Control", artist: "Teddy Swims", albumTitle: "I've Tried Everything But Therapy", duration: "3:30", durationSec: 210 },
+  { title: "L'AMOUR DE MA VIE", artist: "Billie Eilish", albumTitle: "HIT ME HARD AND SOFT", duration: "5:33", durationSec: 333 },
+  { title: "Too Sweet", artist: "Hozier", albumTitle: "Unheard", duration: "4:11", durationSec: 251 },
+  { title: "Fortnight", artist: "Taylor Swift", albumTitle: "THE TORTURED POETS DEPARTMENT", duration: "3:48", durationSec: 228 },
+  { title: "Bed Chem", artist: "Sabrina Carpenter", albumTitle: "Short n' Sweet", duration: "2:51", durationSec: 171 },
+  { title: "Disease", artist: "Lady Gaga", albumTitle: "MAYHEM", duration: "3:49", durationSec: 229 },
+  { title: "Blinding Lights", artist: "The Weeknd", albumTitle: "After Hours", duration: "3:20", durationSec: 200 },
+  { title: "Cruel Summer", artist: "Taylor Swift", albumTitle: "Lover", duration: "2:58", durationSec: 178 },
+  { title: "Saturn", artist: "SZA", albumTitle: "LANA", duration: "3:06", durationSec: 186 }
+];
+
+function buildGlobalFallbackTracks(): ChartTrackItem[] {
+  return GLOBAL_FALLBACK_TRACKS.map((t, idx) => ({
+    id: `glb_hit_${idx + 1}`,
+    title: t.title,
+    artist: t.artist,
+    albumTitle: t.albumTitle,
+    albumId: `glb_alb_${idx + 1}`,
+    duration: t.duration,
+    durationSec: t.durationSec,
+    coverUrl: `/api/cover?title=${encodeURIComponent(t.title)}&artist=${encodeURIComponent(t.artist)}`,
+    streamUrl: buildFullStreamProxyUrl(t.title, t.artist),
+    rank: idx + 1,
+    popular: idx < 15
+  }));
+}
+
 async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
   const [
     dzGlobalChart,
     dzBrazilPlaylist,
     dzGlobalTopPlaylist,
     dzEditorialReleases,
+    appleGlobalSongs,
     appleBrSongs
   ] = await Promise.all([
     fetchJsonSafe("https://api.deezer.com/chart/0?limit=100", 5000),
     fetchJsonSafe("https://api.deezer.com/playlist/1111141961/tracks?limit=60", 5000),
     fetchJsonSafe("https://api.deezer.com/playlist/3155776842/tracks?limit=100", 5000),
     fetchJsonSafe("https://api.deezer.com/editorial/0/releases?limit=30", 5000),
+    fetchJsonSafe("https://rss.applemarketingtools.com/api/v2/us/music/most-played/50/songs.json", 4500),
     fetchJsonSafe("https://rss.applemarketingtools.com/api/v2/br/music/most-played/50/songs.json", 4500)
   ]);
 
@@ -158,6 +203,29 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
     const mapped = mapDeezerTrack(item, globalRaw.length);
     if (mapped) globalRaw.push(mapped);
   }
+  if (Array.isArray(appleGlobalSongs?.feed?.results)) {
+    appleGlobalSongs.feed.results.forEach((item: any, idx: number) => {
+      if (!item?.name || !item?.artistName) return;
+      if (!isCanonicalStudioTrack(item.name, item.artistName, "", 200)) return;
+      const cover = item.artworkUrl100
+        ? String(item.artworkUrl100).replace(/100x100bb|200x200bb/g, "1000x1000bb")
+        : `/api/cover?title=${encodeURIComponent(item.name)}&artist=${encodeURIComponent(item.artistName)}`;
+      globalRaw.push({
+        id: `ap_glb_${item.id || idx}`,
+        title: item.name,
+        artist: item.artistName,
+        albumTitle: item.Name || "Global Top Hits",
+        albumId: `ap_glb_alb_${item.id || idx}`,
+        duration: "3:20",
+        durationSec: 200,
+        coverUrl: cover,
+        streamUrl: buildFullStreamProxyUrl(item.name, item.artistName),
+        rank: globalRaw.length + 1,
+        popular: idx < 15
+      });
+    });
+  }
+  globalRaw.push(...buildGlobalFallbackTracks());
   const globalTop100 = deduplicateCanonicalTracks(globalRaw).slice(0, 100);
 
   const newReleases: ChartAlbumItem[] = [];
@@ -208,7 +276,7 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
     });
   }
 
-  for (const tr of [...trendingBrazil, ...globalTop100]) {
+  for (const tr of [...globalTop100, ...trendingBrazil]) {
     if (topArtists100.length >= 100) break;
     const primaryName = String(tr.artist || "")
       .split(/\s*(?:,|&|\bfeat\.?\b|\bft\.?\b)\s*/i)[0]
@@ -248,6 +316,12 @@ export async function getRealTimeCharts(forceRefresh = false): Promise<RealTimeC
   const isFresh = cached && now < cached.expiresAt;
 
   if (cached && !canForce) {
+    if (!Array.isArray(cached.payload.globalTop100) || cached.payload.globalTop100.length < 15) {
+      cached.payload.globalTop100 = deduplicateCanonicalTracks([
+        ...(cached.payload.globalTop100 || []),
+        ...buildGlobalFallbackTracks()
+      ]).slice(0, 100);
+    }
     if (!isFresh && !isRevalidating) {
       isRevalidating = true;
       fetchFreshCharts()
@@ -263,7 +337,7 @@ export async function getRealTimeCharts(forceRefresh = false): Promise<RealTimeC
             });
           }
         })
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => {
           isRevalidating = false;
         });
@@ -281,7 +355,7 @@ export async function getRealTimeCharts(forceRefresh = false): Promise<RealTimeC
           expiresAt: now + CHARTS_TTL_MS
         };
       })
-      .catch(() => {});
+      .catch(() => { });
     return fresh;
   }
 

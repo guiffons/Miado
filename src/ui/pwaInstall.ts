@@ -22,12 +22,23 @@ export function isIosDevice(): boolean {
   return /iphone|ipad|ipod/.test(ua);
 }
 
+export function isMobileDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  const ua = (window.navigator.userAgent || "").toLowerCase();
+  const isMobileUa = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/.test(ua);
+  const isSmallViewport = window.innerWidth <= 900;
+  return isMobileUa || isSmallViewport;
+}
+
 export function initPwaInstall(): void {
   if (typeof window === "undefined") return;
 
   if (isStandalone()) {
     isAppInstalled = true;
   }
+
+  updatePwaButtons(false);
+  window.addEventListener("resize", () => updatePwaButtons(Boolean(deferredPrompt)));
 
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
@@ -51,12 +62,15 @@ export function initPwaInstall(): void {
 }
 
 function updatePwaButtons(canInstallPrompt: boolean): void {
-  const buttons = document.querySelectorAll<HTMLElement>("[data-pwa-install-btn]");
+  const isMobile = isMobileDevice();
+  const buttons = document.querySelectorAll<HTMLElement>(
+    "[data-pwa-install-btn], .sidebar-pwa-install-wrap, .top-pwa-btn, .pwa-floating-footer-tab"
+  );
   buttons.forEach((btn) => {
-    if (isAppInstalled) {
+    if (isAppInstalled || !isMobile) {
       btn.style.display = "none";
     } else {
-      btn.style.display = "inline-flex";
+      btn.style.display = "";
       if (!canInstallPrompt && !isIosDevice()) {
         btn.setAttribute("title", "Adicionar Miado à tela de início");
       }

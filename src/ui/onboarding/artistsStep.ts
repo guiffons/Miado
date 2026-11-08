@@ -98,7 +98,7 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
       "span",
       { class: "ob-brand-mark" },
       h("img", {
-        src: "/app-logo.jpg?v=3",
+        src: "/app-logo.svg",
         alt: "Logo",
         class: "ob-brand-logo-img",
         referrerpolicy: "no-referrer",
@@ -160,32 +160,35 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
           const data = await res.json();
           const found: OnboardingArtistItem[] = [];
           const seen = new Set<string>();
-          if (Array.isArray(data?.artists)) {
-            for (const a of data.artists) {
-              if (!a || !a.name) continue;
-              const k = String(a.name).toLowerCase().trim();
-              if (seen.has(k)) continue;
-              seen.add(k);
-              found.push({
-                name: String(a.name),
-                genre: a.genre || "Pop",
-                coverUrl: a.coverUrl || `/api/artist-image?name=${encodeURIComponent(a.name)}`,
-              });
-            }
-          }
-          if (Array.isArray(data?.albums)) {
-            for (const alb of data.albums) {
-              if (!alb || !alb.artist) continue;
-              const k = String(alb.artist).toLowerCase().trim();
-              if (seen.has(k)) continue;
-              seen.add(k);
-              found.push({
-                name: String(alb.artist),
-                genre: "Pop",
-                coverUrl: `/api/artist-image?name=${encodeURIComponent(alb.artist)}`,
-              });
-            }
-          }
+           const isCollabName = (s: string) =>
+             /\b(feat\.?|ft\.?|featuring|with)\b/i.test(s) ||
+             (/\s&\s/.test(s) && !/^(simon & garfunkel|earth, wind & fire|florence \+ the machine|tasha & tracie|sandy & junior|jorge & mateus|henrique & juliano|matheus & kauan)$/i.test(s.trim()));
+           if (Array.isArray(data?.artists)) {
+             for (const a of data.artists) {
+               if (!a || !a.name || isCollabName(String(a.name))) continue;
+               const k = String(a.name).toLowerCase().trim();
+               if (seen.has(k)) continue;
+               seen.add(k);
+               found.push({
+                 name: String(a.name),
+                 genre: a.genre || "Pop",
+                 coverUrl: a.coverUrl || `/api/artist-image?name=${encodeURIComponent(a.name)}`,
+               });
+             }
+           }
+           if (Array.isArray(data?.albums)) {
+             for (const alb of data.albums) {
+               if (!alb || !alb.artist || isCollabName(String(alb.artist))) continue;
+               const k = String(alb.artist).toLowerCase().trim();
+               if (seen.has(k)) continue;
+               seen.add(k);
+               found.push({
+                 name: String(alb.artist),
+                 genre: "Pop",
+                 coverUrl: `/api/artist-image?name=${encodeURIComponent(alb.artist)}`,
+               });
+             }
+           }
           searchResultsPool = found;
           renderGrid();
         } catch {}

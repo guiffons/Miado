@@ -147,12 +147,12 @@ describe("Miado Onboarding — Flow & Validation", () => {
     expect(canTransition("artists", "done", true)).toBe(true);
   });
 
-  it("evaluates password strength from 0 to 4 bars and enforces 10-char minimum", () => {
+  it("evaluates password strength from 0 to 4 bars and enforces 6-char + uppercase + special minimum", () => {
     expect(evaluatePasswordStrength("")).toEqual({ score: 0, valid: false });
     expect(evaluatePasswordStrength("abc")).toEqual({ score: 1, valid: false });
     expect(evaluatePasswordStrength("Abcdef12")).toEqual({ score: 2, valid: false });
-    expect(evaluatePasswordStrength("abcdefghij")).toEqual({ score: 2, valid: true });
-    expect(evaluatePasswordStrength("Abcdefgh12")).toEqual({ score: 3, valid: true });
+    expect(evaluatePasswordStrength("abcdef!@")).toEqual({ score: 2, valid: false });
+    expect(evaluatePasswordStrength("Abcde!")).toEqual({ score: 3, valid: true });
     expect(evaluatePasswordStrength("Abcdefgh12!@#X")).toEqual({ score: 4, valid: true });
   });
 
@@ -170,7 +170,7 @@ describe("Miado Onboarding — Flow & Validation", () => {
       "E-mail ja cadastrado"
     );
     expect(mapFirebaseError({ code: "auth/weak-password" })).toBe(
-      "Minimo de 10 caracteres"
+      "Minimo de 6 caracteres, 1 maiuscula e 1 caractere especial"
     );
     expect(mapFirebaseError({ code: "auth/too-many-requests" })).toBe(
       "Muitas tentativas. Tente mais tarde"

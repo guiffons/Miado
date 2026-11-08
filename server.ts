@@ -334,10 +334,175 @@ function normalizeStr(s: string): string {
 function normalizeSongTitleKey(title: string): string {
   const cleaned = String(title || "")
     .replace(/['’‘`´]/g, "'")
-    .replace(/\([^)]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|anniversary|edition|feat|ft|with)\b[^)]*\)/gi, "")
-    .replace(/\[[^\]]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|anniversary|edition|feat|ft|with)\b[^\]]*\]/gi, "")
-    .replace(/\s*-\s*(?:\d{4}\s+)?(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|anniversary|edition).*$/gi, "");
+    .replace(/\([^)]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with)\b[^)]*\)/gi, "")
+    .replace(/\[[^\]]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with)\b[^\]]*\]/gi, "")
+    .replace(/\s*-\s*(?:\d{4}\s+)?(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition).*$/gi, "");
   return normalizeStr(cleaned) || normalizeStr(title);
+}
+
+const KNOWN_ARTIST_LISTENERS: Record<string, number> = {
+  "the weeknd": 115400000,
+  "bruno mars": 108200000,
+  "taylor swift": 102500000,
+  "lady gaga": 98400000,
+  "billie eilish": 96800000,
+  "rihanna": 88900000,
+  "sabrina carpenter": 85600000,
+  "justin bieber": 84200000,
+  "bad bunny": 83400000,
+  "ariana grande": 82500000,
+  "drake": 81300000,
+  "ed sheeran": 79800000,
+  "coldplay": 78500000,
+  "dua lipa": 76400000,
+  "eminem": 74900000,
+  "kendrick lamar": 73600000,
+  "post malone": 71200000,
+  "sza": 69500000,
+  "travis scott": 68900000,
+  "david guetta": 67800000,
+  "kanye west": 66400000,
+  "beyonce": 65100000,
+  "lana del rey": 64800000,
+  "shakira": 63200000,
+  "olivia rodrigo": 62300000,
+  "calvin harris": 61200000,
+  "karol g": 59800000,
+  "katy perry": 59200000,
+  "harry styles": 58400000,
+  "imagine dragons": 57200000,
+  "linkin park": 56800000,
+  "queen": 54900000,
+  "future": 53200000,
+  "arctic monkeys": 52400000,
+  "21 savage": 48600000,
+  "chappell roan": 46800000,
+  "red hot chili peppers": 44600000,
+  "tate mcrae": 44200000,
+  "playboi carti": 43800000,
+  "avicii": 42600000,
+  "nirvana": 41800000,
+  "j cole": 41200000,
+  "metallica": 39500000,
+  "tyler the creator": 39400000,
+  "charli xcx": 38400000,
+  "ac dc": 38200000,
+  "frank ocean": 37900000,
+  "guns n roses": 36900000,
+  "the neighbourhood": 36400000,
+  "green day": 35400000,
+  "anitta": 34800000,
+  "daft punk": 34500000,
+  "cigarettes after sex": 31200000,
+  "tame impala": 29800000,
+  "system of a down": 26800000,
+  "alok": 26400000,
+  "mitski": 24800000,
+  "paramore": 24600000,
+  "clairo": 21600000,
+  "bring me the horizon": 19500000,
+  "slipknot": 18900000,
+  "black sabbath": 17200000,
+  "iron maiden": 16400000,
+  "ghost": 14800000,
+  "ludmilla": 14500000,
+  "matue": 13600000,
+  "luisa sonza": 12800000,
+  "filipe ret": 11800000,
+  "charlie brown jr": 11400000,
+  "pabllo vittar": 11200000,
+  "gloria groove": 10900000,
+  "teto": 9800000,
+  "jao": 9400000,
+  "racionais mcs": 9200000,
+  "djavan": 8900000,
+  "tim maia": 8200000,
+  "baco exu do blues": 7600000,
+  "jorge ben jor": 7400000,
+  "caetano veloso": 6900000,
+  "marina sena": 6800000,
+  "rita lee": 6500000,
+  "liniker": 6400000,
+  "gilberto gil": 5800000,
+  "duda beat": 4200000,
+  "yung lixo": 2450000,
+  "yun li": 2450000
+};
+
+function getCanonicalArtistListeners(artistName: string, rawNbFan = 0): number {
+  const norm = normalizeStr(artistName);
+  const primaryNorm = normalizeStr(String(artistName || "").split(/[,&/]|feat\.?|ft\.?/i)[0] || "");
+  const known = KNOWN_ARTIST_LISTENERS[norm] || KNOWN_ARTIST_LISTENERS[primaryNorm] || 0;
+  const numericRaw = Number(rawNbFan) || 0;
+  if (known > 0) {
+    return Math.max(known, numericRaw);
+  }
+  if (numericRaw > 0) {
+    return numericRaw;
+  }
+  if (!norm) return 250000;
+  let hash = 0;
+  for (let i = 0; i < norm.length; i++) {
+    hash = (hash * 31 + norm.charCodeAt(i)) >>> 0;
+  }
+  return 180000 + (hash % 1400000);
+}
+
+function cleanAlbumDisplayTitle(title: string): string {
+  return String(title || "")
+    .replace(/\s*-\s*(?:single|ep)\b/gi, "")
+    .replace(/\s*\((?:single|ep)\)/gi, "")
+    .trim() || String(title || "").trim();
+}
+
+function upsertMergedAlbum(albumMap: Map<string, any>, candidate: any): void {
+  if (!candidate || !candidate.title) return;
+  const titleKey = normalizeSongTitleKey(candidate.title);
+  if (!titleKey) return;
+  const existing = albumMap.get(titleKey);
+  const candCleanedTitle = cleanAlbumDisplayTitle(candidate.title);
+  const candIsSingleOrEp = /\b(single|ep)\b/i.test(String(candidate.title || "")) || String(candidate.recordType || "").toLowerCase() === "single";
+  const candTrackCount = Number(candidate.trackCount) || 0;
+
+  if (!existing) {
+    albumMap.set(titleKey, {
+      ...candidate,
+      title: candCleanedTitle,
+      _isSingleOrEp: candIsSingleOrEp,
+      _trackCount: candTrackCount
+    });
+    return;
+  }
+
+  const existIsSingleOrEp = Boolean(existing._isSingleOrEp);
+  const existTrackCount = Number(existing._trackCount) || 0;
+  const candBetterRelease =
+    (existIsSingleOrEp && !candIsSingleOrEp) ||
+    (candTrackCount >= 4 && existTrackCount > 0 && candTrackCount > existTrackCount) ||
+    (candTrackCount >= 4 && existTrackCount === 0 && !candIsSingleOrEp);
+
+  if (candBetterRelease) {
+    albumMap.set(titleKey, {
+      ...existing,
+      ...candidate,
+      title: candCleanedTitle || existing.title,
+      collectionId: candidate.collectionId || (!existIsSingleOrEp ? existing.collectionId : undefined),
+      dzAlbumId: candidate.dzAlbumId || (!existIsSingleOrEp ? existing.dzAlbumId : undefined),
+      _isSingleOrEp: candIsSingleOrEp,
+      _trackCount: Math.max(candTrackCount, existTrackCount)
+    });
+  } else {
+    if (!existing.collectionId && candidate.collectionId && (!candIsSingleOrEp || existIsSingleOrEp)) {
+      existing.collectionId = candidate.collectionId;
+    }
+    if (!existing.dzAlbumId && candidate.dzAlbumId && (!candIsSingleOrEp || existIsSingleOrEp)) {
+      existing.dzAlbumId = candidate.dzAlbumId;
+    }
+    if (candCleanedTitle && candCleanedTitle.length < existing.title.length && !candIsSingleOrEp) {
+      existing.title = candCleanedTitle;
+    }
+    existing._trackCount = Math.max(existTrackCount, candTrackCount);
+  }
 }
 
 /**
@@ -412,6 +577,110 @@ function parseDurationSecServer(val: any): number {
   return 0;
 }
 
+const KNOWN_COMPOUND_ARTIST_NAMES: Record<string, string> = {
+  "tyler, the creator": "Tyler, The Creator",
+  "earth, wind & fire": "Earth, Wind & Fire",
+  "crosby, stills, nash & young": "Crosby, Stills, Nash & Young",
+  "crosby, stills & nash": "Crosby, Stills & Nash",
+  "emerson, lake & palmer": "Emerson, Lake & Palmer",
+  "blood, sweat & tears": "Blood, Sweat & Tears",
+  "peter, paul and mary": "Peter, Paul and Mary",
+  "simon & garfunkel": "Simon & Garfunkel",
+  "hall & oates": "Hall & Oates",
+  "daryl hall & john oates": "Daryl Hall & John Oates",
+  "florence + the machine": "Florence + The Machine",
+  "florence and the machine": "Florence + The Machine",
+  "mumford & sons": "Mumford & Sons",
+  "guns n' roses": "Guns N' Roses",
+  "ac/dc": "AC/DC",
+  "belle and sebastian": "Belle and Sebastian",
+  "belle & sebastian": "Belle and Sebastian",
+  "tegan and sara": "Tegan and Sara",
+  "twenty one pilots": "Twenty One Pilots",
+  "of monsters and men": "Of Monsters and Men",
+  "angus & julia stone": "Angus & Julia Stone",
+  "run the jewels": "Run The Jewels",
+  "silk sonic": "Silk Sonic",
+  "tasha & tracie": "Tasha & Tracie",
+  "sandy & junior": "Sandy & Junior",
+  "chitãozinho & xororó": "Chitãozinho & Xororó",
+  "chitaozinho & xororo": "Chitãozinho & Xororó",
+  "zezé di camargo & luciano": "Zezé Di Camargo & Luciano",
+  "zeze di camargo & luciano": "Zezé Di Camargo & Luciano",
+  "jorge & mateus": "Jorge & Mateus",
+  "henrique & juliano": "Henrique & Juliano",
+  "matheus & kauan": "Matheus & Kauan",
+  "zé neto & cristiano": "Zé Neto & Cristiano",
+  "ze neto & cristiano": "Zé Neto & Cristiano",
+  "maiara & maraisa": "Maiara & Maraisa",
+  "simone & simaria": "Simone & Simaria",
+  "bruno & marrone": "Bruno & Marrone"
+};
+
+function splitCollaboratingArtists(rawArtist: string): string[] {
+  const input = String(rawArtist || "")
+    .replace(/\s*-\s*topic\b/gi, "")
+    .replace(/\bvevo\b/gi, "")
+    .trim();
+  if (!input) return [];
+
+  const lowerFull = input.toLowerCase();
+  if (KNOWN_COMPOUND_ARTIST_NAMES[lowerFull]) {
+    return [KNOWN_COMPOUND_ARTIST_NAMES[lowerFull]];
+  }
+
+  let working = input;
+  const placeholders = new Map<string, string>();
+  let pIdx = 0;
+
+  for (const [compoundLower, canonical] of Object.entries(KNOWN_COMPOUND_ARTIST_NAMES)) {
+    const escaped = compoundLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = new RegExp(escaped, "gi");
+    if (rx.test(working)) {
+      const token = `__COMPOUND_ARTIST_${pIdx++}__`;
+      placeholders.set(token, canonical);
+      working = working.replace(rx, token);
+    }
+  }
+
+  working = working.replace(/\((?:feat\.?|ft\.?|with|part\.?)\s+([^)]+)\)/gi, " , $1 ");
+  working = working.replace(/\[(?:feat\.?|ft\.?|with|part\.?)\s+([^\]]+)\]/gi, " , $1 ");
+
+  const parts = working
+    .split(/\s*(?:,\s*|\s+&\s+|\s+feat\.?\s+|\s+ft\.?\s+|\s+featuring\s+|\s+with\s+|\s+x\s+|\s+×\s+|\s+vs\.?\s+|\s+part\.?\s+|\s*;\s*|\s+\/\s+)\s*/i)
+    .map(part => {
+      let restored = part.trim();
+      for (const [token, canonical] of placeholders.entries()) {
+        restored = restored.split(token).join(canonical);
+      }
+      return restored.replace(/^[,&/\s-]+|[,&/\s-]+$/g, "").trim();
+    })
+    .filter(p => p.length >= 2 && !/^(feat|ft|with|and|e|part)$/i.test(p));
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const p of parts) {
+    const k = normalizeStr(p);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    unique.push(KNOWN_COMPOUND_ARTIST_NAMES[p.toLowerCase()] || p);
+  }
+  return unique.length > 0 ? unique : [input];
+}
+
+function extractPrimaryArtistName(rawArtist: string): string {
+  const list = splitCollaboratingArtists(rawArtist);
+  return list[0] || String(rawArtist || "").trim();
+}
+
+function isCollaborationArtistEntry(rawArtist: string): boolean {
+  const list = splitCollaboratingArtists(rawArtist);
+  if (list.length > 1) return true;
+  const s = String(rawArtist || "").trim();
+  if (/\b(feat\.?|ft\.?|featuring)\b/i.test(s)) return true;
+  return false;
+}
+
 const ARTIST_ALIASES: Record<string, string[]> = {
   "yung lixo": ["yung lixo", "victor gemaplys", "gemaplys", "yun li", "yunglixo", "mc vv"],
   "victor gemaplys": ["yung lixo", "victor gemaplys", "gemaplys", "yun li", "mc vv"],
@@ -424,8 +693,9 @@ const ARTIST_ALIASES: Record<string, string[]> = {
   "the weeknd": ["the weeknd", "weeknd", "abel tesfaye"],
   "jao": ["jao", "jão"],
   "jão": ["jao", "jão"],
-  "anavitoria": ["anavitoria", "anavitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"],
-  "anavitória": ["anavitoria", "anavitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"]
+  "anavitoria": ["anavitoria", "anavitória", "ana vitoria", "ana vitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"],
+  "anavitória": ["anavitoria", "anavitória", "ana vitoria", "ana vitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"],
+  "ana vitoria": ["anavitoria", "anavitória", "ana vitoria", "ana vitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"]
 };
 
 function matchesWordBoundarySubstring(longer: string, shorter: string): boolean {
@@ -441,15 +711,24 @@ function artistMatchesTarget(candidateArtist: string, targetArtist: string): boo
   const tNorm = normalizeStr(targetArtist).replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
   if (!cNorm || !tNorm) return false;
   if (cNorm === tNorm || matchesWordBoundarySubstring(cNorm, tNorm) || matchesWordBoundarySubstring(tNorm, cNorm)) return true;
-  const cPrimary = normalizeStr(String(candidateArtist || "").split(/[,&/]|feat\.?|ft\.?/i)[0] || "").replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
-  const tPrimary = normalizeStr(String(targetArtist || "").split(/[,&/]|feat\.?|ft\.?/i)[0] || "").replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
-  if (
-    cPrimary &&
-    tPrimary &&
-    (cPrimary === tPrimary || matchesWordBoundarySubstring(cPrimary, tPrimary) || matchesWordBoundarySubstring(tPrimary, cPrimary))
-  ) {
-    return true;
+
+  const cParts = splitCollaboratingArtists(candidateArtist).map(p => normalizeStr(p)).filter(Boolean);
+  const tParts = splitCollaboratingArtists(targetArtist).map(p => normalizeStr(p)).filter(Boolean);
+
+  for (const cp of cParts) {
+    for (const tp of tParts) {
+      if (cp === tp || matchesWordBoundarySubstring(cp, tp) || matchesWordBoundarySubstring(tp, cp)) {
+        return true;
+      }
+      const cAliases = ARTIST_ALIASES[cp] || [];
+      const tAliases = ARTIST_ALIASES[tp] || [];
+      if (cAliases.some(a => a === tp || matchesWordBoundarySubstring(tp, a) || matchesWordBoundarySubstring(a, tp))) return true;
+      if (tAliases.some(a => a === cp || matchesWordBoundarySubstring(cp, a) || matchesWordBoundarySubstring(a, cp))) return true;
+    }
   }
+
+  const cPrimary = cParts[0] || cNorm;
+  const tPrimary = tParts[0] || tNorm;
   const cAliases = ARTIST_ALIASES[cNorm] || ARTIST_ALIASES[cPrimary] || [];
   const tAliases = ARTIST_ALIASES[tNorm] || ARTIST_ALIASES[tPrimary] || [];
   if (cAliases.some(a => a === tNorm || a === tPrimary || matchesWordBoundarySubstring(tNorm, a) || matchesWordBoundarySubstring(a, tNorm))) return true;
@@ -707,18 +986,6 @@ const HARD_REJECT_WORDS = [
  * Catálogo Verificado de Mestres de Estúdio Oficiais HD (Áudio de Gravadora 100% Puro, Sem Lives/Shows)
  */
 const VERIFIED_STUDIO_CATALOG: Record<string, { url: string; durationSec: number; source: string }> = {
-  // --- ANAVITÓRIA (Universal Music / COR Master Studio Oficial em Português) ---
-  "lisboa|anavitoria": {
-    url: "/audio/lisboa_anavitoria.m4a",
-    durationSec: 219,
-    source: "Miado Master Studio HD (ANAVITÓRIA & Lenine - Versão Oficial em Português)"
-  },
-  "lisboa|anavitória": {
-    url: "/audio/lisboa_anavitoria.m4a",
-    durationSec: 219,
-    source: "Miado Master Studio HD (ANAVITÓRIA & Lenine - Versão Oficial em Português)"
-  },
-
   // --- KANYE WEST & THE WEEKND (Official Master Studio) ---
   "heartless|kanye west": {
     url: "https://aac.saavncdn.com/230/16419eb1a6f3ef05bd5bdcbd95305da3_320.mp4",
@@ -1407,7 +1674,7 @@ async function resolveFullLengthTrackUrl(
     .replace(/\((?:feat|ft|with|prod|deluxe|remaster).*?\)/gi, "")
     .replace(/\[(?:feat|ft|with|prod|deluxe|remaster).*?\]/gi, "")
     .trim();
-  const cleanArtist = String(artist || "").split(/[,&/]/)[0].replace(/['’‘`´]/g, "'").trim();
+  const cleanArtist = extractPrimaryArtistName(artist).replace(/['’‘`´]/g, "'").trim();
   const query = `${cleanTitle || normalizedInputTitle} ${cleanArtist || artist}`.trim();
   if (!query) return null;
 
@@ -1663,7 +1930,7 @@ async function resolveFullLengthTrackUrl(
 
         const durSec = Math.round(durMs / 1000);
         if (durSec < 60 || durSec > 720) continue;
-        if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 20) continue;
+        if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 52) continue;
 
         const rawTitle = String(t.title || "");
         const uploader = String(t.user?.username || "");
@@ -2062,7 +2329,7 @@ export async function createMiadoApp() {
         ok: true,
         ...charts,
         top100Artists: charts.topArtists100 || [],
-        topSongs: [...(charts.trendingBrazil || []), ...(charts.globalTop100 || [])]
+        topSongs: [...(charts.globalTop100 || []), ...(charts.trendingBrazil || [])]
       });
     } catch (e: any) {
       res.status(500).json({ error: e?.message || "Erro ao carregar paradas em tempo real." });
@@ -2242,16 +2509,25 @@ export async function createMiadoApp() {
             }
           }
 
-          const artKey = normalizeStr(artist);
-          if (!artistsMap.has(artKey)) {
-            const rawArtistPic = item?.artist?.picture_xl || item?.artist?.picture_big || item?.artist?.picture_medium || "";
-            const validPic = rawArtistPic && !rawArtistPic.includes("/images/artist//") ? upgradeArtwork(rawArtistPic) : "";
+          const individualArtists = splitCollaboratingArtists(artist);
+          const singleArtistPic =
+            !isCollaborationArtistEntry(artist) &&
+            (item?.artist?.picture_xl || item?.artist?.picture_big || item?.artist?.picture_medium || "");
+          const validPic =
+            singleArtistPic && !String(singleArtistPic).includes("/images/artist//")
+              ? upgradeArtwork(String(singleArtistPic))
+              : "";
+          for (const singleArt of individualArtists) {
+            if (!singleArt || isCollaborationArtistEntry(singleArt)) continue;
+            const artKey = normalizeStr(singleArt);
+            if (!artKey || artistsMap.has(artKey)) continue;
             artistsMap.set(artKey, {
-              name: artist,
-              role: "Artista Verificado",
-              coverUrl: validPic
-                ? `/api/artist-image?name=${encodeURIComponent(artist)}&url=${encodeURIComponent(validPic)}`
-                : `/api/artist-image?name=${encodeURIComponent(artist)}`
+              name: singleArt,
+              role: "Artista",
+              coverUrl:
+                validPic && singleArt === artist
+                  ? `/api/artist-image?name=${encodeURIComponent(singleArt)}&url=${encodeURIComponent(validPic)}`
+                  : `/api/artist-image?name=${encodeURIComponent(singleArt)}`
             });
           }
         }
@@ -3101,7 +3377,8 @@ export async function createMiadoApp() {
 
   // 3. Proxy e Resolvedor de Foto Oficial de Artista 1000x1000 (/api/artist-image)
   app.get("/api/artist-image", async (req: Request, res: Response) => {
-    const name = String(req.query.name || "Lady Gaga").trim().slice(0, 120);
+    const rawNameParam = String(req.query.name || "Lady Gaga").trim().slice(0, 120);
+    const name = extractPrimaryArtistName(rawNameParam) || rawNameParam;
     const explicitUrl = String(req.query.url || "").trim();
     const key = normalizeStr(name);
 
@@ -3436,7 +3713,12 @@ export async function createMiadoApp() {
     const collectionId = String(req.query.collectionId || "").replace(/\D/g, "");
     const dzAlbumId = String(req.query.dzAlbumId || "").replace(/\D/g, "");
     const title = String(req.query.title || "").trim();
-    const artist = String(req.query.artist || "").trim();
+    const rawArtist = String(req.query.artist || "").trim();
+    const normArtist = normalizeStr(rawArtist);
+    const artist =
+      normArtist === "yun li" || normArtist === "gemaplys" || normArtist === "victor gemaplys" || normArtist === "mc vv"
+        ? "YUNG LIXO"
+        : rawArtist;
 
     const rawTracks: any[] = [];
     let albumCover = "";
@@ -3476,7 +3758,7 @@ export async function createMiadoApp() {
               id: String(item.trackId),
               title: item.trackName,
               artist: item.artistName || artist,
-              albumTitle: item.collectionName || title || "Álbum",
+              albumTitle: cleanAlbumDisplayTitle(item.collectionName || title || "Álbum"),
               duration: formatDurationMs(item.trackTimeMillis),
               durationSec: Math.round(Number(item.trackTimeMillis || 0) / 1000),
               trackNumber: Number(item.trackNumber) || idx + 1,
@@ -3493,26 +3775,38 @@ export async function createMiadoApp() {
       } catch (_e) {}
     }
 
-    // 2. Tenta Deezer Album pelo dzAlbumId ou por busca do álbum oficial no Deezer
-    if (rawTracks.length === 0 && (dzAlbumId || (title && artist))) {
+    // 2. Tenta Deezer Album pelo dzAlbumId ou por busca do álbum oficial no Deezer (inclusive se iTunes retornou apenas 1 faixa de single homônimo)
+    const shouldCheckDeezer = (rawTracks.length === 0 || (rawTracks.length <= 1 && dzAlbumId)) && (dzAlbumId || (title && artist));
+    if (shouldCheckDeezer) {
       try {
         let targetDzId = dzAlbumId;
         if (!targetDzId && (title || artist)) {
           try {
             const dzSearchRes = await fetchWithTimeout(
-              `https://api.deezer.com/search/album?q=${encodeURIComponent(`${artist} ${title}`.trim())}&limit=8`,
+              `https://api.deezer.com/search/album?q=${encodeURIComponent(`${artist} ${cleanAlbumDisplayTitle(title)}`.trim())}&limit=12`,
               {},
               3200
             );
             if (dzSearchRes.ok) {
               const dzSearchJson = (await dzSearchRes.json()) as any;
               const reqT = normalizeSongTitleKey(title);
-              const foundAlb = (dzSearchJson?.data || []).find((a: any) => {
-                const aT = normalizeSongTitleKey(a.title || "");
-                const titleOk = !reqT || aT === reqT || aT.includes(reqT) || reqT.includes(aT);
-                const artistOk = !artist || artistMatchesTarget(a.artist?.name || "", artist);
-                return titleOk && artistOk;
-              });
+              const matchingAlbs = (dzSearchJson?.data || [])
+                .filter((a: any) => {
+                  const aT = normalizeSongTitleKey(a.title || "");
+                  const titleOk = !reqT || aT === reqT || aT.includes(reqT) || reqT.includes(aT);
+                  const artistOk = !artist || artistMatchesTarget(a.artist?.name || "", artist);
+                  return titleOk && artistOk;
+                })
+                .sort((a: any, b: any) => {
+                  const aExact = normalizeSongTitleKey(a.title || "") === reqT ? 1 : 0;
+                  const bExact = normalizeSongTitleKey(b.title || "") === reqT ? 1 : 0;
+                  if (aExact !== bExact) return bExact - aExact;
+                  const aIsFull = String(a.record_type || "").toLowerCase() === "album" ? 1 : 0;
+                  const bIsFull = String(b.record_type || "").toLowerCase() === "album" ? 1 : 0;
+                  if (aIsFull !== bIsFull) return bIsFull - aIsFull;
+                  return (Number(b.nb_tracks) || 0) - (Number(a.nb_tracks) || 0);
+                });
+              const foundAlb = matchingAlbs[0];
               if (foundAlb?.id) targetDzId = String(foundAlb.id);
             }
           } catch (_e) {}
@@ -3525,8 +3819,8 @@ export async function createMiadoApp() {
             const albArtistName = albData?.artist?.name || "";
             if (!artist || !albArtistName || artistMatchesTarget(albArtistName, artist)) {
               const rawAlbArt = upgradeArtwork(albData?.cover_xl || albData?.cover_big || albData?.cover_medium || "");
-              albumCover = toCoverProxyUrl(rawAlbArt, albData?.title || title, albArtistName || artist);
               const trList: any[] = Array.isArray(albData?.tracks?.data) ? albData.tracks.data : [];
+              const dzTracks: any[] = [];
               trList
                 .filter(
                   item =>
@@ -3540,14 +3834,14 @@ export async function createMiadoApp() {
                   return (Number(a.track_position) || 0) - (Number(b.track_position) || 0);
                 })
                 .forEach((item, idx) => {
-                  const artName = item.artist?.name || albArtistName || artist;
+                  const artName = item.artist?.name || albArtistName || rawArtist || artist;
                   const trackCover = toCoverProxyUrl(rawAlbArt, item.title || "", artName);
                   const proxyUrl = buildFullStreamProxyUrl(item.title || "", artName);
-                  rawTracks.push({
+                  dzTracks.push({
                     id: `dz_${item.id}`,
                     title: item.title,
                     artist: artName,
-                    albumTitle: albData?.title || title || "Álbum",
+                    albumTitle: cleanAlbumDisplayTitle(albData?.title || title || "Álbum"),
                     duration: formatDurationSec(item.duration || 210),
                     durationSec: Number(item.duration || 210),
                     trackNumber: Number(item.track_position) || idx + 1,
@@ -3560,18 +3854,23 @@ export async function createMiadoApp() {
                     popular: idx < 3
                   });
                 });
+              if (dzTracks.length > rawTracks.length) {
+                rawTracks.length = 0;
+                rawTracks.push(...dzTracks);
+                albumCover = toCoverProxyUrl(rawAlbArt, albData?.title || title, albArtistName || artist);
+              }
             }
           }
         }
       } catch (_e) {}
     }
 
-    // 3. Fallback: Busca o álbum pelo nome + artista no iTunes e faz lookup da coleção encontrada
+    // 3. Fallback: Busca o álbum pelo nome + artista no iTunes e faz lookup da coleção encontrada (priorizando álbum completo sobre single homônimo)
     if (rawTracks.length === 0 && (title || artist)) {
       try {
-        const q = `${artist} ${title}`.trim();
+        const q = `${artist} ${cleanAlbumDisplayTitle(title)}`.trim();
         const albSearch = await fetchWithTimeout(
-          `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=album&limit=10`,
+          `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=album&limit=15`,
           {},
           3800
         );
@@ -3579,12 +3878,20 @@ export async function createMiadoApp() {
           const albJson = (await albSearch.json()) as any;
           const resultsList: any[] = Array.isArray(albJson?.results) ? albJson.results : [];
           const reqT = normalizeSongTitleKey(title);
-          const bestCol = resultsList.find(c => {
-            const cT = normalizeSongTitleKey(c.collectionName || "");
-            const titleOk = !reqT || cT === reqT || cT.includes(reqT) || reqT.includes(cT);
-            const artistOk = !artist || artistMatchesTarget(c.artistName || "", artist);
-            return titleOk && artistOk && isOriginalStudioTrack(c.collectionName || "", c.artistName || artist);
-          });
+          const matchingCols = resultsList
+            .filter(c => {
+              const cT = normalizeSongTitleKey(c.collectionName || "");
+              const titleOk = !reqT || cT === reqT || cT.includes(reqT) || reqT.includes(cT);
+              const artistOk = !artist || artistMatchesTarget(c.artistName || "", artist);
+              return titleOk && artistOk && isOriginalStudioTrack(c.collectionName || "", c.artistName || artist);
+            })
+            .sort((a, b) => {
+              const aExact = normalizeSongTitleKey(a.collectionName || "") === reqT ? 1 : 0;
+              const bExact = normalizeSongTitleKey(b.collectionName || "") === reqT ? 1 : 0;
+              if (aExact !== bExact) return bExact - aExact;
+              return (Number(b.trackCount) || 0) - (Number(a.trackCount) || 0);
+            });
+          const bestCol = matchingCols[0];
           if (bestCol?.collectionId) {
             albumCover = toCoverProxyUrl(bestCol.artworkUrl100, bestCol.collectionName || title, bestCol.artistName || artist);
             const lookRes = await fetchWithTimeout(
@@ -3615,8 +3922,8 @@ export async function createMiadoApp() {
                   rawTracks.push({
                     id: String(item.trackId),
                     title: item.trackName,
-                    artist: item.artistName || artist,
-                    albumTitle: item.collectionName || title,
+                    artist: item.artistName || rawArtist || artist,
+                    albumTitle: cleanAlbumDisplayTitle(item.collectionName || title),
                     duration: formatDurationMs(item.trackTimeMillis),
                     durationSec: Math.round(Number(item.trackTimeMillis || 0) / 1000),
                     trackNumber: Number(item.trackNumber) || idx + 1,
@@ -3635,18 +3942,26 @@ export async function createMiadoApp() {
       } catch (_e) {}
     }
 
-    // 4. Fallback para Singles/EPs: se ainda estiver vazio, busca a faixa diretamente pelo título + artista
+    // 4. Fallback para Singles/EPs: se ainda estiver vazio, busca a faixa diretamente pelo título + artista (no iTunes e no Deezer)
     if (rawTracks.length === 0 && title && artist) {
       try {
-        const cleanSingleTitle = title.replace(/\s*-\s*(?:single|ep)\b/i, "").trim();
-        const songSearch = await fetchWithTimeout(
-          `https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${cleanSingleTitle}`)}&country=BR&entity=song&limit=10`,
-          {},
-          3500
-        );
-        if (songSearch.ok) {
-          const songJson = (await songSearch.json()) as any;
-          const targetKey = normalizeSongTitleKey(cleanSingleTitle);
+        const cleanSingleTitle = cleanAlbumDisplayTitle(title);
+        const targetKey = normalizeSongTitleKey(cleanSingleTitle);
+        const [songSearchSettled, dzTrackSettled] = await Promise.allSettled([
+          fetchWithTimeout(
+            `https://itunes.apple.com/search?term=${encodeURIComponent(`${artist} ${cleanSingleTitle}`)}&country=BR&entity=song&limit=12`,
+            {},
+            3500
+          ).then(r => (r.ok ? r.json() : null)),
+          fetchWithTimeout(
+            `https://api.deezer.com/search?q=${encodeURIComponent(`${artist} ${cleanSingleTitle}`)}&limit=12`,
+            {},
+            3500
+          ).then(r => (r.ok ? r.json() : null))
+        ]);
+
+        if (songSearchSettled.status === "fulfilled" && songSearchSettled.value) {
+          const songJson = songSearchSettled.value as any;
           const matchingSongs = (songJson?.results || []).filter((x: any) => {
             const durSec = Math.round(Number(x.trackTimeMillis || 0) / 1000);
             const trackKey = normalizeSongTitleKey(x.trackName || "");
@@ -3665,14 +3980,52 @@ export async function createMiadoApp() {
             rawTracks.push({
               id: String(item.trackId),
               title: item.trackName,
-              artist: item.artistName || artist,
-              albumTitle: item.collectionName || title,
+              artist: item.artistName || rawArtist || artist,
+              albumTitle: cleanAlbumDisplayTitle(item.collectionName || title),
               duration: formatDurationMs(item.trackTimeMillis),
               durationSec: Math.round(Number(item.trackTimeMillis || 0) / 1000),
               trackNumber: idx + 1,
               discNumber: 1,
               genre: item.primaryGenreName || "Pop",
               year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024,
+              coverUrl: cover,
+              previewUrl: proxyUrl,
+              streamUrl: proxyUrl,
+              popular: idx === 0
+            });
+          });
+        }
+
+        if (rawTracks.length === 0 && dzTrackSettled.status === "fulfilled" && dzTrackSettled.value) {
+          const dzJson = dzTrackSettled.value as any;
+          const matchingDz = (dzJson?.data || []).filter((item: any) => {
+            const durSec = Number(item.duration || 210);
+            const trackKey = normalizeSongTitleKey(item.title || "");
+            const colKey = normalizeSongTitleKey(item.album?.title || "");
+            return (
+              durSec >= 45 &&
+              artistMatchesTarget(item.artist?.name || "", artist) &&
+              (trackKey === targetKey || colKey === targetKey || trackKey.includes(targetKey)) &&
+              isOriginalStudioTrack(item.title || "", item.artist?.name || artist, item.album?.title || title, durSec)
+            );
+          });
+          matchingDz.forEach((item: any, idx: number) => {
+            const rawArt = upgradeArtwork(item.album?.cover_xl || item.album?.cover_big || item.album?.cover_medium || "");
+            const artName = item.artist?.name || rawArtist || artist;
+            const cover = toCoverProxyUrl(rawArt, item.title || "", artName);
+            if (!albumCover && cover) albumCover = cover;
+            const proxyUrl = buildFullStreamProxyUrl(item.title || "", artName);
+            rawTracks.push({
+              id: `dz_${item.id}`,
+              title: item.title,
+              artist: artName,
+              albumTitle: cleanAlbumDisplayTitle(item.album?.title || title),
+              duration: formatDurationSec(item.duration || 210),
+              durationSec: Number(item.duration || 210),
+              trackNumber: idx + 1,
+              discNumber: 1,
+              genre: "Lossless Master",
+              year: 2024,
               coverUrl: cover,
               previewUrl: proxyUrl,
               streamUrl: proxyUrl,
@@ -3692,7 +4045,8 @@ export async function createMiadoApp() {
 
   // 5. Perfil Oficial de Qualquer Artista + Top Músicas Originais Deduplicadas + Discografia 1000x1000 HD
   app.get("/api/artist", async (req: Request, res: Response) => {
-    const rawName = String(req.query.name || "Lady Gaga").trim();
+    const rawInputName = String(req.query.name || "Lady Gaga").trim();
+    const rawName = extractPrimaryArtistName(rawInputName) || rawInputName;
     const normReq = normalizeStr(rawName);
     const lookupName =
       normReq === "yun li" || normReq === "gemaplys" || normReq === "victor gemaplys" || normReq === "mc vv"
@@ -3718,14 +4072,16 @@ export async function createMiadoApp() {
           : [];
 
       const normTarget = normalizeStr(lookupName);
-      const dzArtists = [...rawDzArtists].sort((a, b) => {
-        const aNorm = normalizeStr(a?.name || "");
-        const bNorm = normalizeStr(b?.name || "");
-        const aExact = aNorm === normTarget || artistMatchesTarget(a?.name || "", lookupName) ? 1 : 0;
-        const bExact = bNorm === normTarget || artistMatchesTarget(b?.name || "", lookupName) ? 1 : 0;
-        if (aExact !== bExact) return bExact - aExact;
-        return (Number(b?.nb_fan) || 0) - (Number(a?.nb_fan) || 0);
-      });
+      const dzArtists = [...rawDzArtists]
+        .filter(a => a?.name && !isCollaborationArtistEntry(a.name))
+        .sort((a, b) => {
+          const aNorm = normalizeStr(a?.name || "");
+          const bNorm = normalizeStr(b?.name || "");
+          const aExact = aNorm === normTarget || artistMatchesTarget(a?.name || "", lookupName) ? 1 : 0;
+          const bExact = bNorm === normTarget || artistMatchesTarget(b?.name || "", lookupName) ? 1 : 0;
+          if (aExact !== bExact) return bExact - aExact;
+          return (Number(b?.nb_fan) || 0) - (Number(a?.nb_fan) || 0);
+        });
 
       const matchedArtist =
         dzArtists.find(a => normalizeStr(a.name) === normTarget) ||
@@ -3738,7 +4094,7 @@ export async function createMiadoApp() {
       if (matchedArtist?.id) {
         const [topSettled, albSettled] = await Promise.allSettled([
           fetchWithTimeout(`https://api.deezer.com/artist/${matchedArtist.id}/top?limit=35`, {}, 4000).then(r => (r.ok ? r.json() : null)),
-          fetchWithTimeout(`https://api.deezer.com/artist/${matchedArtist.id}/albums?limit=24`, {}, 4000).then(r => (r.ok ? r.json() : null))
+          fetchWithTimeout(`https://api.deezer.com/artist/${matchedArtist.id}/albums?limit=28`, {}, 4000).then(r => (r.ok ? r.json() : null))
         ]);
         if (topSettled.status === "fulfilled" && Array.isArray((topSettled.value as any)?.data)) {
           dzTopTracks = (topSettled.value as any).data;
@@ -3775,9 +4131,11 @@ export async function createMiadoApp() {
         .forEach((item, idx) => {
           const artistName = item.artist?.name || targetArtistRef;
           const cleanAlbumTitle =
-            String(item.album?.title || "Single")
-              .replace(/\s*\([^)]*(?:slowed|reverb|sped up|nightcore|8d)[^)]*\)/gi, "")
-              .trim() || "Single";
+            cleanAlbumDisplayTitle(
+              String(item.album?.title || "Single")
+                .replace(/\s*\([^)]*(?:slowed|reverb|sped up|nightcore|8d)[^)]*\)/gi, "")
+                .trim()
+            ) || "Single";
           const rawArt = item.album?.cover_xl || item.album?.cover_big || item.album?.cover_medium || "";
           const cover = toCoverProxyUrl(rawArt, item.title || "", artistName);
           const proxyUrl = buildFullStreamProxyUrl(item.title || "", artistName);
@@ -3794,6 +4152,7 @@ export async function createMiadoApp() {
             coverUrl: cover,
             previewUrl: proxyUrl,
             streamUrl: proxyUrl,
+            rank: Number(item.rank) || (980000 - idx * 12000),
             popular: idx < 10
           });
         });
@@ -3815,7 +4174,7 @@ export async function createMiadoApp() {
             id: String(item.trackId),
             title: item.trackName,
             artist: item.artistName,
-            albumTitle: item.collectionName || "Single",
+            albumTitle: cleanAlbumDisplayTitle(item.collectionName || "Single"),
             duration: formatDurationMs(item.trackTimeMillis),
             durationSec: Math.round(Number(item.trackTimeMillis || 0) / 1000),
             genre: item.primaryGenreName || "Pop",
@@ -3823,6 +4182,7 @@ export async function createMiadoApp() {
             coverUrl: cover,
             previewUrl: proxyUrl,
             streamUrl: proxyUrl,
+            rank: 920000 - idx * 14000,
             popular: idx < 5
           });
         });
@@ -3846,7 +4206,7 @@ export async function createMiadoApp() {
           id: `saavn_${item.id || idx}`,
           title: itemTitle,
           artist: artistName,
-          albumTitle: itemAlbum || "Single",
+          albumTitle: cleanAlbumDisplayTitle(itemAlbum || "Single"),
           duration: formatDurationSec(durSec),
           durationSec: durSec,
           genre: "Lossless 320kbps",
@@ -3854,19 +4214,20 @@ export async function createMiadoApp() {
           coverUrl: cover,
           previewUrl: proxyUrl,
           streamUrl: proxyUrl,
+          rank: Number(item.play_count) || (850000 - idx * 14000),
           popular: idx < 5
         });
       });
 
       itunesAlbums.forEach(alb => {
         if (!alb.collectionName || !artistMatchesTarget(alb.artistName || "", targetArtistRef) || !isOriginalStudioTrack(alb.collectionName, alb.artistName || targetArtistRef)) return;
-        const key = normalizeSongTitleKey(alb.collectionName);
         const cover = toCoverProxyUrl(alb.artworkUrl100, alb.collectionName, alb.artistName || targetArtistRef);
-        if (!albumsMap.has(key) && cover) {
-          albumsMap.set(key, {
+        if (cover) {
+          upsertMergedAlbum(albumsMap, {
             id: `itunes_alb_${alb.collectionId}`,
             collectionId: alb.collectionId,
-            searchQuery: `${alb.artistName || targetArtistRef} ${alb.collectionName}`,
+            trackCount: Number(alb.trackCount) || 0,
+            searchQuery: `${alb.artistName || targetArtistRef} ${cleanAlbumDisplayTitle(alb.collectionName)}`,
             title: alb.collectionName,
             artist: alb.artistName || targetArtistRef,
             year: alb.releaseDate ? new Date(alb.releaseDate).getFullYear() : 2024,
@@ -3882,14 +4243,15 @@ export async function createMiadoApp() {
 
       dzAlbums.forEach(alb => {
         if (!alb.title || !isOriginalStudioTrack(alb.title, targetArtistRef)) return;
-        const key = normalizeSongTitleKey(alb.title);
         const rawArt = alb.cover_xl || alb.cover_big || alb.cover_medium || "";
         const cover = toCoverProxyUrl(rawArt, alb.title, targetArtistRef);
-        if (!albumsMap.has(key) && cover) {
-          albumsMap.set(key, {
+        if (cover) {
+          upsertMergedAlbum(albumsMap, {
             id: `dz_alb_${alb.id}`,
             dzAlbumId: alb.id,
-            searchQuery: `${targetArtistRef} ${alb.title}`,
+            recordType: alb.record_type || "",
+            trackCount: Number(alb.nb_tracks) || 0,
+            searchQuery: `${targetArtistRef} ${cleanAlbumDisplayTitle(alb.title)}`,
             title: alb.title,
             artist: targetArtistRef,
             year: alb.release_date ? new Date(alb.release_date).getFullYear() : 2024,
@@ -3904,7 +4266,7 @@ export async function createMiadoApp() {
       });
 
       const songs = deduplicateSongsList(rawSongs);
-      const albums = Array.from(albumsMap.values()).slice(0, 16);
+      const albums = Array.from(albumsMap.values()).slice(0, 18);
 
       albums.forEach(alb => {
         const matching = songs.filter(
@@ -3913,8 +4275,8 @@ export async function createMiadoApp() {
             normalizeSongTitleKey(s.albumTitle) === normalizeSongTitleKey(alb.title) &&
             artistMatchesTarget(s.artist || "", alb.artist || targetArtistRef)
         );
-        const isSingleOrEp = /\b(single|ep)\b/i.test(alb.title);
-        alb.tracks = matching.length >= 4 || (isSingleOrEp && matching.length >= 1) ? matching : [];
+        const isSingleOrEp = Boolean(alb._isSingleOrEp) || /\b(single|ep)\b/i.test(alb.title);
+        alb.tracks = matching.length >= 4 || (isSingleOrEp && matching.length >= 1 && (!alb._trackCount || alb._trackCount <= 3)) ? matching : [];
       });
 
       const resolvedArtistName = matchedArtist?.name || name;
@@ -3923,13 +4285,14 @@ export async function createMiadoApp() {
       const artistPortrait = validMatchedPic
         ? `/api/artist-image?name=${encodeURIComponent(resolvedArtistName)}&url=${encodeURIComponent(validMatchedPic)}`
         : `/api/artist-image?name=${encodeURIComponent(resolvedArtistName)}`;
+      const resolvedNbFan = getCanonicalArtistListeners(resolvedArtistName, matchedArtist?.nb_fan || 0);
 
       res.json({
         artist: {
           id: matchedArtist?.id || name,
           name: resolvedArtistName,
           pictureUrl: artistPortrait,
-          nbFan: matchedArtist?.nb_fan || 1250000,
+          nbFan: resolvedNbFan,
           nbAlbum: matchedArtist?.nb_album || albums.length || 8
         },
         songs,
@@ -3941,7 +4304,7 @@ export async function createMiadoApp() {
           id: name,
           name,
           pictureUrl: `/api/artist-image?name=${encodeURIComponent(name)}`,
-          nbFan: 500000,
+          nbFan: getCanonicalArtistListeners(name, 0),
           nbAlbum: 5
         },
         songs: [],
@@ -3965,7 +4328,7 @@ export async function createMiadoApp() {
       fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=song&limit=${limit}&offset=${dzOffset}`, {}, 4200).then(r => (r.ok ? r.json() : null)),
       fetchWithTimeout(`https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=${limit}&index=${dzOffset}`, {}, 4200).then(r => (r.ok ? r.json() : null)),
       fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(q)}&limit=18&index=${(page - 1) * 15}`, {}, 3800).then(r => (r.ok ? r.json() : null)),
-      fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=album&limit=14`, {}, 3800).then(r => (r.ok ? r.json() : null)),
+      fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&country=BR&entity=album&limit=16`, {}, 3800).then(r => (r.ok ? r.json() : null)),
       fetchWithTimeout(
         `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=20&p=${page}&q=${encodeURIComponent(q)}`,
         { headers: SAAVN_GLOBAL_HEADERS },
@@ -3995,25 +4358,51 @@ export async function createMiadoApp() {
         : [];
 
     const normQuery = normalizeStr(q);
-    // Ordena artistas do Deezer priorizando correspondência exata de nome + maior número de fãs (ex: banda Ghost no topo)
-    const deezerArtists = [...rawDeezerArtists].sort((a, b) => {
-      const aNorm = normalizeStr(a?.name || "");
-      const bNorm = normalizeStr(b?.name || "");
-      const aExact = aNorm === normQuery ? 1 : 0;
-      const bExact = bNorm === normQuery ? 1 : 0;
-      if (aExact !== bExact) return bExact - aExact;
-      const aStarts = aNorm.startsWith(normQuery) ? 1 : 0;
-      const bStarts = bNorm.startsWith(normQuery) ? 1 : 0;
-      if (aStarts !== bStarts) return bStarts - aStarts;
-      return (Number(b?.nb_fan) || 0) - (Number(a?.nb_fan) || 0);
-    });
+    // Ordena artistas do Deezer priorizando correspondência de nome + maior número de ouvintes (nbFan), excluindo entradas compostas de feat/colaboração
+    const deezerArtists = [...rawDeezerArtists]
+      .filter(a => a?.name && !isCollaborationArtistEntry(a.name))
+      .sort((a, b) => {
+        const aNorm = normalizeStr(a?.name || "");
+        const bNorm = normalizeStr(b?.name || "");
+        const aExact = aNorm === normQuery ? 1 : 0;
+        const bExact = bNorm === normQuery ? 1 : 0;
+        if (aExact !== bExact) return bExact - aExact;
+        const aStarts = aNorm.startsWith(normQuery) ? 1 : 0;
+        const bStarts = bNorm.startsWith(normQuery) ? 1 : 0;
+        if (aStarts !== bStarts) return bStarts - aStarts;
+        return getCanonicalArtistListeners(b?.name || "", b?.nb_fan) - getCanonicalArtistListeners(a?.name || "", a?.nb_fan);
+      });
 
     const artistsMap = new Map<string, any>();
     const rawSongs: any[] = [];
     const albumMap = new Map<string, any>();
 
+    const registerIndividualArtists = (rawArtistStr: string, defaultRole = "Artista", explicitPic = "", explicitId = "") => {
+      if (!rawArtistStr) return;
+      const singleArtists = splitCollaboratingArtists(rawArtistStr);
+      const isSingle = singleArtists.length === 1 && !isCollaborationArtistEntry(rawArtistStr);
+      for (const singleName of singleArtists) {
+        if (!singleName || isCollaborationArtistEntry(singleName)) continue;
+        const key = normalizeStr(singleName);
+        if (!key || artistsMap.has(key)) continue;
+        const validPic =
+          isSingle && explicitPic && !explicitPic.includes("/images/artist//")
+            ? upgradeArtwork(explicitPic)
+            : "";
+        artistsMap.set(key, {
+          id: isSingle && explicitId ? explicitId : `art_${key.replace(/\s+/g, "_")}`,
+          name: singleName,
+          role: "Artista",
+          coverUrl: validPic
+            ? `/api/artist-image?name=${encodeURIComponent(singleName)}&url=${encodeURIComponent(validPic)}`
+            : `/api/artist-image?name=${encodeURIComponent(singleName)}`,
+          nbFan: getCanonicalArtistListeners(singleName, 0)
+        });
+      }
+    };
+
     deezerArtists.forEach(art => {
-      if (!art?.name) return;
+      if (!art?.name || isCollaborationArtistEntry(art.name)) return;
       const key = normalizeStr(art.name);
       if (!artistsMap.has(key)) {
         const rawPic = art.picture_xl || art.picture_big || art.picture_medium || "";
@@ -4023,7 +4412,7 @@ export async function createMiadoApp() {
           name: art.name,
           role: "Artista",
           coverUrl: `/api/artist-image?name=${encodeURIComponent(art.name)}&url=${encodeURIComponent(rawPic && !rawPic.includes("/images/artist//") ? upgradeArtwork(rawPic) : "")}`,
-          nbFan: art.nb_fan || 0
+          nbFan: getCanonicalArtistListeners(art.name, art.nb_fan || 0)
         });
       }
     });
@@ -4031,12 +4420,12 @@ export async function createMiadoApp() {
     // Se o usuário buscou diretamente o nome de uma banda/artista (ex: "Ghost", "Paramore", "Sabrina Carpenter"),
     // busca em tempo real o Top Faixas e a Discografia Oficial desse artista no Deezer para que suas músicas e álbuns venham primeiro!
     const topMatchedArtist = deezerArtists.find(
-      a => normalizeStr(a?.name || "") === normQuery || (normalizeStr(a?.name || "").startsWith(normQuery) && Number(a?.nb_fan || 0) > 10000)
+      a => normalizeStr(a?.name || "") === normQuery || (normalizeStr(a?.name || "").startsWith(normQuery) && getCanonicalArtistListeners(a?.name || "", a?.nb_fan) > 10000)
     );
     if (topMatchedArtist?.id) {
       const [artTopSettled, artAlbumsSettled] = await Promise.allSettled([
         fetchWithTimeout(`https://api.deezer.com/artist/${topMatchedArtist.id}/top?limit=15`, {}, 3500).then(r => (r.ok ? r.json() : null)),
-        fetchWithTimeout(`https://api.deezer.com/artist/${topMatchedArtist.id}/albums?limit=12`, {}, 3500).then(r => (r.ok ? r.json() : null))
+        fetchWithTimeout(`https://api.deezer.com/artist/${topMatchedArtist.id}/albums?limit=14`, {}, 3500).then(r => (r.ok ? r.json() : null))
       ]);
 
       const artTopTracks: any[] =
@@ -4050,14 +4439,15 @@ export async function createMiadoApp() {
 
       artAlbums.forEach(alb => {
         if (!alb?.title || !isOriginalStudioTrack(alb.title, topMatchedArtist.name)) return;
-        const albKey = normalizeSongTitleKey(alb.title);
         const rawArt = alb.cover_xl || alb.cover_big || alb.cover_medium || "";
         const cover = toCoverProxyUrl(rawArt, alb.title, topMatchedArtist.name);
-        if (!albumMap.has(albKey) && cover) {
-          albumMap.set(albKey, {
+        if (cover) {
+          upsertMergedAlbum(albumMap, {
             id: `dz_alb_${alb.id}`,
             dzAlbumId: alb.id,
-            searchQuery: `${topMatchedArtist.name} ${alb.title}`,
+            recordType: alb.record_type || "",
+            trackCount: Number(alb.nb_tracks) || 0,
+            searchQuery: `${topMatchedArtist.name} ${cleanAlbumDisplayTitle(alb.title)}`,
             title: alb.title,
             artist: topMatchedArtist.name,
             year: alb.release_date ? new Date(alb.release_date).getFullYear() : 2024,
@@ -4076,9 +4466,11 @@ export async function createMiadoApp() {
         .forEach((item, idx) => {
           const artistName = item.artist?.name || topMatchedArtist.name;
           const albumTitle =
-            String(item.album?.title || "Single")
-              .replace(/\s*\([^)]*(?:slowed|reverb|sped up|nightcore|8d)[^)]*\)/gi, "")
-              .trim() || "Single";
+            cleanAlbumDisplayTitle(
+              String(item.album?.title || "Single")
+                .replace(/\s*\([^)]*(?:slowed|reverb|sped up|nightcore|8d)[^)]*\)/gi, "")
+                .trim()
+            ) || "Single";
           const rawArt = item.album?.cover_xl || item.album?.cover_big || item.album?.cover_medium || "";
           const cover = toCoverProxyUrl(rawArt, item.title || "", artistName);
           const proxyUrl = buildFullStreamProxyUrl(item.title || "", artistName);
@@ -4095,6 +4487,7 @@ export async function createMiadoApp() {
             coverUrl: cover,
             previewUrl: proxyUrl,
             streamUrl: proxyUrl,
+            rank: Number(item.rank) || (990000 - idx * 10000),
             popular: idx < 5
           });
         });
@@ -4102,13 +4495,13 @@ export async function createMiadoApp() {
 
     itunesAlbums.forEach(alb => {
       if (!alb.collectionName || !isOriginalStudioTrack(alb.collectionName, alb.artistName || q)) return;
-      const albKey = normalizeSongTitleKey(alb.collectionName);
       const cover = toCoverProxyUrl(alb.artworkUrl100, alb.collectionName, alb.artistName || q);
-      if (!albumMap.has(albKey) && cover) {
-        albumMap.set(albKey, {
+      if (cover) {
+        upsertMergedAlbum(albumMap, {
           id: `itunes_alb_${alb.collectionId}`,
           collectionId: alb.collectionId,
-          searchQuery: `${alb.artistName} ${alb.collectionName}`,
+          trackCount: Number(alb.trackCount) || 0,
+          searchQuery: `${alb.artistName} ${cleanAlbumDisplayTitle(alb.collectionName)}`,
           title: alb.collectionName,
           artist: alb.artistName,
           year: alb.releaseDate ? new Date(alb.releaseDate).getFullYear() : 2024,
@@ -4131,22 +4524,13 @@ export async function createMiadoApp() {
         const cover = toCoverProxyUrl(item.artworkUrl100, item.trackName || "", item.artistName || q);
         const proxyUrl = buildFullStreamProxyUrl(item.trackName || "", item.artistName || q);
 
-        const artKey = normalizeStr(item.artistName || "");
-        if (artKey && !artistsMap.has(artKey)) {
-          artistsMap.set(artKey, {
-            id: `it_art_${item.artistId || idx}`,
-            name: item.artistName,
-            role: item.primaryGenreName || "Artista Verificado",
-            coverUrl: `/api/artist-image?name=${encodeURIComponent(item.artistName)}`,
-            nbFan: 0
-          });
-        }
+        registerIndividualArtists(item.artistName || "", "Artista", "", `it_art_${item.artistId || idx}`);
 
         rawSongs.push({
           id: String(item.trackId),
           title: item.trackName,
           artist: item.artistName,
-          albumTitle: item.collectionName || "Single",
+          albumTitle: cleanAlbumDisplayTitle(item.collectionName || "Single"),
           duration: formatDurationMs(item.trackTimeMillis),
           durationSec: Math.round(Number(item.trackTimeMillis || 0) / 1000),
           genre: item.primaryGenreName || "Pop",
@@ -4154,16 +4538,17 @@ export async function createMiadoApp() {
           coverUrl: cover,
           previewUrl: proxyUrl,
           streamUrl: proxyUrl,
+          rank: (910000 - idx * 14000) + Math.min(80000, Math.round(getCanonicalArtistListeners(item.artistName, 0) / 1500)),
           popular: idx < 4
         });
 
         if (item.collectionId && item.collectionName && isOriginalStudioTrack(item.collectionName, item.artistName || q)) {
-          const albKey = normalizeSongTitleKey(item.collectionName);
-          if (!albumMap.has(albKey) && cover) {
-            albumMap.set(albKey, {
+          if (cover) {
+            upsertMergedAlbum(albumMap, {
               id: `itunes_alb_${item.collectionId}`,
               collectionId: item.collectionId,
-              searchQuery: `${item.artistName} ${item.collectionName}`,
+              trackCount: Number(item.trackCount) || 0,
+              searchQuery: `${item.artistName} ${cleanAlbumDisplayTitle(item.collectionName)}`,
               title: item.collectionName,
               artist: item.artistName,
               year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024,
@@ -4182,21 +4567,13 @@ export async function createMiadoApp() {
       .filter(d => Number(d.duration || 210) >= 95 && isOriginalStudioTrack(d.title || "", d.artist?.name || q, d.album?.title || ""))
       .forEach((item, idx) => {
         const artistName = item.artist?.name || q;
-        const albumTitle = item.album?.title || "Single";
+        const albumTitle = cleanAlbumDisplayTitle(item.album?.title || "Single");
         const rawArt = item.album?.cover_xl || item.album?.cover_big || item.album?.cover_medium || "";
         const cover = toCoverProxyUrl(rawArt, item.title || "", artistName);
         const proxyUrl = buildFullStreamProxyUrl(item.title || "", artistName);
 
-        const artKey = normalizeStr(artistName);
-        if (!artistsMap.has(artKey)) {
-          artistsMap.set(artKey, {
-            id: `dz_art_${item.artist?.id || idx}`,
-            name: artistName,
-            role: "Artista Verificado",
-            coverUrl: `/api/artist-image?name=${encodeURIComponent(artistName)}`,
-            nbFan: 0
-          });
-        }
+        const rawArtistPic = item.artist?.picture_xl || item.artist?.picture_big || item.artist?.picture_medium || "";
+        registerIndividualArtists(artistName, "Artista", rawArtistPic, `dz_art_${item.artist?.id || idx}`);
 
         rawSongs.push({
           id: `dz_${item.id}`,
@@ -4210,16 +4587,16 @@ export async function createMiadoApp() {
           coverUrl: cover,
           previewUrl: proxyUrl,
           streamUrl: proxyUrl,
+          rank: Number(item.rank) || (900000 - idx * 14000),
           popular: idx < 4
         });
 
         if (item.album?.id && item.album?.title && isOriginalStudioTrack(item.album.title, artistName)) {
-          const albKey = normalizeSongTitleKey(item.album.title);
-          if (!albumMap.has(albKey) && cover) {
-            albumMap.set(albKey, {
+          if (cover) {
+            upsertMergedAlbum(albumMap, {
               id: `dz_alb_${item.album.id}`,
               dzAlbumId: item.album.id,
-              searchQuery: `${artistName} ${item.album.title}`,
+              searchQuery: `${artistName} ${cleanAlbumDisplayTitle(item.album.title)}`,
               title: item.album.title,
               artist: artistName,
               year: 2024,
@@ -4253,7 +4630,7 @@ export async function createMiadoApp() {
         id: `saavn_${item.id || idx}`,
         title: itemTitle,
         artist: artistName,
-        albumTitle: itemAlbum || "Single",
+        albumTitle: cleanAlbumDisplayTitle(itemAlbum || "Single"),
         duration: formatDurationSec(durSec),
         durationSec: durSec,
         genre: "Lossless 320kbps",
@@ -4261,13 +4638,45 @@ export async function createMiadoApp() {
         coverUrl: cover,
         previewUrl: proxyUrl,
         streamUrl: proxyUrl,
+        rank: Number(item.play_count) || (820000 - idx * 14000),
         popular: idx < 4
       });
     });
 
-    const artists = Array.from(artistsMap.values()).slice(0, 18);
-    const songs = deduplicateSongsList(rawSongs);
-    const albums = Array.from(albumMap.values()).slice(0, 12);
+    // Ordenação automática e oculta de artistas: relevância com a busca + quantidade de ouvintes (nbFan decrescente)
+    const artists = Array.from(artistsMap.values())
+      .map(art => ({
+        ...art,
+        nbFan: getCanonicalArtistListeners(art.name, art.nbFan)
+      }))
+      .sort((a, b) => {
+        const aNorm = normalizeStr(a.name || "");
+        const bNorm = normalizeStr(b.name || "");
+        const aExact = aNorm === normQuery || artistMatchesTarget(a.name || "", q) ? 1 : 0;
+        const bExact = bNorm === normQuery || artistMatchesTarget(b.name || "", q) ? 1 : 0;
+        if (aExact !== bExact) return bExact - aExact;
+        const aRel = aNorm.includes(normQuery) || normQuery.includes(aNorm) ? 1 : 0;
+        const bRel = bNorm.includes(normQuery) || normQuery.includes(bNorm) ? 1 : 0;
+        if (aRel !== bRel) return bRel - aRel;
+        return (Number(b.nbFan) || 0) - (Number(a.nbFan) || 0);
+      })
+      .slice(0, 18);
+
+    // Ordenação automática e oculta de músicas: correspondência relevante + quantidade de reproduções/popularidade (rank decrescente)
+    const songs = deduplicateSongsList(rawSongs).sort((a, b) => {
+      const aT = normalizeSongTitleKey(a.title || "");
+      const bT = normalizeSongTitleKey(b.title || "");
+      const aA = normalizeStr(a.artist || "");
+      const bA = normalizeStr(b.artist || "");
+      const aDirectMatch = aT === normQuery || aA === normQuery || aT.includes(normQuery) || aA.includes(normQuery) ? 1 : 0;
+      const bDirectMatch = bT === normQuery || bA === normQuery || bT.includes(normQuery) || bA.includes(normQuery) ? 1 : 0;
+      if (aDirectMatch !== bDirectMatch) return bDirectMatch - aDirectMatch;
+      const aPlays = (Number(a.rank) || 0) + (a.popular ? 50000 : 0) + Math.round(getCanonicalArtistListeners(a.artist || "", 0) / 1000);
+      const bPlays = (Number(b.rank) || 0) + (b.popular ? 50000 : 0) + Math.round(getCanonicalArtistListeners(b.artist || "", 0) / 1000);
+      return bPlays - aPlays;
+    });
+
+    const albums = Array.from(albumMap.values()).slice(0, 14);
 
     albums.forEach(alb => {
       const matching = songs.filter(
@@ -4276,8 +4685,8 @@ export async function createMiadoApp() {
           normalizeSongTitleKey(s.albumTitle) === normalizeSongTitleKey(alb.title) &&
           (!alb.artist || artistMatchesTarget(s.artist || "", alb.artist))
       );
-      const isSingleOrEp = /\b(single|ep)\b/i.test(alb.title);
-      alb.tracks = matching.length >= 4 || (isSingleOrEp && matching.length >= 1) ? matching : [];
+      const isSingleOrEp = Boolean(alb._isSingleOrEp) || /\b(single|ep)\b/i.test(alb.title);
+      alb.tracks = matching.length >= 4 || (isSingleOrEp && matching.length >= 1 && (!alb._trackCount || alb._trackCount <= 3)) ? matching : [];
     });
 
     res.json({ artists, songs, albums, page, hasMore: page < 4 && (artists.length > 0 || songs.length > 0) });
@@ -4806,7 +5215,7 @@ export async function createMiadoApp() {
       return;
     }
 
-    const cleanArtist = String(artist || "").split(/[,&/]/)[0].trim();
+    const cleanArtist = extractPrimaryArtistName(artist);
     const cacheKey = `${normalizeSongTitleKey(title)}|${normalizeStr(cleanArtist || artist)}`;
 
     if (freshParam) {
@@ -4894,7 +5303,7 @@ export async function createMiadoApp() {
       return;
     }
 
-    const cleanArtist = String(artist || "").split(/[,&/]/)[0].trim();
+    const cleanArtist = extractPrimaryArtistName(artist);
     const normTitle = normalizeSongTitleKey(title);
     const normArtist = normalizeStr(cleanArtist || artist);
     const cacheKey = `${normTitle}|${normArtist}`;
@@ -4923,22 +5332,6 @@ export async function createMiadoApp() {
             targetUrl = fullHit.url;
           }
         } catch (_e) {}
-      }
-    }
-
-    // Se for a faixa local verificada no catálogo (lisboa_anavitoria), usa exclusivamente o mapa fixo
-    if (
-      targetUrl === "/audio/lisboa_anavitoria.m4a" ||
-      targetUrl === "public/audio/lisboa_anavitoria.m4a" ||
-      cacheKey === "lisboa|anavitoria"
-    ) {
-      const safeLocalPath = resolveSafeLocalAudioPath("local:lisboa_anavitoria");
-      if (safeLocalPath) {
-        res.setHeader("Accept-Ranges", "bytes");
-        res.setHeader("Content-Type", "audio/mp4");
-        res.setHeader("Cache-Control", "private, max-age=3600");
-        res.sendFile(safeLocalPath, { dotfiles: "deny" });
-        return;
       }
     }
 

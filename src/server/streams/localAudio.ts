@@ -3,9 +3,7 @@ import fs from "fs";
 
 const AUDIO_ROOT = path.resolve(process.cwd(), "public", "audio");
 
-export const LOCAL_AUDIO_MAP: Readonly<Record<string, string>> = Object.freeze({
-  "local:lisboa_anavitoria": path.resolve(AUDIO_ROOT, "lisboa_anavitoria.m4a")
-});
+export const LOCAL_AUDIO_MAP: Readonly<Record<string, string>> = Object.freeze({});
 
 export function resolveSafeLocalAudioPath(localId: string): string | null {
   const cleanId = String(localId || "").trim();

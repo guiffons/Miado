@@ -1166,6 +1166,99 @@ input.ob-field-input:focus {
   box-shadow: none !important;
 }
 
+/* ==========================================================================
+   PC / Desktop Refinements:
+   1. Ocultar "Instalar App" no PC
+   2. Gatinho sem fundo preto, miudinho dentro do Liquid Glass no topo
+   3. Capa do player inferior 100% alinhada sem sobra escura
+   4. Menu de contexto (botão direito) e fila "A seguir" no padrão Liquid Glass
+   ========================================================================== */
+@media (min-width: 901px) {
+  .sidebar-pwa-install-wrap,
+  .pwa-install-discrete-btn,
+  .top-pwa-btn,
+  .pwa-floating-footer-tab,
+  #btn-top-pwa-install,
+  #mobile-pwa-floating-tab,
+  [data-pwa-install-btn] {
+    display: none !important;
+  }
+}
+
+.brand-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 2px 4px 10px 4px;
+  cursor: pointer;
+}
+
+.brand-glass-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.07) 0%, rgba(168, 85, 247, 0.06) 100%);
+  backdrop-filter: blur(22px) saturate(190%);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 8px 20px rgba(0, 0, 0, 0.28);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, background 0.2s ease;
+}
+
+.brand-header:hover .brand-glass-badge {
+  transform: translateY(-1px) scale(1.03);
+  border-color: rgba(192, 132, 252, 0.32);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.1) 0%, rgba(168, 85, 247, 0.12) 100%);
+}
+
+.brand-glass-badge .brand-logo-img {
+  width: 24px !important;
+  height: 24px !important;
+  object-fit: contain !important;
+  display: block !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.35));
+}
+
+.player-thumb-wrap {
+  width: 52px !important;
+  height: 52px !important;
+  min-width: 52px !important;
+  max-width: 52px !important;
+  min-height: 52px !important;
+  max-height: 52px !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+}
+
+#player-cover-img,
+.player-thumb-img {
+  width: 52px !important;
+  height: 52px !important;
+  min-width: 52px !important;
+  max-width: 52px !important;
+  min-height: 52px !important;
+  max-height: 52px !important;
+  border-radius: 10px !important;
+  object-fit: cover !important;
+  display: block !important;
+  margin: 0 !important;
+}
+
+
 
 
 

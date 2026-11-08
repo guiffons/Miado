@@ -11,8 +11,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="icon" type="image/jpeg" href="/app-logo.jpg?v=3" />
-  <link rel="apple-touch-icon" href="/app-logo.jpg?v=3" />
+  <link rel="icon" type="image/svg+xml" href="/app-logo.svg" />
+  <link rel="apple-touch-icon" href="/app-logo.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -38,7 +38,9 @@
     <aside class="sidebar sidebar-left">
       <!-- Marca Oficial do Miado em Liquid Glass Estilizado -->
       <div class="brand-header" id="btn-brand-home" title="Início">
-        <img src="/app-logo.jpg?v=3" alt="Logo" width="44" height="44" class="brand-logo-img" style="width:44px; height:44px; border-radius:12px; object-fit:cover; display:block; flex-shrink:0;" referrerpolicy="no-referrer" />
+        <div class="brand-glass-badge">
+          <img src="/app-logo.svg" alt="Logo" width="24" height="24" class="brand-logo-img" referrerpolicy="no-referrer" />
+        </div>
       </div>
 
       <!-- Links de Navegação -->
@@ -50,6 +52,10 @@
         <button class="nav-btn" id="nav-btn-search" data-view="search">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           Buscar
+        </button>
+        <button class="nav-btn" id="nav-btn-artists" data-view="artists">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+          Artistas
         </button>
         <button class="nav-btn" id="nav-btn-library" data-view="library">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg>
@@ -97,7 +103,7 @@
       <!-- Componente Discreto de Instalar App (PWA) no Menu Lateral -->
       <div class="sidebar-pwa-install-wrap">
         <button type="button" class="pwa-install-discrete-btn" data-pwa-install-btn onclick="window.triggerPwaInstall && window.triggerPwaInstall()" title="Instalar aplicativo ou adicionar à tela inicial">
-          <img src="/app-logo.jpg?v=3" alt="" width="20" height="20" class="pwa-install-mini-logo" style="width:20px; height:20px; min-width:20px; max-width:20px; min-height:20px; max-height:20px; border-radius:6px; object-fit:cover; flex-shrink:0;" referrerpolicy="no-referrer" />
+          <img src="/app-logo.svg" alt="" width="20" height="20" class="pwa-install-mini-logo" style="width:20px; height:20px; min-width:20px; max-width:20px; min-height:20px; max-height:20px; border-radius:6px; object-fit:contain; flex-shrink:0;" referrerpolicy="no-referrer" />
           <span class="pwa-install-title">Instalar App</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto; flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </button>
@@ -486,7 +492,7 @@
         <div class="miado-welcome-ring ring-outer"></div>
         <div class="miado-welcome-ring ring-inner"></div>
         <div class="miado-welcome-logo">
-          <img src="/app-logo.jpg?v=3" alt="Logo" style="width:100%; height:100%; object-fit:cover; border-radius:inherit;" referrerpolicy="no-referrer" />
+          <img src="/app-logo.svg" alt="Logo" style="width:100%; height:100%; object-fit:contain; border-radius:inherit;" referrerpolicy="no-referrer" />
         </div>
         <div class="miado-welcome-eq" aria-hidden="true">
           <span></span><span></span><span></span><span></span><span></span>
@@ -506,7 +512,9 @@
     <div class="modal-dialog" style="max-width:560px;">
       <div class="modal-header">
         <div class="modal-title" id="auth-modal-title" style="display:flex; align-items:center; gap:10px;">
-          <img src="/app-logo.jpg?v=3" alt="Logo" width="36" height="36" style="width:36px; height:36px; border-radius:10px; object-fit:cover; flex-shrink:0;" referrerpolicy="no-referrer" />
+          <div style="width:36px; height:36px; border-radius:11px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.14); display:flex; align-items:center; justify-content:center; flex-shrink:0; backdrop-filter:blur(16px);">
+            <img src="/app-logo.svg" alt="Logo" width="22" height="22" style="width:22px; height:22px; object-fit:contain; display:block;" referrerpolicy="no-referrer" />
+          </div>
           <span>Conta & Perfil</span>
         </div>
         <button class="track-icon-btn close-modal-btn" title="Fechar">
@@ -551,13 +559,15 @@
             </div>
           </div>
 
+          <div id="auth-saved-accounts-section" style="display:none; flex-direction:column; gap:8px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.09); border-radius:12px; padding:10px 12px;"></div>
+
           <div>
             <label style="font-size:0.76rem; font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px;">E-mail da Conta</label>
             <input type="email" id="auth-input-email" placeholder="seuemail@exemplo.com" style="width:100%;" autocomplete="email" />
           </div>
 
           <div>
-            <label style="font-size:0.76rem; font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px;">Senha (mín. 4 caracteres)</label>
+            <label id="auth-label-password" style="font-size:0.76rem; font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px;">Senha (mín. 6 caracteres, 1 maiúscula e 1 caractere especial)</label>
             <input type="password" id="auth-input-password" placeholder="••••••••" style="width:100%;" autocomplete="current-password" />
           </div>
 

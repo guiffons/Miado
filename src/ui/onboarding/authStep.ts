@@ -52,7 +52,7 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       "span",
       { class: "ob-brand-mark" },
       h("img", {
-        src: "/app-logo.jpg?v=3",
+        src: "/app-logo.svg",
         alt: "Logo",
         class: "ob-brand-logo-img",
         referrerpolicy: "no-referrer",
@@ -260,9 +260,12 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       passwordField.setError(OB_TEXT.errors.required);
       return;
     }
-    if (currentMode === "register" && password.length < 6) {
-      passwordField.setError("Minimo de 6 caracteres");
-      return;
+    if (currentMode === "register") {
+      const strength = evaluatePasswordStrength(password);
+      if (!strength.valid) {
+        passwordField.setError(OB_TEXT.errors.weakPassword);
+        return;
+      }
     }
 
     isSubmitting = true;
@@ -292,6 +295,23 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
               return;
             } catch {
               throw regErr;
+            }
+          }
+          if (!regCode.includes("weak-password") && !regCode.includes("invalid-email")) {
+            const backendReg = await syncBackendAuthSession("register", email, password, null);
+            if (backendReg && backendReg.ok) {
+              const fakeUser = {
+                uid: String(backendReg.account?.uid || backendReg.user?.uid || `usr_${Date.now()}`),
+                email,
+                displayName: String(backendReg.user?.name || email.split("@")[0]),
+                emailVerified: true,
+                photoURL: String(backendReg.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+                providerData: [],
+                getIdToken: async () => String(backendReg.token || ""),
+              } as unknown as User;
+              setButtonState("success");
+              opts.onAuthenticated(fakeUser, true);
+              return;
             }
           }
           throw regErr;

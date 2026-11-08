@@ -71,7 +71,7 @@ export const OB_TEXT = {
   errors: {
     invalidCredentials: "E-mail ou senha incorretos",
     emailInUse: "E-mail ja cadastrado",
-    weakPassword: "Minimo de 10 caracteres",
+    weakPassword: "Minimo de 6 caracteres, 1 maiuscula e 1 caractere especial",
     tooManyRequests: "Muitas tentativas. Tente mais tarde",
     networkError: "Sem conexao",
     generic: "Nao foi possivel concluir",
@@ -125,26 +125,28 @@ export function evaluatePasswordStrength(password: string): PasswordStrengthResu
   const pwd = String(password ?? "");
   if (!pwd) return { score: 0, valid: false };
 
-  let classes = 0;
-  if (/[a-z]/.test(pwd)) classes++;
-  if (/[A-Z]/.test(pwd)) classes++;
-  if (/[0-9]/.test(pwd)) classes++;
-  if (/[^a-zA-Z0-9]/.test(pwd)) classes++;
+  const hasLower = /[a-z]/.test(pwd);
+  const hasUpper = /[A-Z]/.test(pwd);
+  const hasDigit = /[0-9]/.test(pwd);
+  const hasSpecial = /[^a-zA-Z0-9]/.test(pwd);
 
-  const valid = pwd.length >= 10;
+  let classes = 0;
+  if (hasLower) classes++;
+  if (hasUpper) classes++;
+  if (hasDigit) classes++;
+  if (hasSpecial) classes++;
+
+  const valid = pwd.length >= 6 && hasUpper && hasSpecial;
   if (pwd.length < 6) {
     return { score: 1, valid: false };
   }
-  if (pwd.length < 10) {
-    return { score: classes >= 2 ? 2 : 1, valid: false };
+  if (!valid) {
+    return { score: 2, valid: false };
   }
-  if (pwd.length >= 14 && classes >= 3) {
+  if (pwd.length >= 10 && classes >= 3) {
     return { score: 4, valid: true };
   }
-  if (classes >= 2) {
-    return { score: 3, valid: true };
-  }
-  return { score: 2, valid: true };
+  return { score: 3, valid: true };
 }
 
 export function mapFirebaseError(err: unknown): string {

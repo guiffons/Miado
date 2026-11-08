@@ -98,8 +98,9 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
       }
       const data = await res.json();
       const rawItems: any[] = [
-        ...(Array.isArray(data?.trendingBrazil) ? data.trendingBrazil : []),
         ...(Array.isArray(data?.globalTop100) ? data.globalTop100 : []),
+        ...(Array.isArray(data?.topSongs) ? data.topSongs : []),
+        ...(Array.isArray(data?.trendingBrazil) ? data.trendingBrazil : []),
       ];
 
       const items: ShowcaseItem[] = [];
