@@ -1,5 +1,6 @@
 import path from "path";
 import { JsonStore } from "./jsonStore.ts";
+import { getDataDir } from "./dataDir.ts";
 import type { RealTimeChartsPayload } from "../charts.ts";
 
 export interface ChartsCacheRecord {
@@ -13,7 +14,7 @@ interface ChartsCacheFileSchema {
   entry: ChartsCacheRecord | null;
 }
 
-const CHARTS_CACHE_FILE = path.join(process.cwd(), "data", "charts-cache.json");
+const CHARTS_CACHE_FILE = path.join(getDataDir(), "charts-cache.json");
 export const CHARTS_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export const chartsStore = new JsonStore<ChartsCacheFileSchema>(CHARTS_CACHE_FILE, {

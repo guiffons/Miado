@@ -41,15 +41,20 @@ import {
 import { isSafeImageUrl } from "./src/server/schemas.ts";
 import { createPlaylistsRouter } from "./src/server/routes/playlists.ts";
 import { createGlassPlaceholderSvg } from "./src/shared/placeholder.ts";
+import { getDataDir } from "./src/server/storage/dataDir.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.join(__dirname, "data");
+const DATA_DIR = getDataDir();
 const DB_FILE = path.join(DATA_DIR, "miado-db.json");
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn("Aviso ao criar DATA_DIR:", e);
 }
 
 const SESSION_SECRET =
@@ -4916,8 +4921,9 @@ export async function createMiadoApp() {
   return app;
 }
 
+const app = await createMiadoApp();
+
 async function startServer() {
-  const app = await createMiadoApp();
   const PORT = appConfig.PORT;
 
   if (process.env.NODE_ENV !== "production") {
@@ -4946,6 +4952,8 @@ async function startServer() {
   });
 }
 
-if (process.env.NODE_ENV !== "test") {
+if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
   startServer();
 }
+
+export default app;

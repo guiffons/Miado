@@ -2,6 +2,7 @@ import path from "path";
 import { JsonStore } from "./jsonStore.ts";
 import { TtlLruCache } from "./ttlLruCache.ts";
 import { isForbidden30sPreviewUrl } from "../catalog.ts";
+import { getDataDir } from "./dataDir.ts";
 
 export interface StreamCacheEntry {
   url: string;
@@ -17,7 +18,7 @@ interface StreamCacheFileSchema {
   entries: Record<string, StreamCacheEntry>;
 }
 
-const STREAM_CACHE_FILE = path.join(process.cwd(), "data", "resolved-streams-cache.json");
+const STREAM_CACHE_FILE = path.join(getDataDir(), "resolved-streams-cache.json");
 
 export function computeStreamExpiryMs(rawUrl: string): number {
   const now = Date.now();

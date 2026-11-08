@@ -6582,10 +6582,18 @@ export function initMiadoClient() {
           viewport.classList.remove("view-transitioning");
           void viewport.offsetWidth;
           viewport.classList.add("view-transitioning");
+          const scrollContent = viewport.querySelector(".view-scroll-content");
+          if (scrollContent) {
+            const onEnd = () => {
+              scrollContent.removeEventListener("animationend", onEnd);
+              viewport.classList.remove("view-transitioning");
+            };
+            scrollContent.addEventListener("animationend", onEnd, { once: true });
+          }
           if (this._springTransitionTimer) clearTimeout(this._springTransitionTimer);
           this._springTransitionTimer = setTimeout(() => {
             viewport.classList.remove("view-transitioning");
-          }, 540);
+          }, 360);
         }
 
         navigateTo(viewName, pushHistory = true, params = {}) {

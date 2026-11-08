@@ -499,7 +499,7 @@
     }
 
     .main-viewport.view-transitioning .view-scroll-content {
-      animation: miadoSpringViewEnter 0.34s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation: miadoSpringViewEnter 0.34s cubic-bezier(0.22, 1, 0.36, 1) backwards;
     }
 
     /* ==========================================================================
@@ -3032,6 +3032,7 @@
 
       .artist-bubbles-grid {
         overflow-x: auto !important;
+        overflow-y: hidden !important;
         overscroll-behavior-x: contain !important;
         scroll-snap-type: x proximity !important;
         -webkit-overflow-scrolling: touch !important;
@@ -3041,6 +3042,8 @@
         display: none !important;
       }
       .artist-bubble-card {
+        flex: 0 0 132px !important;
+        aspect-ratio: 1 !important;
         padding: 4px 2px !important;
         display: flex !important;
         flex-direction: column !important;
@@ -3186,6 +3189,12 @@
         transform: translateZ(0);
         will-change: transform, backdrop-filter;
       }
+      .mobile-floating-player .mobile-floating-player-controls {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex: 0 0 auto !important;
+      }
       .mobile-mini-progress-track {
         position: absolute;
         left: 12px;
@@ -3218,11 +3227,11 @@
         opacity: 1 !important;
       }
       .mobile-track-text {
-        flex: 1;
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
         padding: 0 10px;
         overflow: hidden;
         cursor: pointer;
-        min-width: 0;
         filter: none !important;
         -webkit-filter: none !important;
       }
