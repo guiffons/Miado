@@ -1,8 +1,6 @@
-const CACHE_NAME = "miado-v1";
+const CACHE_NAME = "miado-v3";
 const ASSETS_TO_CACHE = [
-  "/",
-  "/index.html",
-  "/app-logo.jpg",
+  "/app-logo.svg",
   "/manifest.webmanifest"
 ];
 
@@ -17,36 +15,65 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
+    (async () => {
+      const keys = await caches.keys();
+      const hadOldCache = keys.some((key) => key !== CACHE_NAME);
+      await Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
             return caches.delete(key);
           }
         })
       );
-    })
+      await self.clients.claim();
+      if (hadOldCache) {
+        const windowClients = await self.clients.matchAll({ type: "window" });
+        for (const client of windowClients) {
+          try {
+            client.navigate(client.url);
+          } catch {}
+        }
+      }
+    })()
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
 
-  // Let API and streaming calls go straight to network
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/stream")) {
+  // Let API, streaming, and hashed Vite assets go straight to network
+  if (
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/stream") ||
+    url.pathname.startsWith("/assets/")
+  ) {
+    return;
+  }
+
+  // Network-first for HTML navigations so new deployments never serve stale index.html
+  const isHtmlNavigation =
+    event.request.mode === "navigate" ||
+    url.pathname === "/" ||
+    url.pathname === "/index.html" ||
+    (event.request.headers.get("accept") || "").includes("text/html");
+
+  if (isHtmlNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          if (res && res.ok) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(event.request).then((c) => c || caches.match("/index.html")))
+    );
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
-      return fetch(event.request).catch(() => {
-        if (event.request.headers.get("accept")?.includes("text/html")) {
-          return caches.match("/index.html");
-        }
-      });
-    })
+    fetch(event.request).catch(() => caches.match(event.request))
   );
 });
