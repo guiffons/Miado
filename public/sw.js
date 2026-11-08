@@ -7,7 +7,7 @@ const ASSETS_TO_CACHE = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch(() => {});
+      return cache.addAll(ASSETS_TO_CACHE).catch(() => { });
     })
   );
   self.skipWaiting();
@@ -31,7 +31,7 @@ self.addEventListener("activate", (event) => {
         for (const client of windowClients) {
           try {
             client.navigate(client.url);
-          } catch {}
+          } catch { }
         }
       }
     })()
@@ -64,7 +64,7 @@ self.addEventListener("fetch", (event) => {
         .then((res) => {
           if (res && res.ok) {
             const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone)).catch(() => {});
+            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone)).catch(() => { });
           }
           return res;
         })
