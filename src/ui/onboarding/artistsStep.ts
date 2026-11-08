@@ -136,6 +136,13 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
     OB_TEXT.artists.title
   );
 
+  const isCollabName = (s: string) =>
+    /\b(feat\.?|ft\.?|featuring|with|part\.?)\b/i.test(s) ||
+    ((/\s&\s/.test(s) || s.includes(",")) &&
+      !/^(tyler, the creator|simon & garfunkel|earth, wind & fire|florence \+ the machine|tasha & tracie|sandy & junior|jorge & mateus|henrique & juliano|matheus & kauan)$/i.test(
+        s.trim()
+      ));
+
   const searchField = createField({
     id: "ob-artists-search",
     label: OB_TEXT.artists.searchPlaceholder,
@@ -160,35 +167,32 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
           const data = await res.json();
           const found: OnboardingArtistItem[] = [];
           const seen = new Set<string>();
-           const isCollabName = (s: string) =>
-             /\b(feat\.?|ft\.?|featuring|with)\b/i.test(s) ||
-             (/\s&\s/.test(s) && !/^(simon & garfunkel|earth, wind & fire|florence \+ the machine|tasha & tracie|sandy & junior|jorge & mateus|henrique & juliano|matheus & kauan)$/i.test(s.trim()));
-           if (Array.isArray(data?.artists)) {
-             for (const a of data.artists) {
-               if (!a || !a.name || isCollabName(String(a.name))) continue;
-               const k = String(a.name).toLowerCase().trim();
-               if (seen.has(k)) continue;
-               seen.add(k);
-               found.push({
-                 name: String(a.name),
-                 genre: a.genre || "Pop",
-                 coverUrl: a.coverUrl || `/api/artist-image?name=${encodeURIComponent(a.name)}`,
-               });
-             }
-           }
-           if (Array.isArray(data?.albums)) {
-             for (const alb of data.albums) {
-               if (!alb || !alb.artist || isCollabName(String(alb.artist))) continue;
-               const k = String(alb.artist).toLowerCase().trim();
-               if (seen.has(k)) continue;
-               seen.add(k);
-               found.push({
-                 name: String(alb.artist),
-                 genre: "Pop",
-                 coverUrl: `/api/artist-image?name=${encodeURIComponent(alb.artist)}`,
-               });
-             }
-           }
+          if (Array.isArray(data?.artists)) {
+            for (const a of data.artists) {
+              if (!a || !a.name || isCollabName(String(a.name))) continue;
+              const k = String(a.name).toLowerCase().trim();
+              if (seen.has(k)) continue;
+              seen.add(k);
+              found.push({
+                name: String(a.name),
+                genre: a.genre || "Pop",
+                coverUrl: a.coverUrl || `/api/artist-image?name=${encodeURIComponent(a.name)}`,
+              });
+            }
+          }
+          if (Array.isArray(data?.albums)) {
+            for (const alb of data.albums) {
+              if (!alb || !alb.artist || isCollabName(String(alb.artist))) continue;
+              const k = String(alb.artist).toLowerCase().trim();
+              if (seen.has(k)) continue;
+              seen.add(k);
+              found.push({
+                name: String(alb.artist),
+                genre: "Pop",
+                coverUrl: `/api/artist-image?name=${encodeURIComponent(alb.artist)}`,
+              });
+            }
+          }
           searchResultsPool = found;
           renderGrid();
         } catch {}
@@ -234,7 +238,7 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
           const data = await res.json();
           const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
           for (const tr of tracks) {
-            if (!tr || !tr.artist) continue;
+            if (!tr || !tr.artist || isCollabName(String(tr.artist))) continue;
             const k = String(tr.artist).toLowerCase().trim();
             if (seen.has(k)) continue;
             seen.add(k);
@@ -492,7 +496,7 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
         const topArtists = Array.isArray(data?.top100Artists) ? data.top100Artists : [];
         const existingKeys = new Set(catalogPool.map((a) => a.name.toLowerCase().trim()));
         for (const a of topArtists) {
-          if (!a || !a.name) continue;
+          if (!a || !a.name || isCollabName(String(a.name))) continue;
           const k = String(a.name).toLowerCase().trim();
           if (existingKeys.has(k)) continue;
           existingKeys.add(k);
@@ -527,7 +531,7 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
           const atMax = selectedMap.size >= 60;
 
           for (const a of moreArtists) {
-            if (!a || !a.name) continue;
+            if (!a || !a.name || isCollabName(String(a.name))) continue;
             const k = String(a.name).toLowerCase().trim();
             if (existingKeys.has(k)) continue;
             existingKeys.add(k);
