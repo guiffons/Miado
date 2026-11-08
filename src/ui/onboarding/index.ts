@@ -73,6 +73,9 @@ export function mountOnboarding(
     isExplicitLogin = false
   ): Promise<{ step: OnboardingStep; existingHandle?: string }> => {
     if (!user) return { step: "auth" };
+    if (!isExplicitLogin && localStorage.getItem("miado_active_session_v1") !== "true") {
+      return { step: "auth" };
+    }
     try {
       const [userSnap, profileSnap] = await Promise.all([
         getDoc(doc(db, "users", user.uid)).catch(() => null),
@@ -82,6 +85,20 @@ export function mountOnboarding(
       const profileData = profileSnap && profileSnap.exists() ? profileSnap.data() : null;
 
       const w = window as any;
+      if (
+        (userData || profileData) &&
+        w.miadoState &&
+        typeof w.miadoState.hydrateFromFirestore === "function"
+      ) {
+        try {
+          w.miadoState.hydrateFromFirestore({
+            ...(profileData || {}),
+            ...(userData || {}),
+            uid: user.uid,
+            email: user.email || userData?.email || profileData?.email || "",
+          });
+        } catch {}
+      }
       const stateUser = w.miadoState?.user;
       const stateHasEmail = Boolean(
         stateUser?.email &&

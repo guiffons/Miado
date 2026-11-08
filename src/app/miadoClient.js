@@ -501,6 +501,27 @@ export function initMiadoClient() {
         return [];
       }
 
+      function normalizeTextKey(str = "") {
+        return String(str || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9\s]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function normalizeSongTitleKey(title = "") {
+        return String(title || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s*\((?:feat\.?|ft\.?|with|deluxe|remaster|bonus|version|live|radio edit|explicit|clean|single|ep)[^)]*\)/gi, "")
+          .replace(/\s*\[[^\]]*\]/g, "")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+      }
+
       // Remove músicas repetidas normalizando título (sem sufixos de versão/parênteses duplicados) + artista
       function normalizeTrackKey(titleOrTrack, artist = "") {
         let rawTitle = titleOrTrack;
@@ -4940,11 +4961,15 @@ export function initMiadoClient() {
           this.renderRightSidebar();
           this.setupSpotifyContextMenu();
           this.closeAllModals();
-          this.setupUrlRouting();
 
-          // Exibe a Tela de Boas-Vindas (#miado-welcome-screen) bloqueando o acesso até clicar em 'Criar Conta', 'Entrar' ou 'Continuar como Visitante'.
-          // Persiste ao dar F5 (refresh) até que uma sessão real autenticada esteja ativa!
+          // Garante que usuários sem login ativo sempre entrem na Tela de Boas-Vindas moderna (sem modo visitante)
           this.enforceWelcomeScreenGate();
+
+          try {
+            this.setupUrlRouting();
+          } catch (routeErr) {
+            console.error("[Miado] Erro ao inicializar rota:", routeErr);
+          }
         }
 
         hasActiveAuthenticatedSession() {
@@ -6658,14 +6683,10 @@ export function initMiadoClient() {
             });
           }
           if (btnWelcomeGuest) {
+            btnWelcomeGuest.style.display = "none";
             btnWelcomeGuest.addEventListener("click", () => {
-              window._miadoGuestSessionActive = true;
-              state.user.name = "Visitante";
-              state.user.username = "@visitante";
-              state.user.email = "";
-              this.syncHeaderUserUI();
               this.dismissWelcomeScreenAnimated(() => {
-                if (state.currentView === "home") this.renderHomeView();
+                this.openAuthModal("login", 1);
               });
             });
           }

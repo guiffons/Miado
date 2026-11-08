@@ -110,23 +110,9 @@
 /* Palco Atmosférico (3 luzes + granulação sutil)                             */
 /* -------------------------------------------------------------------------- */
 
-.ob-ambient-stage {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-}
-
+.ob-ambient-stage,
 .ob-light {
-  position: absolute;
-  width: 68vmax;
-  height: 68vmax;
-  border-radius: 50%;
-  filter: blur(110px);
-  opacity: 0.42;
-  will-change: transform, opacity;
-  transition: opacity 400ms var(--ease-out);
+  display: none !important;
 }
 
 .ob-root.is-exiting .ob-light {
@@ -225,17 +211,17 @@
 .ob-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .ob-brand-mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.055);
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.065);
   backdrop-filter: blur(22px) saturate(185%);
   -webkit-backdrop-filter: blur(22px) saturate(185%);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   display: inline-flex;
   align-items: center;
@@ -246,8 +232,8 @@
 }
 
 .ob-brand-logo-img {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
   display: block;
 }
@@ -257,7 +243,12 @@
 }
 
 .ob-brand-text {
-  display: none !important;
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
 }
 
 .ob-step-title {
@@ -884,52 +875,36 @@ input.ob-field-input:focus {
   display: grid;
   grid-template-columns: repeat(3, 188px);
   gap: 18px;
-  will-change: transform;
 }
 
 .ob-wall-col {
   height: 100dvh;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  padding: 28px 4px 100px;
+}
+
+.ob-wall-col::-webkit-scrollbar {
+  display: none;
 }
 
 .ob-wall-col-track {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  will-change: transform;
 }
 
-.ob-wall-col-1 {
-  animation: ob-wall-scroll-up 90s linear infinite;
-}
-
-.ob-wall-col-2 {
-  animation: ob-wall-scroll-down 110s linear infinite;
-}
-
+.ob-wall-col-1,
+.ob-wall-col-2,
 .ob-wall-col-3 {
-  animation: ob-wall-scroll-up 130s linear infinite;
-}
-
-@keyframes ob-wall-scroll-up {
-  0% {
-    transform: translate3d(0, 0, 0);
-  }
-  100% {
-    transform: translate3d(0, -50%, 0);
-  }
-}
-
-@keyframes ob-wall-scroll-down {
-  0% {
-    transform: translate3d(0, -50%, 0);
-  }
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
+  animation: none !important;
 }
 
 .ob-wall-tile {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0;
   position: relative;
   width: 188px;
   height: 188px;
@@ -937,17 +912,26 @@ input.ob-field-input:focus {
   overflow: hidden;
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  opacity: 0.62;
+  opacity: 0.78;
+  cursor: pointer;
+  text-align: left;
   transition:
-    transform 520ms var(--ease-out),
-    opacity 520ms var(--ease-out),
-    border-color 520ms var(--ease-out);
+    transform 240ms var(--ease-out),
+    opacity 240ms var(--ease-out),
+    border-color 240ms var(--ease-out);
 }
 
-.ob-wall-tile.is-focused {
+.ob-wall-tile:hover {
   opacity: 1;
-  transform: scale(1.04);
+  transform: translateY(-2px) scale(1.02);
   border-color: var(--glass-border-strong);
+}
+
+.ob-wall-tile.is-focused,
+.ob-wall-tile.is-playing {
+  opacity: 1;
+  transform: scale(1.03);
+  border-color: rgba(255, 255, 255, 0.38);
 }
 
 .ob-wall-cover-img {
@@ -955,6 +939,42 @@ input.ob-field-input:focus {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.ob-wall-tile-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 24px 10px 10px;
+  background: linear-gradient(180deg, transparent 0%, rgba(7, 7, 11, 0.88) 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 200ms var(--ease-out);
+  pointer-events: none;
+}
+
+.ob-wall-tile:hover .ob-wall-tile-overlay,
+.ob-wall-tile.is-focused .ob-wall-tile-overlay,
+.ob-wall-tile.is-playing .ob-wall-tile-overlay {
+  opacity: 1;
+}
+
+.ob-wall-tile-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ob-wall-tile-artist {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ob-wall-caption {
@@ -973,6 +993,7 @@ input.ob-field-input:focus {
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   font-size: 0.84rem;
+  cursor: pointer;
 }
 
 .ob-wall-caption-title {
@@ -982,6 +1003,13 @@ input.ob-field-input:focus {
 
 .ob-wall-caption-artist {
   color: var(--text-secondary);
+}
+
+.ob-wall-caption-status {
+  font-size: 0.74rem;
+  color: var(--text-tertiary);
+  padding-left: 8px;
+  border-left: 1px solid var(--glass-border);
 }
 
 /* -------------------------------------------------------------------------- */

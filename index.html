@@ -160,8 +160,8 @@
           <div class="user-pill-top" id="btn-user-profile" title="Meu Perfil">
             <img id="top-user-avatar" class="user-pill-avatar" src="" alt="Foto de Perfil" referrerpolicy="no-referrer" />
             <div class="user-pill-info-text">
-              <div class="user-pill-name" id="top-user-name">Visitante</div>
-              <div class="user-pill-handle" id="top-user-handle">@novo_usuario</div>
+              <div class="user-pill-name" id="top-user-name">Minha Conta</div>
+              <div class="user-pill-handle" id="top-user-handle"></div>
             </div>
           </div>
         </div>
@@ -497,30 +497,12 @@
     </div>
   </div>
 
-  <!-- TELA DE BOAS-VINDAS EM TELA CHEIA (LIQUID GLASS COM ANIMAÇÃO DE INÍCIO) -->
-  <div class="miado-welcome-overlay active" id="miado-welcome-screen">
-    <div class="miado-welcome-bg-stage" aria-hidden="true">
-      <div class="miado-welcome-orb orb-1"></div>
-      <div class="miado-welcome-orb orb-2"></div>
-      <div class="miado-welcome-orb orb-3"></div>
-      <div class="miado-welcome-grid-glow"></div>
-    </div>
+  <!-- TELA DE BOAS-VINDAS LEGADA OCULTA (SUBSTITUÍDA PELA TELA DE BOAS-VINDAS MODERNA SEM VISITANTE) -->
+  <div class="miado-welcome-overlay" id="miado-welcome-screen" style="display:none !important;" aria-hidden="true">
     <div class="miado-welcome-card">
-      <div class="miado-welcome-emblem-stage">
-        <div class="miado-welcome-ring ring-outer"></div>
-        <div class="miado-welcome-ring ring-inner"></div>
-        <div class="miado-welcome-logo">
-          <img src="/app-logo.svg" alt="Logo" style="width:100%; height:100%; object-fit:contain; border-radius:inherit;" referrerpolicy="no-referrer" />
-        </div>
-        <div class="miado-welcome-eq" aria-hidden="true">
-          <span></span><span></span><span></span><span></span><span></span>
-        </div>
-      </div>
-      <p class="miado-welcome-subtitle">Sua música completa, sem cortes e personalizada para o seu gosto.</p>
       <div class="miado-welcome-actions">
         <button type="button" class="miado-welcome-btn-primary" id="btn-welcome-register">Criar Conta</button>
         <button type="button" class="miado-welcome-btn-secondary" id="btn-welcome-login">Entrar</button>
-        <button type="button" class="miado-welcome-btn-guest" id="btn-welcome-guest">Continuar como Visitante</button>
       </div>
     </div>
   </div>
