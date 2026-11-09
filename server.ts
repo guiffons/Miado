@@ -9,6 +9,7 @@ import { decryptSaavnMediaUrl as decryptSaavnPure } from "./src/server/des.ts";
 import {
   buildCanonicalDedupKey,
   isCanonicalStudioTrack,
+  isLiveAcousticCatalogArtist,
   isForbidden30sPreviewUrl,
   extractAllArtistNames
 } from "./src/server/catalog.ts";
@@ -332,12 +333,21 @@ function normalizeStr(s: string): string {
     .trim();
 }
 
+function decodeHtmlEntities(s: string): string {
+  return String(s || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
 function normalizeSongTitleKey(title: string): string {
-  const cleaned = String(title || "")
+  const cleaned = decodeHtmlEntities(String(title || ""))
     .replace(/['’‘`´]/g, "'")
-    .replace(/\([^)]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with)\b[^)]*\)/gi, "")
-    .replace(/\[[^\]]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with)\b[^\]]*\]/gi, "")
-    .replace(/\s*-\s*(?:\d{4}\s+)?(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition).*$/gi, "");
+    .replace(/\([^)]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with|ao\s*vivo|ac[uú]stico|acoustic|live)\b[^)]*\)/gi, "")
+    .replace(/\[[^\]]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with|ao\s*vivo|ac[uú]stico|acoustic|live)\b[^\]]*\]/gi, "")
+    .replace(/\s*-\s*(?:\d{4}\s+)?(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|ao\s*vivo|ac[uú]stico|live).*$/gi, "");
   return normalizeStr(cleaned) || normalizeStr(title);
 }
 
@@ -533,6 +543,14 @@ const NON_ORIGINAL_PATTERNS = [
   /\b(?:rework|bootleg|mashup|karaok[eê]|tribute\s+to|originally\s+performed|in\s+the\s+style\s+of|sped\s*up|speed\s*up|slowed|nightcore|8d\s+audio|acapella)\b/i
 ];
 
+const NON_ORIGINAL_PATTERNS_LIVE_CATALOG = [
+  /\bsuperturn[eê]\b/i,
+  /\((?:[^)]*\b(?:remix|cover|karaoke|instrumental|sped up|slowed|reverb|nightcore|club mix|extended mix|vip mix|piano version|lofi|demo|superturne)\b[^)]*)\)/i,
+  /\[(?:[^\]]*\b(?:remix|cover|karaoke|instrumental|sped up|slowed|reverb|nightcore|club mix|extended mix|vip mix|piano version|lofi|demo|superturne)\b[^\]]*)\]/i,
+  /\s-\s(?:[^-]*\b(?:remix|cover|karaoke|instrumental|sped up|slowed|reverb|nightcore|superturne)\b)/i,
+  /\b(?:rework|bootleg|mashup|karaok[eê]|tribute\s+to|originally\s+performed|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|sped\s*up|speed\s*up|slowed|nightcore|8d\s+audio|acapella)\b/i
+];
+
 export function parseDurationToSeconds(dur: unknown): number {
   if (typeof dur === "number" && isFinite(dur)) {
     return dur > 10000 ? Math.round(dur / 1000) : Math.round(dur);
@@ -553,9 +571,9 @@ export function parseDurationToSeconds(dur: unknown): number {
 }
 
 export function isOriginalStudioTrack(title: string, artist = "", albumTitle = "", durationInput?: unknown): boolean {
-  const t = String(title || "").trim();
-  const a = String(artist || "").trim();
-  const alb = String(albumTitle || "").trim();
+  const t = decodeHtmlEntities(String(title || "")).trim();
+  const a = decodeHtmlEntities(String(artist || "")).trim();
+  const alb = decodeHtmlEntities(String(albumTitle || "")).trim();
   if (!t) return false;
 
   const sec = durationInput !== undefined && durationInput !== null && durationInput !== ""
@@ -567,7 +585,12 @@ export function isOriginalStudioTrack(title: string, artist = "", albumTitle = "
     return false;
   }
 
-  for (const pat of NON_ORIGINAL_PATTERNS) {
+  const patterns =
+    isLiveAcousticCatalogArtist(a) || isLiveAcousticCatalogArtist(alb)
+      ? NON_ORIGINAL_PATTERNS_LIVE_CATALOG
+      : NON_ORIGINAL_PATTERNS;
+
+  for (const pat of patterns) {
     if (pat.test(t) || pat.test(alb)) return false;
   }
   return true;
@@ -627,8 +650,27 @@ const KNOWN_COMPOUND_ARTIST_NAMES: Record<string, string> = {
   "zé neto & cristiano": "Zé Neto & Cristiano",
   "ze neto & cristiano": "Zé Neto & Cristiano",
   "maiara & maraisa": "Maiara & Maraisa",
+  "maiara e maraisa": "Maiara & Maraisa",
   "simone & simaria": "Simone & Simaria",
-  "bruno & marrone": "Bruno & Marrone"
+  "simone e simaria": "Simone & Simaria",
+  "bruno & marrone": "Bruno & Marrone",
+  "bruno e marrone": "Bruno & Marrone",
+  "bruno and marrone": "Bruno & Marrone",
+  "bruno & morrene": "Bruno & Marrone",
+  "bruno e morrene": "Bruno & Marrone",
+  "bruno morrene": "Bruno & Marrone",
+  "jorge e mateus": "Jorge & Mateus",
+  "henrique e juliano": "Henrique & Juliano",
+  "matheus e kauan": "Matheus & Kauan",
+  "ze neto e cristiano": "Zé Neto & Cristiano",
+  "zé neto e cristiano": "Zé Neto & Cristiano",
+  "zeze di camargo e luciano": "Zezé Di Camargo & Luciano",
+  "zezé di camargo e luciano": "Zezé Di Camargo & Luciano",
+  "chitaozinho e xororo": "Chitãozinho & Xororó",
+  "chitãozinho e xororó": "Chitãozinho & Xororó",
+  "victor & leo": "Victor & Leo",
+  "victor e leo": "Victor & Leo",
+  "sandy e junior": "Sandy & Junior"
 };
 
 function splitCollaboratingArtists(rawArtist: string): string[] {
@@ -709,8 +751,106 @@ const ARTIST_ALIASES: Record<string, string[]> = {
   "jão": ["jao", "jão"],
   "anavitoria": ["anavitoria", "anavitória", "ana vitoria", "ana vitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"],
   "anavitória": ["anavitoria", "anavitória", "ana vitoria", "ana vitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"],
-  "ana vitoria": ["anavitoria", "anavitória", "ana vitoria", "ana vitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"]
+  "ana vitoria": ["anavitoria", "anavitória", "ana vitoria", "ana vitória", "anavitoria e lenine", "anavitoria lenine", "anavitoria & lenine"],
+  "bruno marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "bruno e marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "bruno and marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "bruno morrene": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "bruno e morrene": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "jorge mateus": ["jorge mateus", "jorge e mateus"],
+  "jorge e mateus": ["jorge mateus", "jorge e mateus"],
+  "henrique juliano": ["henrique juliano", "henrique e juliano"],
+  "henrique e juliano": ["henrique juliano", "henrique e juliano"],
+  "zeze di camargo luciano": ["zeze di camargo luciano", "zeze di camargo e luciano"],
+  "zeze di camargo e luciano": ["zeze di camargo luciano", "zeze di camargo e luciano"],
+  "chitaozinho xororo": ["chitaozinho xororo", "chitaozinho e xororo"],
+  "chitaozinho e xororo": ["chitaozinho xororo", "chitaozinho e xororo"],
+  "maiara maraisa": ["maiara maraisa", "maiara e maraisa"],
+  "maiara e maraisa": ["maiara maraisa", "maiara e maraisa"],
+  "ze neto cristiano": ["ze neto cristiano", "ze neto e cristiano"],
+  "ze neto e cristiano": ["ze neto cristiano", "ze neto e cristiano"],
+  "matheus kauan": ["matheus kauan", "matheus e kauan"],
+  "matheus e kauan": ["matheus kauan", "matheus e kauan"],
+  "simone simaria": ["simone simaria", "simone e simaria"],
+  "simone e simaria": ["simone simaria", "simone e simaria"],
+  "victor leo": ["victor leo", "victor e leo"],
+  "victor e leo": ["victor leo", "victor e leo"]
 };
+
+interface CanonicalArtistIdentity {
+  canonicalName: string;
+  deezerId: number;
+  itunesId: number;
+}
+
+const CANONICAL_ARTIST_IDS: Record<string, CanonicalArtistIdentity> = {
+  "bruno marrone": { canonicalName: "Bruno & Marrone", deezerId: 15055, itunesId: 110028416 },
+  "bruno e marrone": { canonicalName: "Bruno & Marrone", deezerId: 15055, itunesId: 110028416 },
+  "bruno and marrone": { canonicalName: "Bruno & Marrone", deezerId: 15055, itunesId: 110028416 },
+  "bruno morrene": { canonicalName: "Bruno & Marrone", deezerId: 15055, itunesId: 110028416 },
+  "bruno e morrene": { canonicalName: "Bruno & Marrone", deezerId: 15055, itunesId: 110028416 },
+  "jorge mateus": { canonicalName: "Jorge & Mateus", deezerId: 3881631, itunesId: 503554352 },
+  "jorge e mateus": { canonicalName: "Jorge & Mateus", deezerId: 3881631, itunesId: 503554352 },
+  "henrique juliano": { canonicalName: "Henrique & Juliano", deezerId: 4876653, itunesId: 589477027 },
+  "henrique e juliano": { canonicalName: "Henrique & Juliano", deezerId: 4876653, itunesId: 589477027 },
+  "marilia mendonca": { canonicalName: "Marília Mendonça", deezerId: 7068771, itunesId: 723844870 },
+  "zeze di camargo luciano": { canonicalName: "Zezé Di Camargo & Luciano", deezerId: 269973, itunesId: 110027813 },
+  "zeze di camargo e luciano": { canonicalName: "Zezé Di Camargo & Luciano", deezerId: 269973, itunesId: 110027813 },
+  "chitaozinho xororo": { canonicalName: "Chitãozinho & Xororó", deezerId: 15355, itunesId: 420215463 },
+  "chitaozinho e xororo": { canonicalName: "Chitãozinho & Xororó", deezerId: 15355, itunesId: 420215463 },
+  "gusttavo lima": { canonicalName: "Gusttavo Lima", deezerId: 1541592, itunesId: 444579807 },
+  "maiara maraisa": { canonicalName: "Maiara & Maraisa", deezerId: 6511779, itunesId: 913263579 },
+  "maiara e maraisa": { canonicalName: "Maiara & Maraisa", deezerId: 6511779, itunesId: 913263579 },
+  "ze neto cristiano": { canonicalName: "Zé Neto & Cristiano", deezerId: 5895828, itunesId: 883302536 },
+  "ze neto e cristiano": { canonicalName: "Zé Neto & Cristiano", deezerId: 5895828, itunesId: 883302536 },
+  "matheus kauan": { canonicalName: "Matheus & Kauan", deezerId: 3120261, itunesId: 503248802 },
+  "matheus e kauan": { canonicalName: "Matheus & Kauan", deezerId: 3120261, itunesId: 503248802 },
+  "luan santana": { canonicalName: "Luan Santana", deezerId: 1264078, itunesId: 368841405 },
+  "victor leo": { canonicalName: "Victor & Leo", deezerId: 320206, itunesId: 269254316 },
+  "victor e leo": { canonicalName: "Victor & Leo", deezerId: 320206, itunesId: 269254316 },
+  "simone simaria": { canonicalName: "Simone & Simaria", deezerId: 4542250, itunesId: 571436781 },
+  "simone e simaria": { canonicalName: "Simone & Simaria", deezerId: 4542250, itunesId: 571436781 },
+  "ana castela": { canonicalName: "Ana Castela", deezerId: 123053672, itunesId: 1552711610 },
+  "simone mendes": { canonicalName: "Simone Mendes", deezerId: 73171372, itunesId: 1478672406 },
+  "mitski": { canonicalName: "Mitski", deezerId: 6630050, itunesId: 497546276 },
+  "yung lixo": { canonicalName: "YUNG LIXO", deezerId: 14484069, itunesId: 1195821639 },
+  "yun li": { canonicalName: "YUNG LIXO", deezerId: 14484069, itunesId: 1195821639 },
+  "gemaplys": { canonicalName: "YUNG LIXO", deezerId: 14484069, itunesId: 1195821639 },
+  "victor gemaplys": { canonicalName: "YUNG LIXO", deezerId: 14484069, itunesId: 1195821639 },
+  "mc vv": { canonicalName: "YUNG LIXO", deezerId: 14484069, itunesId: 1195821639 },
+  "jao": { canonicalName: "Jão", deezerId: 12604203, itunesId: 1198758946 },
+  "the weeknd": { canonicalName: "The Weeknd", deezerId: 4050205, itunesId: 479756766 },
+  "lady gaga": { canonicalName: "Lady Gaga", deezerId: 75491, itunesId: 277293880 },
+  "billie eilish": { canonicalName: "Billie Eilish", deezerId: 9635624, itunesId: 1065981054 },
+  "sabrina carpenter": { canonicalName: "Sabrina Carpenter", deezerId: 1176900, itunesId: 390647681 },
+  "bruno mars": { canonicalName: "Bruno Mars", deezerId: 429675, itunesId: 278873078 },
+  "lana del rey": { canonicalName: "Lana Del Rey", deezerId: 1424821, itunesId: 464296584 },
+  "taylor swift": { canonicalName: "Taylor Swift", deezerId: 12246, itunesId: 159260351 },
+  "ariana grande": { canonicalName: "Ariana Grande", deezerId: 1562681, itunesId: 412778295 },
+  "kanye west": { canonicalName: "Kanye West", deezerId: 230, itunesId: 2715720 },
+  "kendrick lamar": { canonicalName: "Kendrick Lamar", deezerId: 525046, itunesId: 368183298 },
+  "sza": { canonicalName: "SZA", deezerId: 5531258, itunesId: 605800394 },
+  "linkin park": { canonicalName: "Linkin Park", deezerId: 92, itunesId: 148662 },
+  "queen": { canonicalName: "Queen", deezerId: 412, itunesId: 3296287 },
+  "arctic monkeys": { canonicalName: "Arctic Monkeys", deezerId: 1182, itunesId: 62820413 },
+  "anitta": { canonicalName: "Anitta", deezerId: 4390053, itunesId: 597214610 },
+  "charlie brown jr": { canonicalName: "Charlie Brown Jr.", deezerId: 8691, itunesId: 92451897 },
+  "djavan": { canonicalName: "Djavan", deezerId: 14687, itunesId: 10416 },
+  "tim maia": { canonicalName: "Tim Maia", deezerId: 13704, itunesId: 6931042 },
+  "racionais mcs": { canonicalName: "Racionais MC's", deezerId: 4488457, itunesId: 166243883 }
+};
+
+function getCanonicalArtistIdentity(rawName: string): CanonicalArtistIdentity | null {
+  const nfcLower = String(rawName || "").normalize("NFC").trim().toLowerCase();
+  if (nfcLower === "rosé" || nfcLower === "roseanne park") {
+    return { canonicalName: "ROSÉ", deezerId: 126335112, itunesId: 1406242696 };
+  }
+  if (nfcLower === "rose" || nfcLower === "rose.") {
+    return null;
+  }
+  const norm = normalizeStr(rawName);
+  return CANONICAL_ARTIST_IDS[norm] || null;
+}
 
 function matchesWordBoundarySubstring(longer: string, shorter: string): boolean {
   if (!longer || !shorter) return false;
@@ -802,19 +942,31 @@ function scoreStudioCandidateServer(s: any, canonicalSec = 0): number {
   let score = 100;
   const rawTitle = String(s?.title || "").trim();
   const rawAlbum = String(s?.albumTitle || "").trim();
+  const rawArtist = String(s?.artist || "").trim();
   const durSec = parseDurationSecServer(s?.durationSec ?? s?.duration ?? s?.trackTimeMillis);
 
   if (durSec > 0 && durSec < 95) return -999;
-  if (!isOriginalStudioTrack(rawTitle, s?.artist || "", rawAlbum, durSec)) return -999;
+  if (!isOriginalStudioTrack(rawTitle, rawArtist, rawAlbum, durSec)) return -999;
+
+  const allowLive = isLiveAcousticCatalogArtist(rawArtist) || isLiveAcousticCatalogArtist(rawAlbum);
 
   // Prefer clean studio titles without parentheticals or bracketed remix/version suffixes
   if (!/[(\[\-–—]/.test(rawTitle)) {
     score += 35;
-  } else if (/\b(edit|version|versao|versão|mix|live|ao vivo|remix|extended|club|radio)\b/i.test(rawTitle)) {
+  } else if (
+    allowLive
+      ? /\b(edit|mix|remix|extended|club|radio)\b/i.test(rawTitle)
+      : /\b(edit|version|versao|versão|mix|live|ao vivo|remix|extended|club|radio)\b/i.test(rawTitle)
+  ) {
     score -= 60;
   }
 
-  if (rawAlbum && !/\b(remix|live|ao vivo|tour|turne|turnê|acoustic|acustico|acústico)\b/i.test(rawAlbum)) {
+  if (
+    rawAlbum &&
+    (allowLive
+      ? !/\b(remix|tour|turne|turnê)\b/i.test(rawAlbum)
+      : !/\b(remix|live|ao vivo|tour|turne|turnê|acoustic|acustico|acústico)\b/i.test(rawAlbum))
+  ) {
     score += 15;
   }
 
@@ -1627,7 +1779,14 @@ async function resolveFromSinglePipedInstance(
 ): Promise<{ url: string; source: string; durationSec: number } | null> {
   try {
     const cleanQuery = String(query || "").replace(/['’‘`´]/g, "'").trim();
-    const qOfficial = `${cleanQuery} official audio`.trim();
+    const allowLive = isLiveAcousticCatalogArtist(targetArtistNorm);
+    const qOfficial = allowLive ? `${cleanQuery} oficial`.trim() : `${cleanQuery} official audio`.trim();
+    const activeRejectWords = allowLive
+      ? HARD_REJECT_WORDS.filter(
+          w => !["ao vivo", "ao-vivo", "aovivo", "en vivo", "live performance", "in concert", "live version", "live at", "live from"].includes(w)
+        )
+      : HARD_REJECT_WORDS;
+
     if (instance.type === "piped") {
       const sRes = await fetchWithTimeout(`${instance.url}/search?q=${encodeURIComponent(qOfficial)}&filter=music_songs`, {}, 2800);
       if (!sRes.ok) return null;
@@ -1642,8 +1801,8 @@ async function resolveFromSinglePipedInstance(
           const low = `${rawTitle} ${uploader}`.toLowerCase();
           const durOk = d >= 90 && d <= 660 && (!hasExactDuration || Math.abs(d - expectedSec) <= 45);
           if (!durOk) return null;
-          if (HARD_REJECT_WORDS.some(w => low.includes(w) && !targetTitleNorm.includes(w))) return null;
-          if (!isOriginalStudioTrack(rawTitle, uploader, "", d)) return null;
+          if (activeRejectWords.some(w => low.includes(w) && !targetTitleNorm.includes(w))) return null;
+          if (!isOriginalStudioTrack(rawTitle, allowLive ? targetArtistNorm : uploader, "", d)) return null;
           const normItem = normalizeStr(`${rawTitle} ${uploader}`);
           const titleOk = !targetTitleNorm || normItem.includes(targetTitleNorm);
           const artistOk = !targetArtistNorm || normItem.includes(targetArtistNorm) || artistMatchesTarget(uploader, targetArtistNorm);
@@ -1692,8 +1851,8 @@ async function resolveFromSinglePipedInstance(
         const low = `${rawTitle} ${author}`.toLowerCase();
         const durOk = d >= 90 && d <= 660 && (!hasExactDuration || Math.abs(d - expectedSec) <= 45);
         if (!v?.videoId || !durOk) return false;
-        if (HARD_REJECT_WORDS.some(w => low.includes(w) && !targetTitleNorm.includes(w))) return false;
-        if (!isOriginalStudioTrack(rawTitle, author, "", d)) return false;
+        if (activeRejectWords.some(w => low.includes(w) && !targetTitleNorm.includes(w))) return false;
+        if (!isOriginalStudioTrack(rawTitle, allowLive ? targetArtistNorm : author, "", d)) return false;
         const normItem = normalizeStr(`${rawTitle} ${author}`);
         const titleOk = !targetTitleNorm || normItem.includes(targetTitleNorm);
         const artistOk = !targetArtistNorm || normItem.includes(targetArtistNorm) || artistMatchesTarget(author, targetArtistNorm);
@@ -1731,17 +1890,27 @@ async function resolveFullLengthTrackUrl(
   artist: string,
   skipVerifiedCatalog = false
 ): Promise<{ url: string; source: string; durationSec: number } | null> {
-  const normalizedInputTitle = String(title || "").replace(/['’‘`´]/g, "'").trim();
+  const normalizedInputTitle = decodeHtmlEntities(String(title || "")).replace(/['’‘`´]/g, "'").trim();
   const cleanTitle = normalizedInputTitle
-    .replace(/\((?:feat|ft|with|prod|deluxe|remaster).*?\)/gi, "")
-    .replace(/\[(?:feat|ft|with|prod|deluxe|remaster).*?\]/gi, "")
+    .replace(/\((?:feat|ft|with|prod|deluxe|remaster|ao\s*vivo|ac[uú]stico|acoustic|live).*?\)/gi, "")
+    .replace(/\[(?:feat|ft|with|prod|deluxe|remaster|ao\s*vivo|ac[uú]stico|acoustic|live).*?\]/gi, "")
     .trim();
-  const cleanArtist = extractPrimaryArtistName(artist).replace(/['’‘`´]/g, "'").trim();
-  const query = `${cleanTitle || normalizedInputTitle} ${cleanArtist || artist}`.trim();
+  const baseTitleBeforeParens = cleanTitle.replace(/\s*[\(\[].*$/, "").replace(/\s*\/.*$/, "").trim();
+  const cleanArtist = extractPrimaryArtistName(decodeHtmlEntities(artist)).replace(/['’‘`´]/g, "'").trim();
+  const canonicalId = getCanonicalArtistIdentity(cleanArtist || artist);
+  const effectiveArtist = canonicalId?.canonicalName || cleanArtist || artist;
+  const query = `${cleanTitle || normalizedInputTitle} ${effectiveArtist}`.trim();
   if (!query) return null;
 
   const tNorm = normalizeSongTitleKey(normalizedInputTitle);
-  const aNorm = normalizeStr(cleanArtist || artist);
+  const baseTNorm = baseTitleBeforeParens.length >= 3 ? normalizeSongTitleKey(baseTitleBeforeParens) : tNorm;
+  const aNorm = normalizeStr(effectiveArtist);
+  const allowLiveAcoustic = isLiveAcousticCatalogArtist(effectiveArtist);
+  const activeRejectWords = allowLiveAcoustic
+    ? HARD_REJECT_WORDS.filter(
+        w => !["ao vivo", "ao-vivo", "aovivo", "en vivo", "live performance", "in concert", "live version", "live at", "live from"].includes(w)
+      )
+    : HARD_REJECT_WORDS;
   const cacheKey = `${tNorm}|${aNorm}`;
 
   if (!skipVerifiedCatalog && fullStreamCache.has(cacheKey)) {
@@ -1791,7 +1960,7 @@ async function resolveFullLengthTrackUrl(
         2200
       ).then(r => (r.ok ? r.json() : null)),
       fetchWithTimeout(
-        `https://api.deezer.com/search?q=${encodeURIComponent(`${cleanArtist || artist} ${cleanTitle || normalizedInputTitle}`)}&limit=12`,
+        `https://api.deezer.com/search?q=${encodeURIComponent(`${effectiveArtist} ${cleanTitle || normalizedInputTitle}`)}&limit=12`,
         {},
         2200
       ).then(r => (r.ok ? r.json() : null))
@@ -1807,16 +1976,16 @@ async function resolveFullLengthTrackUrl(
         itResults.find((x: any) => {
           const tn = normalizeSongTitleKey(x.trackName || "");
           return (
-            tn === tNorm &&
-            artistMatchesTarget(x.artistName || "", cleanArtist || artist) &&
+            (tn === tNorm || tn === baseTNorm) &&
+            artistMatchesTarget(x.artistName || "", effectiveArtist) &&
             isOriginalStudioTrack(x.trackName || "", x.artistName || "", x.collectionName || "", x.trackTimeMillis)
           );
         }) ||
         itResults.find((x: any) => {
           const tn = normalizeSongTitleKey(x.trackName || "");
           return (
-            (tn.includes(tNorm) || tNorm.includes(tn)) &&
-            artistMatchesTarget(x.artistName || "", cleanArtist || artist) &&
+            (tn.includes(tNorm) || tNorm.includes(tn) || (baseTNorm.length >= 4 && tn.includes(baseTNorm))) &&
+            artistMatchesTarget(x.artistName || "", effectiveArtist) &&
             isOriginalStudioTrack(x.trackName || "", x.artistName || "", x.collectionName || "", x.trackTimeMillis)
           );
         });
@@ -1836,16 +2005,16 @@ async function resolveFullLengthTrackUrl(
         list.find((d: any) => {
           const tn = normalizeSongTitleKey(d.title || "");
           return (
-            tn === tNorm &&
-            artistMatchesTarget(d.artist?.name || "", cleanArtist || artist) &&
+            (tn === tNorm || tn === baseTNorm) &&
+            artistMatchesTarget(d.artist?.name || "", effectiveArtist) &&
             isOriginalStudioTrack(d.title || "", d.artist?.name || "", d.album?.title || "", d.duration)
           );
         }) ||
         list.find((d: any) => {
           const tn = normalizeSongTitleKey(d.title || "");
           return (
-            (tn.includes(tNorm) || tNorm.includes(tn)) &&
-            artistMatchesTarget(d.artist?.name || "", cleanArtist || artist) &&
+            (tn.includes(tNorm) || tNorm.includes(tn) || (baseTNorm.length >= 4 && tn.includes(baseTNorm))) &&
+            artistMatchesTarget(d.artist?.name || "", effectiveArtist) &&
             isOriginalStudioTrack(d.title || "", d.artist?.name || "", d.album?.title || "", d.duration)
           );
         });
@@ -1863,12 +2032,13 @@ async function resolveFullLengthTrackUrl(
   // 1. JioSaavn 320kbps Full Song Resolver (DES-ECB nativo em memória, zero processos filhos, estritamente primary_artists)
   const trySaavn = async (): Promise<{ url: string; source: string; durationSec: number } | null> => {
     try {
-      const aliasList = ARTIST_ALIASES[aNorm] || [cleanArtist || artist];
+      const aliasList = ARTIST_ALIASES[aNorm] || [effectiveArtist];
       const queriesToTry = Array.from(
         new Set([
           query,
-          `${cleanArtist || artist} ${cleanTitle || normalizedInputTitle}`.trim(),
-          ...aliasList.slice(0, 2).map((al) => `${cleanTitle || normalizedInputTitle} ${al}`.trim()),
+          `${effectiveArtist} ${cleanTitle || normalizedInputTitle}`.trim(),
+          baseTitleBeforeParens && baseTitleBeforeParens !== cleanTitle ? `${baseTitleBeforeParens} ${effectiveArtist}`.trim() : "",
+          ...aliasList.slice(0, 2).map((al) => `${baseTitleBeforeParens || cleanTitle || normalizedInputTitle} ${al}`.trim()),
           (cleanTitle || normalizedInputTitle).length >= 4 ? (cleanTitle || normalizedInputTitle) : ""
         ])
       ).filter(Boolean);
@@ -1889,29 +2059,40 @@ async function resolveFullLengthTrackUrl(
         for (const item of results) {
           const durSec = Number(item?.more_info?.duration || 0);
           if (!item?.more_info?.encrypted_media_url || durSec < 60 || durSec > 720) continue;
-          if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 40) continue;
+          if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > (allowLiveAcoustic ? 55 : 40)) continue;
 
-          const itemTitle = String(item.title || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#039;/g, "'");
-          const itemAlbum = String(item.more_info?.album || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
-          const itemSub = String(item.subtitle || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+          const itemTitle = decodeHtmlEntities(String(item.title || ""));
+          const itemAlbum = decodeHtmlEntities(String(item.more_info?.album || ""));
+          const itemSub = decodeHtmlEntities(String(item.subtitle || ""));
           if (!isOriginalStudioTrack(itemTitle, itemSub, itemAlbum, durSec)) continue;
 
           const rawTitleLow = `${itemTitle} ${itemAlbum} ${itemSub}`.toLowerCase();
-          if (HARD_REJECT_WORDS.some(w => rawTitleLow.includes(w) && !tNorm.includes(w))) continue;
+          if (activeRejectWords.some(w => rawTitleLow.includes(w) && !tNorm.includes(w))) continue;
 
           const itemTitleNorm = normalizeSongTitleKey(itemTitle);
-          const isExactTitle = itemTitleNorm === tNorm;
-          const isPartialTitle = !isExactTitle && (itemTitleNorm.includes(tNorm) || tNorm.includes(itemTitleNorm));
+          const itemBaseNorm = normalizeSongTitleKey(itemTitle.replace(/\s*[\(\[].*$/, "").replace(/\s*\/.*$/, ""));
+          const isExactTitle =
+            itemTitleNorm === tNorm ||
+            itemTitleNorm === baseTNorm ||
+            (itemBaseNorm.length >= 3 && (itemBaseNorm === tNorm || itemBaseNorm === baseTNorm)) ||
+            (allowLiveAcoustic && baseTNorm === "agora" && itemTitleNorm === "agora vai");
+          const isPartialTitle =
+            !isExactTitle &&
+            (itemTitleNorm.includes(tNorm) ||
+              tNorm.includes(itemTitleNorm) ||
+              (baseTNorm.length >= 4 && (itemTitleNorm.includes(baseTNorm) || baseTNorm.includes(itemTitleNorm))));
           if (!isExactTitle && !isPartialTitle) continue;
 
           const primList: string[] = (item.more_info?.artistMap?.primary_artists || [])
-            .map((a: any) => String(a?.name || "")).filter(Boolean);
+            .map((a: any) => decodeHtmlEntities(String(a?.name || "")))
+            .filter(Boolean);
           const featList: string[] = (item.more_info?.artistMap?.featured_artists || [])
-            .map((a: any) => String(a?.name || "")).filter(Boolean);
+            .map((a: any) => decodeHtmlEntities(String(a?.name || "")))
+            .filter(Boolean);
           const primaryArtists = primList.length > 0 ? primList : [itemSub];
 
           const hasStrictArtist = primaryArtists.some(
-            aName => isOriginalStudioTrack(itemTitle, aName, itemAlbum, durSec) && artistMatchesTarget(aName, cleanArtist || artist)
+            aName => isOriginalStudioTrack(itemTitle, aName, itemAlbum, durSec) && artistMatchesTarget(aName, effectiveArtist)
           );
           if (!hasStrictArtist) continue;
 
@@ -1923,10 +2104,10 @@ async function resolveFullLengthTrackUrl(
             sc -= 60;
           }
           if (!requestedHasFeat && primList.length > 1) {
-            const allMatchTarget = primList.every(aName => artistMatchesTarget(aName, cleanArtist || artist));
+            const allMatchTarget = primList.every(aName => artistMatchesTarget(aName, effectiveArtist));
             if (!allMatchTarget) sc -= 45;
           }
-          if (artistMatchesTarget(primList[0] || itemSub, cleanArtist || artist)) {
+          if (artistMatchesTarget(primList[0] || itemSub, effectiveArtist)) {
             sc += 35;
           }
 
@@ -1959,7 +2140,8 @@ async function resolveFullLengthTrackUrl(
       const scQueries = Array.from(
         new Set([
           query,
-          ...(ARTIST_ALIASES[aNorm] || []).slice(0, 3).map(al => `${cleanTitle || normalizedInputTitle} ${al}`.trim())
+          baseTitleBeforeParens && baseTitleBeforeParens !== cleanTitle ? `${baseTitleBeforeParens} ${effectiveArtist}`.trim() : "",
+          ...(ARTIST_ALIASES[aNorm] || []).slice(0, 3).map(al => `${baseTitleBeforeParens || cleanTitle || normalizedInputTitle} ${al}`.trim())
         ])
       ).filter(Boolean);
 
@@ -1992,29 +2174,31 @@ async function resolveFullLengthTrackUrl(
 
         const durSec = Math.round(durMs / 1000);
         if (durSec < 60 || durSec > 720) continue;
-        if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > 52) continue;
+        if (hasExactStudioDuration && Math.abs(durSec - expectedSec) > (allowLiveAcoustic ? 65 : 52)) continue;
 
         const rawTitle = String(t.title || "");
         const uploader = String(t.user?.username || "");
         const pubArtist = String(t.publisher_metadata?.artist || "");
-        if (!isOriginalStudioTrack(rawTitle, uploader, t.publisher_metadata?.album_title || "", durSec)) continue;
+        if (!isOriginalStudioTrack(rawTitle, allowLiveAcoustic ? effectiveArtist : uploader, t.publisher_metadata?.album_title || "", durSec)) continue;
 
         const rawLower = `${rawTitle} ${uploader} ${t.tag_list || ""}`.toLowerCase();
-        if (HARD_REJECT_WORDS.some(w => rawLower.includes(w) && !tNorm.includes(w))) continue;
+        if (activeRejectWords.some(w => rawLower.includes(w) && !tNorm.includes(w))) continue;
         if (/\b(flip|edit|bootleg|mashup|zouk|forro|brega|mtk|dj\s|club\s+mix|extended\s+mix|type\s+beat|vaporwave)\b/i.test(rawLower)) continue;
 
         const rawTitleKey = normalizeSongTitleKey(rawTitle);
         const titleMatches =
           rawTitleKey === tNorm ||
+          rawTitleKey === baseTNorm ||
           rawTitleKey.includes(tNorm) ||
+          (baseTNorm.length >= 4 && rawTitleKey.includes(baseTNorm)) ||
           (tNorm.includes(rawTitleKey) && rawTitleKey.length >= 4);
         if (!titleMatches) continue;
 
         const normRawTitle = normalizeStr(rawTitle);
         const titleHasArtist = targetAliases.some(al => al && matchesWordBoundarySubstring(normRawTitle, al));
         const artistMatches =
-          artistMatchesTarget(uploader, cleanArtist || artist) ||
-          artistMatchesTarget(pubArtist, cleanArtist || artist) ||
+          artistMatchesTarget(uploader, effectiveArtist) ||
+          artistMatchesTarget(pubArtist, effectiveArtist) ||
           titleHasArtist;
         if (!artistMatches) continue;
 
@@ -2026,8 +2210,8 @@ async function resolveFullLengthTrackUrl(
         let sc = 100 - Math.abs(durSec - expectedSec);
         if (t.user?.verified) sc += 40;
         if (t.publisher_metadata?.isrc) sc += 35;
-        if (rawTitleKey === tNorm) sc += 25;
-        if (artistMatchesTarget(uploader, cleanArtist || artist)) sc += 30;
+        if (rawTitleKey === tNorm || rawTitleKey === baseTNorm) sc += 25;
+        if (artistMatchesTarget(uploader, effectiveArtist)) sc += 30;
         if (hasProgressive) sc += 35;
         candidates.push({ t, durSec, score: sc });
       }
@@ -2130,7 +2314,7 @@ async function resolveFullLengthTrackUrl(
   // 3. Internet Archive Full Audio Resolver
   const tryInternetArchive = async (): Promise<{ url: string; source: string; durationSec: number } | null> => {
     try {
-      const qArch = `title:(${cleanTitle}) AND creator:(${cleanArtist}) AND mediatype:(audio)`;
+      const qArch = `title:(${cleanTitle}) AND creator:(${effectiveArtist}) AND mediatype:(audio)`;
       const searchUrl = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(qArch)}&fl[]=identifier,title,creator&rows=5&output=json`;
       const r = await fetchWithTimeout(searchUrl, {}, 2800);
       if (!r.ok) return null;
@@ -2141,8 +2325,8 @@ async function resolveFullLengthTrackUrl(
         const rawDocTitle = String(doc.title || "");
         const rawCreator = String(doc.creator || "");
         if (!isOriginalStudioTrack(rawDocTitle, rawCreator)) continue;
-        if (HARD_REJECT_WORDS.some(w => rawDocTitle.toLowerCase().includes(w) && !tNorm.includes(w))) continue;
-        if (!artistMatchesTarget(rawCreator, cleanArtist || artist)) continue;
+        if (activeRejectWords.some(w => rawDocTitle.toLowerCase().includes(w) && !tNorm.includes(w))) continue;
+        if (!artistMatchesTarget(rawCreator, effectiveArtist)) continue;
 
         const metaRes = await fetchWithTimeout(`https://archive.org/metadata/${encodeURIComponent(doc.identifier)}`, {}, 2600);
         if (!metaRes.ok) continue;
@@ -2151,10 +2335,10 @@ async function resolveFullLengthTrackUrl(
         const audioFile = files.find(f => {
           const name = String(f?.name || "");
           if (!/\.(mp3|m4a)$/i.test(name)) return false;
-          if (!isOriginalStudioTrack(name)) return false;
+          if (!isOriginalStudioTrack(name, effectiveArtist)) return false;
           const fnNorm = normalizeStr(name.replace(/\.(mp3|m4a)$/i, ""));
           const lenSec = parseFloat(f.length || "0") || expectedSec;
-          return fnNorm.includes(tNorm) && lenSec >= 60 && lenSec <= 720 && (!hasExactStudioDuration || Math.abs(lenSec - expectedSec) <= 35);
+          return (fnNorm.includes(tNorm) || (baseTNorm.length >= 4 && fnNorm.includes(baseTNorm))) && lenSec >= 60 && lenSec <= 720 && (!hasExactStudioDuration || Math.abs(lenSec - expectedSec) <= 35);
         });
         if (audioFile) {
           const lenSec = Math.round(parseFloat(audioFile.length || "0")) || expectedSec;
@@ -4499,25 +4683,26 @@ export async function createMiadoApp() {
     const rawName = extractPrimaryArtistName(rawInputName) || rawInputName;
     const nfcLowerReq = String(rawName || "").normalize("NFC").trim().toLowerCase();
     const isRoseKorean = nfcLowerReq === "rosé";
+    const canonicalArtist = getCanonicalArtistIdentity(rawName);
     const normReq = normalizeStr(rawName);
     const lookupName =
       normReq === "yun li" || normReq === "gemaplys" || normReq === "victor gemaplys" || normReq === "mc vv"
         ? "YUNG LIXO"
         : isRoseKorean
         ? "ROSÉ"
-        : rawName;
-    const name = isRoseKorean ? "ROSÉ" : rawName;
+        : canonicalArtist?.canonicalName || rawName;
+    const name = isRoseKorean ? "ROSÉ" : canonicalArtist?.canonicalName || rawName;
 
     try {
       const [dzArtistSearchSettled, itunesSongSettled, itunesAlbumSettled, saavnSettled] = await Promise.allSettled([
-        isRoseKorean
-          ? fetchWithTimeout("https://api.deezer.com/artist/126335112", {}, 4000).then(async r => (r.ok ? { data: [await r.json()] } : null))
+        canonicalArtist?.deezerId
+          ? fetchWithTimeout(`https://api.deezer.com/artist/${canonicalArtist.deezerId}`, {}, 4000).then(async r => (r.ok ? { data: [await r.json()] } : null))
           : fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(lookupName)}&limit=15`, {}, 4000).then(r => (r.ok ? r.json() : null)),
-        isRoseKorean
-          ? fetchWithTimeout("https://itunes.apple.com/lookup?id=1406242696&country=BR&entity=song&limit=60", {}, 4000).then(r => (r.ok ? r.json() : null))
+        canonicalArtist?.itunesId
+          ? fetchWithTimeout(`https://itunes.apple.com/lookup?id=${canonicalArtist.itunesId}&country=BR&entity=song&limit=80`, {}, 4000).then(r => (r.ok ? r.json() : null))
           : fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(lookupName)}&country=BR&entity=song&limit=45`, {}, 4000).then(r => (r.ok ? r.json() : null)),
-        isRoseKorean
-          ? fetchWithTimeout("https://itunes.apple.com/lookup?id=1406242696&country=BR&entity=album&limit=30", {}, 4000).then(r => (r.ok ? r.json() : null))
+        canonicalArtist?.itunesId
+          ? fetchWithTimeout(`https://itunes.apple.com/lookup?id=${canonicalArtist.itunesId}&country=BR&entity=album&limit=65`, {}, 4000).then(r => (r.ok ? r.json() : null))
           : fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(lookupName)}&country=BR&entity=album&limit=25`, {}, 4000).then(r => (r.ok ? r.json() : null)),
         isRoseKorean
           ? Promise.resolve(null)
@@ -4546,6 +4731,7 @@ export async function createMiadoApp() {
         });
 
       const matchedArtist =
+        (canonicalArtist?.deezerId ? rawDzArtists.find(a => Number(a?.id) === canonicalArtist.deezerId) : null) ||
         dzArtists.find(a => normalizeStr(a.name) === normTarget && !hasHomonymAccentConflict(a.name, lookupName)) ||
         dzArtists.find(a => artistMatchesTarget(a.name || "", lookupName)) ||
         null;
@@ -4553,10 +4739,11 @@ export async function createMiadoApp() {
       let dzTopTracks: any[] = [];
       let dzAlbums: any[] = [];
 
-      if (matchedArtist?.id) {
+      const resolvedDzId = matchedArtist?.id || canonicalArtist?.deezerId;
+      if (resolvedDzId) {
         const [topSettled, albSettled] = await Promise.allSettled([
-          fetchWithTimeout(`https://api.deezer.com/artist/${matchedArtist.id}/top?limit=35`, {}, 4000).then(r => (r.ok ? r.json() : null)),
-          fetchWithTimeout(`https://api.deezer.com/artist/${matchedArtist.id}/albums?limit=28`, {}, 4000).then(r => (r.ok ? r.json() : null))
+          fetchWithTimeout(`https://api.deezer.com/artist/${resolvedDzId}/top?limit=65`, {}, 4000).then(r => (r.ok ? r.json() : null)),
+          fetchWithTimeout(`https://api.deezer.com/artist/${resolvedDzId}/albums?limit=65`, {}, 4000).then(r => (r.ok ? r.json() : null))
         ]);
         if (topSettled.status === "fulfilled" && Array.isArray((topSettled.value as any)?.data)) {
           dzTopTracks = (topSettled.value as any).data;
@@ -4568,18 +4755,18 @@ export async function createMiadoApp() {
 
       const itunesSongs: any[] =
         itunesSongSettled.status === "fulfilled" && Array.isArray((itunesSongSettled.value as any)?.results)
-          ? (itunesSongSettled.value as any).results
+          ? (itunesSongSettled.value as any).results.filter((r: any) => !r.wrapperType || r.wrapperType === "track")
           : [];
       const itunesAlbums: any[] =
         itunesAlbumSettled.status === "fulfilled" && Array.isArray((itunesAlbumSettled.value as any)?.results)
-          ? (itunesAlbumSettled.value as any).results
+          ? (itunesAlbumSettled.value as any).results.filter((r: any) => !r.wrapperType || r.wrapperType === "collection")
           : [];
       const saavnResults: any[] =
         saavnSettled.status === "fulfilled" && Array.isArray((saavnSettled.value as any)?.results)
           ? (saavnSettled.value as any).results
           : [];
 
-      const targetArtistRef = matchedArtist?.name || lookupName;
+      const targetArtistRef = canonicalArtist?.canonicalName || matchedArtist?.name || lookupName;
       const rawSongs: any[] = [];
       const albumsMap = new Map<string, any>();
 
@@ -4652,11 +4839,11 @@ export async function createMiadoApp() {
       saavnResults.forEach((item, idx) => {
         const durSec = Number(item?.more_info?.duration || 0);
         if (durSec < 60 || durSec > 600) return;
-        const itemTitle = String(item.title || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#039;/g, "'");
-        const itemAlbum = String(item.more_info?.album || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+        const itemTitle = decodeHtmlEntities(String(item.title || ""));
+        const itemAlbum = decodeHtmlEntities(String(item.more_info?.album || ""));
         const primaryArtists: string[] = [
           ...(item.more_info?.artistMap?.primary_artists || [])
-        ].map((a: any) => String(a?.name || "")).filter(Boolean);
+        ].map((a: any) => decodeHtmlEntities(String(a?.name || ""))).filter(Boolean);
         const artistName = primaryArtists[0] || "";
         if (!artistName || !artistMatchesTarget(artistName, targetArtistRef)) return;
         if (!isOriginalStudioTrack(itemTitle, artistName, itemAlbum, durSec)) return;
@@ -4699,7 +4886,7 @@ export async function createMiadoApp() {
             trackCount: Number(alb.trackCount) || 0,
             searchQuery: `${albArt || targetArtistRef} ${cleanAlbumDisplayTitle(albTitle)}`,
             title: albTitle,
-            artist: albArt || targetArtistRef,
+            artist: targetArtistRef,
             year: alb.releaseDate ? new Date(alb.releaseDate).getFullYear() : 2024,
             releaseDate: alb.releaseDate ? new Date(alb.releaseDate).toLocaleDateString("pt-BR") : "Lançamento Oficial",
             genre: alb.primaryGenreName || "Pop",
@@ -4715,7 +4902,6 @@ export async function createMiadoApp() {
         if (!alb.title || !isOriginalStudioTrack(alb.title, targetArtistRef)) return;
         const albKey = normalizeSongTitleKey(alb.title);
         if (rejectedAlbumTitleKeys.has(albKey)) return;
-        if (alb.explicit_lyrics) return;
         if (alb.record_type === "compile") return;
         const rawArt = alb.cover_xl || alb.cover_big || alb.cover_medium || "";
         const cover = toCoverProxyUrl(rawArt, alb.title, targetArtistRef);
@@ -4740,7 +4926,20 @@ export async function createMiadoApp() {
       });
 
       const songs = deduplicateSongsList(rawSongs);
-      const albums = Array.from(albumsMap.values()).slice(0, 18);
+      const albums = Array.from(albumsMap.values())
+        .sort((a, b) => {
+          const aFull = !a._isSingleOrEp && ((Number(a._trackCount) || 0) >= 5 || String(a.recordType || "").toLowerCase() === "album") ? 1 : 0;
+          const bFull = !b._isSingleOrEp && ((Number(b._trackCount) || 0) >= 5 || String(b.recordType || "").toLowerCase() === "album") ? 1 : 0;
+          if (aFull !== bFull) return bFull - aFull;
+          const aIsCompilation = /\b(o melhor das lives|sele[cç][aã]o essencial|mega hits|revivem sua hist[oó]ria|warner 30 anos|maxximum)\b/i.test(String(a.title || "")) ? 1 : 0;
+          const bIsCompilation = /\b(o melhor das lives|sele[cç][aã]o essencial|mega hits|revivem sua hist[oó]ria|warner 30 anos|maxximum)\b/i.test(String(b.title || "")) ? 1 : 0;
+          if (aIsCompilation !== bIsCompilation) return aIsCompilation - bIsCompilation;
+          const aHasBoth = a.collectionId && a.dzAlbumId ? 1 : 0;
+          const bHasBoth = b.collectionId && b.dzAlbumId ? 1 : 0;
+          if (aHasBoth !== bHasBoth) return bHasBoth - aHasBoth;
+          return (Number(b.year) || 0) - (Number(a.year) || 0);
+        })
+        .slice(0, 40);
 
       albums.forEach(alb => {
         const matching = songs.filter(
@@ -4753,7 +4952,7 @@ export async function createMiadoApp() {
         alb.tracks = matching.length >= 4 || (isSingleOrEp && matching.length >= 1 && (!alb._trackCount || alb._trackCount <= 3)) ? matching : [];
       });
 
-      const resolvedArtistName = matchedArtist?.name || name;
+      const resolvedArtistName = canonicalArtist?.canonicalName || matchedArtist?.name || name;
       const rawMatchedPic = matchedArtist?.picture_xl || matchedArtist?.picture_big || matchedArtist?.picture_medium || "";
       const validMatchedPic = rawMatchedPic && !rawMatchedPic.includes("/images/artist//") ? upgradeArtwork(rawMatchedPic) : "";
       const artistPortrait = validMatchedPic
@@ -4789,11 +4988,13 @@ export async function createMiadoApp() {
 
   // 6. Busca Global no Servidor (Apenas Músicas Originais de Estúdio, Artistas e Álbuns Oficiais)
   app.get("/api/search", async (req: Request, res: Response) => {
-    const q = String(req.query.q || "").trim();
-    if (!q) {
+    const rawQ = String(req.query.q || "").trim();
+    if (!rawQ) {
       res.json({ artists: [], songs: [], albums: [], hasMore: false });
       return;
     }
+    const canonicalQ = getCanonicalArtistIdentity(rawQ);
+    const q = canonicalQ?.canonicalName || rawQ;
     const page = Math.max(1, Math.min(4, parseInt(String(req.query.page || "1"), 10) || 1));
     const limit = Math.min(45, Number(req.query.limit) || 30);
     const dzOffset = (page - 1) * 20;
@@ -4838,8 +5039,8 @@ export async function createMiadoApp() {
       .sort((a, b) => {
         const aNorm = normalizeStr(a?.name || "");
         const bNorm = normalizeStr(b?.name || "");
-        const aExact = aNorm === normQuery ? 1 : 0;
-        const bExact = bNorm === normQuery ? 1 : 0;
+        const aExact = aNorm === normQuery || artistMatchesTarget(a?.name || "", q) ? 1 : 0;
+        const bExact = bNorm === normQuery || artistMatchesTarget(b?.name || "", q) ? 1 : 0;
         if (aExact !== bExact) return bExact - aExact;
         const aStarts = aNorm.startsWith(normQuery) ? 1 : 0;
         const bStarts = bNorm.startsWith(normQuery) ? 1 : 0;
@@ -4891,15 +5092,15 @@ export async function createMiadoApp() {
       }
     });
 
-    // Se o usuário buscou diretamente o nome de uma banda/artista (ex: "Ghost", "Paramore", "Sabrina Carpenter"),
+    // Se o usuário buscou diretamente o nome de uma banda/artista (ex: "Ghost", "Paramore", "Sabrina Carpenter", "Bruno & Marrone"),
     // busca em tempo real o Top Faixas e a Discografia Oficial desse artista no Deezer para que suas músicas e álbuns venham primeiro!
     const topMatchedArtist = deezerArtists.find(
-      a => normalizeStr(a?.name || "") === normQuery || (normalizeStr(a?.name || "").startsWith(normQuery) && getCanonicalArtistListeners(a?.name || "", a?.nb_fan) > 10000)
+      a => normalizeStr(a?.name || "") === normQuery || artistMatchesTarget(a?.name || "", q) || (normalizeStr(a?.name || "").startsWith(normQuery) && getCanonicalArtistListeners(a?.name || "", a?.nb_fan) > 10000)
     );
     if (topMatchedArtist?.id) {
       const [artTopSettled, artAlbumsSettled] = await Promise.allSettled([
-        fetchWithTimeout(`https://api.deezer.com/artist/${topMatchedArtist.id}/top?limit=15`, {}, 3500).then(r => (r.ok ? r.json() : null)),
-        fetchWithTimeout(`https://api.deezer.com/artist/${topMatchedArtist.id}/albums?limit=14`, {}, 3500).then(r => (r.ok ? r.json() : null))
+        fetchWithTimeout(`https://api.deezer.com/artist/${topMatchedArtist.id}/top?limit=25`, {}, 3500).then(r => (r.ok ? r.json() : null)),
+        fetchWithTimeout(`https://api.deezer.com/artist/${topMatchedArtist.id}/albums?limit=20`, {}, 3500).then(r => (r.ok ? r.json() : null))
       ]);
 
       const artTopTracks: any[] =
@@ -4913,7 +5114,7 @@ export async function createMiadoApp() {
 
       artAlbums.forEach(alb => {
         if (!alb?.title || !isOriginalStudioTrack(alb.title, topMatchedArtist.name)) return;
-        if (alb.explicit_lyrics || alb.record_type === "compile") return;
+        if (alb.record_type === "compile") return;
         const rawArt = alb.cover_xl || alb.cover_big || alb.cover_medium || "";
         const cover = toCoverProxyUrl(rawArt, alb.title, topMatchedArtist.name);
         if (cover) {

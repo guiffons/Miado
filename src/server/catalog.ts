@@ -49,8 +49,96 @@ export interface CanonicalAlbum {
 
 const KNOWN_ARTIST_ALIASES: Record<string, string[]> = {
   "yung lixo": ["yung lixo", "yun li", "gemaplys", "mc vv", "tokyo marui"],
-  "yun li": ["yung lixo", "yun li", "gemaplys", "mc vv", "tokyo marui"]
+  "yun li": ["yung lixo", "yun li", "gemaplys", "mc vv", "tokyo marui"],
+  "bruno marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "bruno e marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "bruno and marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "bruno morrene": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "bruno e morrene": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+  "jorge mateus": ["jorge mateus", "jorge e mateus"],
+  "jorge e mateus": ["jorge mateus", "jorge e mateus"],
+  "henrique juliano": ["henrique juliano", "henrique e juliano"],
+  "henrique e juliano": ["henrique juliano", "henrique e juliano"],
+  "zeze di camargo luciano": ["zeze di camargo luciano", "zeze di camargo e luciano"],
+  "zeze di camargo e luciano": ["zeze di camargo luciano", "zeze di camargo e luciano"],
+  "chitaozinho xororo": ["chitaozinho xororo", "chitaozinho e xororo"],
+  "chitaozinho e xororo": ["chitaozinho xororo", "chitaozinho e xororo"],
+  "maiara maraisa": ["maiara maraisa", "maiara e maraisa"],
+  "maiara e maraisa": ["maiara maraisa", "maiara e maraisa"],
+  "ze neto cristiano": ["ze neto cristiano", "ze neto e cristiano"],
+  "ze neto e cristiano": ["ze neto cristiano", "ze neto e cristiano"],
+  "matheus kauan": ["matheus kauan", "matheus e kauan"],
+  "matheus e kauan": ["matheus kauan", "matheus e kauan"],
+  "simone simaria": ["simone simaria", "simone e simaria"],
+  "simone e simaria": ["simone simaria", "simone e simaria"],
+  "victor leo": ["victor leo", "victor e leo"],
+  "victor e leo": ["victor leo", "victor e leo"]
 };
+
+const LIVE_ACOUSTIC_CATALOG_ARTIST_KEYS = new Set<string>([
+  "bruno marrone",
+  "bruno e marrone",
+  "bruno and marrone",
+  "bruno morrene",
+  "bruno e morrene",
+  "jorge mateus",
+  "jorge e mateus",
+  "henrique juliano",
+  "henrique e juliano",
+  "marilia mendonca",
+  "zeze di camargo luciano",
+  "zeze di camargo e luciano",
+  "chitaozinho xororo",
+  "chitaozinho e xororo",
+  "gusttavo lima",
+  "maiara maraisa",
+  "maiara e maraisa",
+  "ze neto cristiano",
+  "ze neto e cristiano",
+  "matheus kauan",
+  "matheus e kauan",
+  "luan santana",
+  "simone simaria",
+  "simone e simaria",
+  "simone mendes",
+  "victor leo",
+  "victor e leo",
+  "ana castela",
+  "diego victor hugo",
+  "diego e victor hugo",
+  "hugo guilherme",
+  "hugo e guilherme",
+  "guilherme benuto",
+  "guilherme e benuto",
+  "israel rodolffo",
+  "israel e rodolffo",
+  "clayton romario",
+  "clayton e romario",
+  "fernando sorocaba",
+  "fernando e sorocaba",
+  "cesar menotti fabiano",
+  "cesar menotti e fabiano",
+  "marcos belutti",
+  "marcos e belutti",
+  "joao bosco vinicius",
+  "joao bosco e vinicius",
+  "edson hudson",
+  "edson e hudson",
+  "rick renner",
+  "rick e renner"
+]);
+
+export function isLiveAcousticCatalogArtist(artistOrText: string): boolean {
+  const norm = normalizeCatalogText(artistOrText);
+  if (!norm) return false;
+  if (LIVE_ACOUSTIC_CATALOG_ARTIST_KEYS.has(norm)) return true;
+  for (const key of LIVE_ACOUSTIC_CATALOG_ARTIST_KEYS) {
+    if (norm === key || norm.startsWith(`${key} `) || norm.endsWith(` ${key}`) || norm.includes(` ${key} `)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 export function normalizeCatalogText(str: string): string {
   return String(str || "")
@@ -113,8 +201,8 @@ export function buildCanonicalDedupKey(track: {
   const cleanTitle = normalizeCatalogText(
     String(track.title || "")
       .replace(/\s*[\(\[]\s*(?:feat\.?|ft\.?|with|part\.?)\s+[^\)\]]+[\)\]]/gi, "")
-      .replace(/\s*[\(\[]\s*[^\)\]]*\b(?:explicit|clean|deluxe|remaster(?:ed)?|bonus(?:\s+track)?|album\s+version|single\s+version|radio\s+edit|anniversary|edition)\b[^\)\]]*[\)\]]/gi, "")
-      .replace(/\s*-\s*(?:\d{4}\s+)?(?:remaster(?:ed)?|deluxe|bonus track|explicit|clean|single version|radio edit).*$/i, "")
+      .replace(/\s*[\(\[]\s*[^\)\]]*\b(?:explicit|clean|deluxe|remaster(?:ed)?|bonus(?:\s+track)?|album\s+version|single\s+version|radio\s+edit|anniversary|edition|ao\s*vivo|ac[uú]stico|acoustic|live)\b[^\)\]]*[\)\]]/gi, "")
+      .replace(/\s*-\s*(?:\d{4}\s+)?(?:remaster(?:ed)?|deluxe|bonus track|explicit|clean|single version|radio edit|ao\s*vivo|ac[uú]stico|live).*$/i, "")
   );
   const artistSet = extractAllArtistNames(track.artist || "", track.artists, track.title || "");
   return `meta:${cleanTitle}::${artistSet.join("+")}`;
@@ -134,8 +222,15 @@ const STRICT_NON_STUDIO_PATTERNS: RegExp[] = [
   /[\(\[\-]\s*(?:[^\)\]]*\bremix\b|rework|bootleg|mashup|extended\s+mix|club\s+mix)\b/i
 ];
 
+const LIVE_CATALOG_REJECT_PATTERNS: RegExp[] = [
+  /[\(\[\-]\s*(?:karaok[eê]|instrumental|acapella|a\s*cappella)\b/i,
+  /\b(?:karaok[eê]|tribute\s+to|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|cover\s+version|8-bit\s+version|lullaby\s+version)\b/i,
+  /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed)\b/i,
+  /[\(\[\-]\s*(?:[^\)\]]*\bremix\b|rework|bootleg|mashup|extended\s+mix|club\s+mix)\b/i
+];
+
 const NON_STUDIO_ARTIST_PATTERNS: RegExp[] = [
-  /\b(?:karaoke|tribute|cover\s+band|8-bit\s+arcade|twinkle\s+twinkle\s+little\s+rock\s+star|rockabye\s+baby|piano\s+tribute|vitamin\s+string\s+quartet|kidz\s+bop)\b/i
+  /\b(?:karaoke|tribute|cover\s+band|8-bit\s+arcade|twinkle\s+twinkle\s+little\s+rock\s+star|rockabye\s+baby|piano\s+tribute|vitamin\s+string\s+quartet|kidz\s+bop|party\s+tyme|ameritz)\b/i
 ];
 
 export function isCanonicalStudioTrack(
@@ -153,7 +248,12 @@ export function isCanonicalStudioTrack(
     if (pat.test(a)) return false;
   }
 
-  for (const pat of STRICT_NON_STUDIO_PATTERNS) {
+  const patternsToApply =
+    isLiveAcousticCatalogArtist(a) || isLiveAcousticCatalogArtist(alb)
+      ? LIVE_CATALOG_REJECT_PATTERNS
+      : STRICT_NON_STUDIO_PATTERNS;
+
+  for (const pat of patternsToApply) {
     if (pat.test(t) || pat.test(alb)) return false;
   }
 

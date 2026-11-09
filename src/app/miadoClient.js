@@ -1343,10 +1343,29 @@ export function initMiadoClient() {
         "jorge & mateus",
         "henrique & juliano",
         "maiara & maraisa",
+        "maiara e maraisa",
         "matheus & kauan",
+        "matheus e kauan",
+        "ze neto & cristiano",
+        "zé neto & cristiano",
+        "ze neto e cristiano",
+        "zé neto e cristiano",
         "simone & simaria",
+        "simone e simaria",
         "bruno & marrone",
+        "bruno e marrone",
+        "bruno and marrone",
+        "bruno & morrene",
+        "bruno e morrene",
+        "bruno morrene",
+        "jorge e mateus",
+        "henrique e juliano",
+        "zeze di camargo e luciano",
+        "zezé di camargo e luciano",
+        "chitaozinho e xororo",
+        "chitãozinho e xororó",
         "victor & leo",
+        "victor e leo",
         "zeca baleiro",
         "anavitória",
         "anavitoria",
@@ -1358,6 +1377,39 @@ export function initMiadoClient() {
         "legião urbana",
         "legiao urbana"
       ]);
+
+      const CANONICAL_COMPOUND_DISPLAY_CLIENT = {
+        "bruno & marrone": "Bruno & Marrone",
+        "bruno e marrone": "Bruno & Marrone",
+        "bruno and marrone": "Bruno & Marrone",
+        "bruno & morrene": "Bruno & Marrone",
+        "bruno e morrene": "Bruno & Marrone",
+        "bruno morrene": "Bruno & Marrone",
+        "jorge & mateus": "Jorge & Mateus",
+        "jorge e mateus": "Jorge & Mateus",
+        "henrique & juliano": "Henrique & Juliano",
+        "henrique e juliano": "Henrique & Juliano",
+        "zeze di camargo & luciano": "Zezé Di Camargo & Luciano",
+        "zezé di camargo & luciano": "Zezé Di Camargo & Luciano",
+        "zeze di camargo e luciano": "Zezé Di Camargo & Luciano",
+        "zezé di camargo e luciano": "Zezé Di Camargo & Luciano",
+        "chitaozinho & xororo": "Chitãozinho & Xororó",
+        "chitãozinho & xororó": "Chitãozinho & Xororó",
+        "chitaozinho e xororo": "Chitãozinho & Xororó",
+        "chitãozinho e xororó": "Chitãozinho & Xororó",
+        "maiara & maraisa": "Maiara & Maraisa",
+        "maiara e maraisa": "Maiara & Maraisa",
+        "matheus & kauan": "Matheus & Kauan",
+        "matheus e kauan": "Matheus & Kauan",
+        "ze neto & cristiano": "Zé Neto & Cristiano",
+        "zé neto & cristiano": "Zé Neto & Cristiano",
+        "ze neto e cristiano": "Zé Neto & Cristiano",
+        "zé neto e cristiano": "Zé Neto & Cristiano",
+        "simone & simaria": "Simone & Simaria",
+        "simone e simaria": "Simone & Simaria",
+        "victor & leo": "Victor & Leo",
+        "victor e leo": "Victor & Leo"
+      };
 
       function splitCollaboratingArtistsClient(rawArtist) {
         const clean = String(rawArtist || "").trim();
@@ -1410,7 +1462,8 @@ export function initMiadoClient() {
 
       function extractPrimaryArtistClient(rawArtist) {
         const list = splitCollaboratingArtistsClient(rawArtist);
-        return list[0] || String(rawArtist || "").trim();
+        const first = list[0] || String(rawArtist || "").trim();
+        return CANONICAL_COMPOUND_DISPLAY_CLIENT[first.toLowerCase()] || first;
       }
 
       function isCollaborationArtistClient(rawArtist) {
@@ -1445,24 +1498,43 @@ export function initMiadoClient() {
         return false;
       }
 
+      const DUO_ALIAS_GROUPS_CLIENT = [
+        ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
+        ["jorge mateus", "jorge e mateus"],
+        ["henrique juliano", "henrique e juliano"],
+        ["zeze di camargo luciano", "zeze di camargo e luciano"],
+        ["chitaozinho xororo", "chitaozinho e xororo"],
+        ["maiara maraisa", "maiara e maraisa"],
+        ["matheus kauan", "matheus e kauan"],
+        ["ze neto cristiano", "ze neto e cristiano"],
+        ["simone simaria", "simone e simaria"],
+        ["victor leo", "victor e leo"],
+        ["yun li", "yung lixo", "gemaplys", "victor gemaplys", "mc vv"],
+        ["anavitoria", "ana vitoria"]
+      ];
+
+      function matchesAliasGroupClient(candNorm, targNorm) {
+        if (!candNorm || !targNorm) return false;
+        if (candNorm === targNorm) return true;
+        for (const group of DUO_ALIAS_GROUPS_CLIENT) {
+          if (group.includes(targNorm)) {
+            if (group.some(al => candNorm === al || candNorm.startsWith(al + " ") || candNorm.endsWith(" " + al) || candNorm.includes(" " + al + " "))) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+
       function artistMatchesClient(candidateArtist, targetArtist) {
         if (hasHomonymAccentConflictClient(candidateArtist, targetArtist)) return false;
         const candNorm = normalizeTextKey(candidateArtist);
         const targNorm = normalizeTextKey(targetArtist);
         if (!candNorm || !targNorm) return false;
-        if (candNorm === targNorm) return true;
-
-        const yunLiAliases = ["yun li", "yung lixo", "gemaplys", "victor gemaplys", "mc vv"];
-        if (yunLiAliases.includes(targNorm)) {
-          return yunLiAliases.some(al => candNorm === al || candNorm.includes(al));
-        }
-        const anavitoriaAliases = ["anavitoria", "ana vitoria"];
-        if (anavitoriaAliases.includes(targNorm)) {
-          return anavitoriaAliases.some(al => candNorm === al || candNorm.includes(al));
-        }
+        if (matchesAliasGroupClient(candNorm, targNorm)) return true;
 
         const collabParts = splitCollaboratingArtistsClient(candidateArtist).map(p => normalizeTextKey(p));
-        if (collabParts.includes(targNorm)) return true;
+        if (collabParts.some(cp => matchesAliasGroupClient(cp, targNorm))) return true;
         return false;
       }
 
@@ -1471,18 +1543,11 @@ export function initMiadoClient() {
         const candNorm = normalizeTextKey(candidateArtist);
         const targNorm = normalizeTextKey(targetArtist);
         if (!candNorm || !targNorm) return false;
-        if (candNorm === targNorm) return true;
-
-        const yunLiAliases = ["yun li", "yung lixo", "gemaplys", "victor gemaplys", "mc vv"];
-        if (yunLiAliases.includes(targNorm) && yunLiAliases.includes(candNorm)) return true;
-        const anavitoriaAliases = ["anavitoria", "ana vitoria"];
-        if (anavitoriaAliases.includes(targNorm) && anavitoriaAliases.includes(candNorm)) return true;
+        if (matchesAliasGroupClient(candNorm, targNorm)) return true;
 
         const collabParts = splitCollaboratingArtistsClient(candidateArtist).map(p => normalizeTextKey(p)).filter(Boolean);
         const primaryArtist = collabParts[0] || candNorm;
-        if (primaryArtist === targNorm) return true;
-        if (yunLiAliases.includes(targNorm) && yunLiAliases.includes(primaryArtist)) return true;
-        if (anavitoriaAliases.includes(targNorm) && anavitoriaAliases.includes(primaryArtist)) return true;
+        if (matchesAliasGroupClient(primaryArtist, targNorm)) return true;
 
         return false;
       }
@@ -1666,6 +1731,12 @@ export function initMiadoClient() {
         { name: "Gilberto Gil", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Gilberto%20Gil" },
         { name: "Tim Maia", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Tim%20Maia" },
         { name: "Djavan", genre: "MPB", role: "Artista", coverUrl: "/api/artist-image?name=Djavan" },
+        { name: "Bruno & Marrone", genre: "Sertanejo", role: "Artista", coverUrl: "/api/artist-image?name=Bruno%20%26%20Marrone" },
+        { name: "Jorge & Mateus", genre: "Sertanejo", role: "Artista", coverUrl: "/api/artist-image?name=Jorge%20%26%20Mateus" },
+        { name: "Henrique & Juliano", genre: "Sertanejo", role: "Artista", coverUrl: "/api/artist-image?name=Henrique%20%26%20Juliano" },
+        { name: "Marília Mendonça", genre: "Sertanejo", role: "Artista", coverUrl: "/api/artist-image?name=Mar%C3%ADlia%20Mendon%C3%A7a" },
+        { name: "Zezé Di Camargo & Luciano", genre: "Sertanejo", role: "Artista", coverUrl: "/api/artist-image?name=Zez%C3%A9%20Di%20Camargo%20%26%20Luciano" },
+        { name: "Chitãozinho & Xororó", genre: "Sertanejo", role: "Artista", coverUrl: "/api/artist-image?name=Chit%C3%A3ozinho%20%26%20Xoror%C3%B3" },
         { name: "Baco Exu do Blues", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Baco%20Exu%20do%20Blues" },
         { name: "Filipe Ret", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Filipe%20Ret" },
         { name: "Teto", genre: "Hip-Hop", role: "Artista", coverUrl: "/api/artist-image?name=Teto" },
@@ -3943,18 +4014,124 @@ export function initMiadoClient() {
           return 0;
         }
 
+        static LIVE_ACOUSTIC_CATALOG_KEYS = new Set([
+          "bruno marrone",
+          "bruno e marrone",
+          "bruno and marrone",
+          "bruno morrene",
+          "bruno e morrene",
+          "jorge mateus",
+          "jorge e mateus",
+          "henrique juliano",
+          "henrique e juliano",
+          "marilia mendonca",
+          "zeze di camargo luciano",
+          "zeze di camargo e luciano",
+          "chitaozinho xororo",
+          "chitaozinho e xororo",
+          "gusttavo lima",
+          "maiara maraisa",
+          "maiara e maraisa",
+          "ze neto cristiano",
+          "ze neto e cristiano",
+          "matheus kauan",
+          "matheus e kauan",
+          "luan santana",
+          "simone simaria",
+          "simone e simaria",
+          "simone mendes",
+          "victor leo",
+          "victor e leo",
+          "ana castela",
+          "diego victor hugo",
+          "diego e victor hugo",
+          "hugo guilherme",
+          "hugo e guilherme",
+          "guilherme benuto",
+          "guilherme e benuto",
+          "israel rodolffo",
+          "israel e rodolffo",
+          "clayton romario",
+          "clayton e romario",
+          "fernando sorocaba",
+          "fernando e sorocaba",
+          "cesar menotti fabiano",
+          "cesar menotti e fabiano",
+          "marcos belutti",
+          "marcos e belutti",
+          "joao bosco vinicius",
+          "joao bosco e vinicius",
+          "edson hudson",
+          "edson e hudson",
+          "rick renner",
+          "rick e renner"
+        ]);
+
+        static isLiveAcousticCatalogArtist(artistOrText = "", albumTitle = "") {
+          const checkOne = (txt) => {
+            const norm = normalizeTextKey(txt || "");
+            if (!norm) return false;
+            if (MiadoMusicResolver.LIVE_ACOUSTIC_CATALOG_KEYS.has(norm)) return true;
+            for (const key of MiadoMusicResolver.LIVE_ACOUSTIC_CATALOG_KEYS) {
+              if (norm === key || norm.startsWith(key + " ") || norm.endsWith(" " + key) || norm.includes(" " + key + " ")) {
+                return true;
+              }
+            }
+            return false;
+          };
+          return checkOne(artistOrText) || checkOne(albumTitle);
+        }
+
+        static LIVE_CATALOG_ONLY_REJECT_PATTERNS = [
+          /\bsuperturn[eê]\b/i,
+          /\bremix\b/i,
+          /\brework\b/i,
+          /\bbootleg\b/i,
+          /\bmashup\b/i,
+          /\bkaraok[eê]\b/i,
+          /\bcover\b/i,
+          /\btribute\b/i,
+          /\boriginally performed\b/i,
+          /\bin the style of\b/i,
+          /\bmade popular by\b/i,
+          /\bno estilo de\b/i,
+          /\binstrumental\b/i,
+          /\bacapella\b/i,
+          /\bsped up\b/i,
+          /\bspeed up\b/i,
+          /\bslowed\b/i,
+          /\bnightcore\b/i,
+          /\b8d audio\b/i,
+          /\bpar[oó]dia\b/i
+        ];
+
         static hasExcludedNonStudioMetadata(trackOrText = "", artist = "", albumTitle = "", extraVersion = "") {
           let combined = "";
+          let resolvedArtist = artist || "";
+          let resolvedAlbum = albumTitle || "";
           if (trackOrText && typeof trackOrText === "object") {
             const tr = trackOrText;
+            resolvedArtist = tr.artist || tr.artistName || artist || "";
+            resolvedAlbum = tr.albumTitle || tr.collectionName || albumTitle || "";
             combined = [
               tr.title || tr.trackName || "",
-              tr.artist || tr.artistName || artist || "",
-              tr.albumTitle || tr.collectionName || albumTitle || "",
+              resolvedArtist,
+              resolvedAlbum,
               tr.version || tr.versionType || tr.subtitle || extraVersion || ""
             ].join(" ").toLowerCase();
           } else {
             combined = `${trackOrText || ""} ${artist || ""} ${albumTitle || ""} ${extraVersion || ""}`.toLowerCase();
+          }
+
+          const allowLive = MiadoMusicResolver.isLiveAcousticCatalogArtist(resolvedArtist, resolvedAlbum);
+          if (allowLive) {
+            if (/\b(remix|karaoke|karaokê|superturne|superturnê)\b/i.test(combined)) {
+              return true;
+            }
+            for (const pattern of MiadoMusicResolver.LIVE_CATALOG_ONLY_REJECT_PATTERNS) {
+              if (pattern.test(combined)) return true;
+            }
+            return false;
           }
 
           if (
@@ -3987,6 +4164,7 @@ export function initMiadoClient() {
             }
           }
 
+          const allowLive = MiadoMusicResolver.isLiveAcousticCatalogArtist(a, alb);
           const aLow = a.toLowerCase();
           if (
             aLow.includes("karaoke") ||
@@ -3996,9 +4174,10 @@ export function initMiadoClient() {
             aLow.includes("lullaby") ||
             aLow.includes("superturne") ||
             aLow.includes("superturnê") ||
-            aLow.includes("ao vivo") ||
+            aLow.includes("party tyme") ||
+            aLow.includes("ameritz") ||
             aLow.includes("remix") ||
-            aLow.includes("live")
+            (!allowLive && (aLow.includes("ao vivo") || aLow.includes("live")))
           ) {
             return false;
           }
@@ -4022,22 +4201,33 @@ export function initMiadoClient() {
           if (MiadoMusicResolver.hasExcludedNonStudioMetadata(track)) {
             return -999;
           }
-          if (!MiadoMusicResolver.isStudioOnly(track.title || track.trackName, track.artist || track.artistName, track.albumTitle || track.collectionName, effectiveDurSec)) {
+          const rawArtist = String(track.artist || track.artistName || "").trim();
+          const rawTitle = String(track.title || track.trackName || "").trim();
+          const rawAlbum = String(track.albumTitle || track.collectionName || "").trim();
+          if (!MiadoMusicResolver.isStudioOnly(rawTitle, rawArtist, rawAlbum, effectiveDurSec)) {
             return -999;
           }
 
+          const allowLive = MiadoMusicResolver.isLiveAcousticCatalogArtist(rawArtist, rawAlbum);
           let score = 100;
-          const rawTitle = String(track.title || track.trackName || "").trim();
-          const rawAlbum = String(track.albumTitle || track.collectionName || "").trim();
 
           // Prioriza títulos limpos da Studio Version sem sufixos entre parênteses/colchetes/hífens
           if (!/[(\[\-–—]/.test(rawTitle)) {
             score += 40;
-          } else if (/\b(edit|version|versao|versão|mix|live|ao vivo|remix|karaoke|extended|club|radio|acoustic|acustico)\b/i.test(rawTitle)) {
+          } else if (
+            allowLive
+              ? /\b(remix|karaoke|extended|club)\b/i.test(rawTitle)
+              : /\b(edit|version|versao|versão|mix|live|ao vivo|remix|karaoke|extended|club|radio|acoustic|acustico)\b/i.test(rawTitle)
+          ) {
             return -999;
           }
 
-          if (rawAlbum && !/\b(remix|live|karaoke|ao vivo|tour|turne|turnê|deluxe|special)\b/i.test(rawAlbum)) {
+          if (
+            rawAlbum &&
+            (allowLive
+              ? !/\b(remix|karaoke)\b/i.test(rawAlbum)
+              : !/\b(remix|live|karaoke|ao vivo|tour|turne|turnê|deluxe|special)\b/i.test(rawAlbum))
+          ) {
             score += 15;
           }
 
@@ -11958,7 +12148,7 @@ export function initMiadoClient() {
                     <h2 class="section-title">Populares</h2>
                   </div>
                   <div class="tracklist-table">
-                    ${songs.slice(0, 15).map((tr, idx) => {
+                    ${songs.slice(0, 30).map((tr, idx) => {
                       const isLiked = state.isLiked(tr);
                       const tKey = normalizeTrackKey(tr);
                       const safeTitle = String(tr.title || "").replace(/"/g, "&quot;");
