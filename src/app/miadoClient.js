@@ -7639,6 +7639,39 @@ export function initMiadoClient() {
             if (btnAuthSubmit) btnAuthSubmit.style.display = "block";
           };
 
+          this.openPasswordResetModalDirectly = (targetEmail = "", targetCode = "") => {
+            const authModal = document.getElementById("modal-auth");
+            if (authModal) {
+              authModal.classList.add("active");
+            }
+            if (passFieldGroup) passFieldGroup.style.display = "none";
+            if (btnAuthSubmit) btnAuthSubmit.style.display = "none";
+            if (forgotPanel) forgotPanel.style.display = "flex";
+            const feedbackEl = document.getElementById("auth-feedback-msg");
+            if (feedbackEl) feedbackEl.style.display = "none";
+
+            const emailIn = document.getElementById("auth-input-email");
+            if (emailIn && targetEmail) {
+              emailIn.value = targetEmail;
+            }
+
+            if (targetCode && targetCode.length >= 6) {
+              syncModalEmailValidationState(true, "");
+              if (forgotCodeInput) forgotCodeInput.value = targetCode;
+              if (forgotStatusBanner) {
+                forgotStatusBanner.style.display = "block";
+                forgotStatusBanner.textContent =
+                  "Código de recuperação de 24h validado pelo link! Digite sua nova senha abaixo.";
+              }
+              if (forgotNewPassInput) {
+                setTimeout(() => forgotNewPassInput.focus(), 150);
+              }
+            } else {
+              syncModalEmailValidationState(false);
+              if (emailIn) emailIn.focus();
+            }
+          };
+
           if (btnForgotToggle) {
             btnForgotToggle.addEventListener("click", () => {
               syncModalEmailValidationState(false);
@@ -8601,6 +8634,24 @@ export function initMiadoClient() {
           try {
             const rawPath = decodeURIComponent(window.location.pathname || "/").replace(/\/+$/, "") || "/";
             const sp = new URLSearchParams(window.location.search || "");
+
+            const isPasswordResetRoute =
+              sp.get("action") === "reset-password" ||
+              sp.get("mode") === "resetPassword" ||
+              rawPath.startsWith("/redefinir-senha") ||
+              Boolean(sp.get("resetCode")) ||
+              Boolean(sp.get("code") && (sp.get("email") || sp.get("resetEmail")));
+
+            if (isPasswordResetRoute) {
+              const urlEmail = (sp.get("email") || sp.get("resetEmail") || "").trim().toLowerCase();
+              const urlCode = (sp.get("code") || sp.get("resetCode") || "").trim();
+              setTimeout(() => {
+                if (typeof this.openPasswordResetModalDirectly === "function") {
+                  this.openPasswordResetModalDirectly(urlEmail, urlCode);
+                }
+              }, 120);
+              return;
+            }
 
             const sharedTrackTitle = sp.get("track");
             const sharedArtist = sp.get("artist") || "";

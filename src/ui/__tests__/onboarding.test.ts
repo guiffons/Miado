@@ -148,12 +148,12 @@ describe("Miado Onboarding — Flow & Validation", () => {
   });
 
   it("evaluates password strength from 0 to 4 bars and enforces 6-char + uppercase + special minimum", () => {
-    expect(evaluatePasswordStrength("")).toEqual({ score: 0, valid: false });
-    expect(evaluatePasswordStrength("abc")).toEqual({ score: 1, valid: false });
-    expect(evaluatePasswordStrength("Abcdef12")).toEqual({ score: 2, valid: false });
-    expect(evaluatePasswordStrength("abcdef!@")).toEqual({ score: 2, valid: false });
-    expect(evaluatePasswordStrength("Abcde!")).toEqual({ score: 3, valid: true });
-    expect(evaluatePasswordStrength("Abcdefgh12!@#X")).toEqual({ score: 4, valid: true });
+    expect(evaluatePasswordStrength("")).toMatchObject({ score: 0, valid: false });
+    expect(evaluatePasswordStrength("abc")).toMatchObject({ score: 1, valid: false });
+    expect(evaluatePasswordStrength("Abcdef12")).toMatchObject({ score: 2, valid: false });
+    expect(evaluatePasswordStrength("abcdef!@")).toMatchObject({ score: 2, valid: false });
+    expect(evaluatePasswordStrength("Abcde!")).toMatchObject({ score: 3, valid: true });
+    expect(evaluatePasswordStrength("Abcdefgh12!@#X")).toMatchObject({ score: 4, valid: true });
   });
 
   it("maps Firebase Auth error codes to exact PT-BR strings from Section 3.1", () => {

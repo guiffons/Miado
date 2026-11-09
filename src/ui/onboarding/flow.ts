@@ -196,7 +196,7 @@ export function mapFirebaseError(err: unknown): string {
   const lower = rawCode.toLowerCase();
 
   if (lower.includes("auth/user-not-found")) {
-    return customMsg || "Nenhuma conta cadastrada com este e-mail. Crie uma conta primeiro.";
+    return customMsg || OB_TEXT.errors.invalidCredentials;
   }
   if (
     lower.includes("auth/invalid-credential") ||

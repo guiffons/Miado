@@ -43,6 +43,7 @@ import { isSafeImageUrl } from "./src/server/schemas.ts";
 import { createPlaylistsRouter } from "./src/server/routes/playlists.ts";
 import { createGlassPlaceholderSvg } from "./src/shared/placeholder.ts";
 import { getDataDir } from "./src/server/storage/dataDir.ts";
+import { renderPasswordResetEmailHtml } from "./src/templates/passwordResetEmail.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -3841,77 +3842,6 @@ export async function createMiadoApp() {
     }
   });
 
-  function buildMiadoPasswordResetEmailHtml(params: {
-    email: string;
-    userName: string;
-    userHandle: string;
-    code: string;
-    originUrl: string;
-  }): string {
-    const logoUrl = `${params.originUrl.replace(/\/$/, "")}/assets/aistudio/thumbnail_7fd222f18747391112b3e415abb27c67a303376a_alpha_45d028e7.jpg`;
-    const digits = String(params.code || "000000")
-      .split("")
-      .map(
-        (d) =>
-          `<span style="display:inline-block;width:42px;height:52px;line-height:52px;margin:0 4px;border-radius:12px;background:rgba(168,85,247,0.18);border:1px solid rgba(192,132,252,0.55);color:#f3e8ff;font-size:26px;font-weight:800;text-align:center;box-shadow:0 4px 16px rgba(168,85,247,0.25);">${d}</span>`
-      )
-      .join("");
-
-    return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Recuperação de Senha • Miado</title>
-</head>
-<body style="margin:0;padding:24px 12px;background-color:#090511;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f8fafc;">
-  <div style="max-width:520px;margin:0 auto;background:linear-gradient(165deg,#150b28 0%,#0d0719 100%);border:1px solid rgba(192,132,252,0.35);border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.65);">
-    <div style="height:5px;background:linear-gradient(90deg,#a855f7 0%,#ec4899 50%,#8b5cf6 100%);"></div>
-    <div style="padding:32px 28px 24px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.07);background:radial-gradient(circle at 50% 0%,rgba(168,85,247,0.22),transparent 70%);">
-      <div style="width:76px;height:76px;margin:0 auto 14px;border-radius:22px;background:#05020a;border:1.5px solid rgba(192,132,252,0.5);display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 10px 28px rgba(168,85,247,0.35);">
-        <img src="${logoUrl}" alt="Miado" style="width:100%;height:100%;object-fit:cover;display:block;" />
-      </div>
-      <div style="display:inline-block;padding:4px 12px;border-radius:999px;background:rgba(168,85,247,0.16);border:1px solid rgba(192,132,252,0.35);color:#d8b4fe;font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:10px;">
-        Miado Streaming • Segurança
-      </div>
-      <h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">
-        Redefinição de Senha
-      </h1>
-    </div>
-
-    <div style="padding:28px;">
-      <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#e2e8f0;">
-        Olá, <strong style="color:#f3e8ff;">${params.userName}</strong> <span style="color:#c084fc;font-weight:600;">(${params.userHandle})</span>!
-      </p>
-      <p style="margin:0 0 22px;font-size:14px;line-height:1.6;color:#cbd5e1;">
-        Recebemos uma solicitação para redefinir a senha da sua conta vinculada ao e-mail <strong style="color:#f8fafc;">${params.email}</strong>. Utilize o código de 6 dígitos abaixo no painel de recuperação do Miado:
-      </p>
-
-      <div style="padding:22px 12px;margin:0 0 22px;border-radius:18px;background:rgba(15,8,29,0.85);border:1px solid rgba(168,85,247,0.38);text-align:center;">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#c084fc;margin-bottom:12px;">
-          Seu Código de Verificação
-        </div>
-        <div style="white-space:nowrap;">
-          ${digits}
-        </div>
-        <div style="margin-top:12px;font-size:12px;color:#94a3b8;">
-          Este código expira em <strong style="color:#e9d5ff;">15 minutos</strong>.
-        </div>
-      </div>
-
-      <div style="padding:14px 16px;border-radius:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);font-size:12.5px;line-height:1.5;color:#94a3b8;">
-        <strong style="color:#e2e8f0;">Dica para sua nova senha:</strong> ela deve conter pelo menos <strong>6 caracteres</strong>, incluindo <strong>1 letra maiúscula (A-Z)</strong> e <strong>1 caractere especial</strong> (ex: <code style="color:#d8b4fe;">!@#$%&*</code>).
-      </div>
-    </div>
-
-    <div style="padding:18px 28px;background:rgba(0,0,0,0.35);border-top:1px solid rgba(255,255,255,0.06);text-align:center;font-size:12px;color:#64748b;">
-      Se você não solicitou esta alteração, ignore este e-mail com segurança — sua conta permanece protegida no Miado.
-    </div>
-  </div>
-</body>
-</html>`;
-  }
-
   function createEmailPreviewToken(email: string, code: string): string {
     return crypto
       .createHmac("sha256", SESSION_SECRET)
@@ -3920,7 +3850,7 @@ export async function createMiadoApp() {
       .slice(0, 32);
   }
 
-  // Recuperação de senha com validação estrita de existência de conta (/api/auth/forgot-password e /api/auth/reset-password)
+  // Recuperação de senha com validação estrita de existência de conta e validade de 24 horas (/api/auth/forgot-password e /api/auth/reset-password)
   app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
     try {
       const ip = String(req.ip || req.socket.remoteAddress || "local");
@@ -3977,7 +3907,8 @@ export async function createMiadoApp() {
       }
 
       const code = String(crypto.randomInt(100000, 999999));
-      const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutos
+      // Validade garantida de 24 horas no backend
+      const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
       const entry: PasswordResetCodeEntry = {
         email: cleanEmail,
         code,
@@ -4000,18 +3931,20 @@ export async function createMiadoApp() {
         process.env.APP_URL ||
         `${req.headers["x-forwarded-proto"] || req.protocol || "https"}://${req.get("host") || "localhost:3000"}`;
 
-      const customEmailHtml = buildMiadoPasswordResetEmailHtml({
+      const resetLink = `${originUrl.replace(/\/$/, "")}/?action=reset-password&email=${encodeURIComponent(cleanEmail)}&code=${encodeURIComponent(code)}`;
+
+      const customEmailHtml = renderPasswordResetEmailHtml({
         email: cleanEmail,
         userName,
         userHandle,
         code,
-        originUrl
+        originUrl,
+        resetLink
       });
 
       let emailDispatched = false;
-      let firebaseOobSent = false;
 
-      // 1. Tenta enviar o e-mail HTML personalizado estilo Miado via Resend API se configurado
+      // Envia o e-mail HTML personalizado Liquid Glass do Miado via Resend API se configurado
       const resendKey = process.env.RESEND_API_KEY || "";
       if (resendKey) {
         try {
@@ -4022,36 +3955,15 @@ export async function createMiadoApp() {
               Authorization: `Bearer ${resendKey}`
             },
             body: JSON.stringify({
-              from: process.env.RESEND_FROM_EMAIL || "Miado <onboarding@resend.dev>",
+              from: process.env.RESEND_FROM_EMAIL || "Miado <seguranca@resend.dev>",
               to: [cleanEmail],
-              subject: `${code} é o seu código de recuperação de senha • Miado`,
+              subject: `${code} é o seu código secreto de recuperação • Miado 🐾`,
               html: customEmailHtml
             })
           });
           if (r.ok) emailDispatched = true;
         } catch {}
       }
-
-      // 2. Aguarda o envio assíncrono do e-mail de redefinição via Firebase IdentityToolkit (PASSWORD_RESET)
-      try {
-        const fbConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
-        if (fs.existsSync(fbConfigPath)) {
-          const fbCfg = JSON.parse(fs.readFileSync(fbConfigPath, "utf8"));
-          if (fbCfg?.apiKey) {
-            const fbRes = await fetch(
-              `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${fbCfg.apiKey}`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ requestType: "PASSWORD_RESET", email: cleanEmail })
-              }
-            );
-            if (fbRes.ok) {
-              firebaseOobSent = true;
-            }
-          }
-        }
-      } catch {}
 
       const previewToken = createEmailPreviewToken(cleanEmail, code);
 
@@ -4060,19 +3972,21 @@ export async function createMiadoApp() {
         accountExists: true,
         isEmailValidated: true,
         email: cleanEmail,
-        emailDispatched: Boolean(emailDispatched || firebaseOobSent),
-        firebaseResetDispatched: firebaseOobSent,
-        expiresInMinutes: 15,
+        code,
+        resetLink,
+        emailDispatched: Boolean(emailDispatched),
+        expiresInHours: 24,
+        expiresInMinutes: 1440,
         emailPreviewUrl: `/api/auth/reset-email-preview?email=${encodeURIComponent(cleanEmail)}&token=${encodeURIComponent(previewToken)}`,
-        message: `Enviamos o e-mail personalizado do Miado para ${cleanEmail}. Verifique sua caixa de entrada.`,
+        message: `Enviamos o e-mail no estilo Miado para ${cleanEmail} com link válido por 24 horas e código de 6 dígitos!`,
         debug: {
           inputEmail: cleanEmail,
           accountExists: true,
           isEmailValidated: true,
           status: 200,
-          firebaseOobSent,
+          expiresInHours: 24,
           resendDispatched: emailDispatched,
-          resolution: "password_reset_email_dispatched"
+          resolution: "password_reset_email_liquid_glass_prepared"
         }
       });
     } catch (_err: any) {
@@ -4092,7 +4006,7 @@ export async function createMiadoApp() {
       const db = readDb();
       const storedEntry = memoryResetCodes.get(cleanEmail) || db.resetCodes?.[cleanEmail];
       if (!cleanEmail || !storedEntry || Date.now() > storedEntry.expiresAt) {
-        res.status(404).json({ ok: false, error: "Nenhum e-mail de recuperação ativo para esta conta." });
+        res.status(404).json({ ok: false, error: "Nenhum e-mail de recuperação ativo para esta conta ou link expirado." });
         return;
       }
       const expectedToken = createEmailPreviewToken(cleanEmail, storedEntry.code);
@@ -4110,22 +4024,29 @@ export async function createMiadoApp() {
       const originUrl =
         process.env.APP_URL ||
         `${req.headers["x-forwarded-proto"] || req.protocol || "https"}://${req.get("host") || "localhost:3000"}`;
-      const html = buildMiadoPasswordResetEmailHtml({
+
+      const resetLink = `${originUrl.replace(/\/$/, "")}/?action=reset-password&email=${encodeURIComponent(cleanEmail)}&code=${encodeURIComponent(storedEntry.code)}`;
+
+      const html = renderPasswordResetEmailHtml({
         email: cleanEmail,
         userName,
         userHandle,
         code: storedEntry.code,
-        originUrl
+        originUrl,
+        resetLink
       });
+
       if (format === "json") {
         res.json({
           ok: true,
           email: cleanEmail,
           userName,
           userHandle,
-          subject: `${storedEntry.code} é o seu código de recuperação de senha • Miado`,
+          subject: `${storedEntry.code} é o seu código secreto de recuperação • Miado 🐾`,
           from: "Miado Streaming <seguranca@miado.app>",
           code: storedEntry.code,
+          resetLink,
+          expiresInHours: 24,
           html
         });
         return;

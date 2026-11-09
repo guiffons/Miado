@@ -1213,40 +1213,17 @@ export function initFirebaseClient(): void {
           throw err;
         }
 
-        // 2. Com o e-mail validado no servidor, aguarda a promessa da API Firebase (sendPasswordResetEmail)
-        let fbResetStatus = "OK";
-        let fbResetMessage = "Firebase sendPasswordResetEmail resolved";
-        try {
-          await sendPasswordResetEmail(auth, cleanEmail);
-        } catch (fbErr: any) {
-          fbResetStatus = String(fbErr?.code || "auth/reset-fallback");
-          fbResetMessage = String(fbErr?.message || "");
-          if (fbResetStatus.includes("invalid-email") || fbResetStatus.includes("too-many-requests")) {
-            logFirebaseAuthDebug({
-              action: "forgot-password",
-              inputEmail: email,
-              normalizedEmail: cleanEmail,
-              firebaseErrorCode: fbResetStatus,
-              firebaseErrorMessage: fbResetMessage,
-              backendHttpStatus: srvRes.status,
-              backendErrorCode: fbResetStatus,
-              accountExistsOnServer: true,
-              resolution: "rejected_by_firebase_sendPasswordResetEmail",
-            });
-            throw fbErr;
-          }
-        }
-
+        // 2. Com o e-mail validado no servidor, registra o log de depuração estruturado
         logFirebaseAuthDebug({
           action: "forgot-password",
           inputEmail: email,
           normalizedEmail: cleanEmail,
-          firebaseErrorCode: fbResetStatus,
-          firebaseErrorMessage: fbResetMessage,
+          firebaseErrorCode: "OK",
+          firebaseErrorMessage: "Miado custom password reset email prepared (valid for 24h)",
           backendHttpStatus: srvRes.status,
           backendErrorCode: null,
           accountExistsOnServer: true,
-          resolution: "password_reset_email_sent_after_validation",
+          resolution: "password_reset_email_liquid_glass_prepared",
         });
 
         return {
@@ -1254,12 +1231,15 @@ export function initFirebaseClient(): void {
           accountExists: true,
           isEmailValidated: Boolean(srvData.isEmailValidated ?? true),
           email: cleanEmail,
+          code: String(srvData.code || ""),
+          resetLink: String(srvData.resetLink || ""),
           emailDispatched: Boolean(srvData.emailDispatched),
           emailPreviewUrl: String(srvData.emailPreviewUrl || ""),
-          expiresInMinutes: Number(srvData.expiresInMinutes || 15),
+          expiresInHours: Number(srvData.expiresInHours || 24),
+          expiresInMinutes: Number(srvData.expiresInMinutes || 1440),
           message:
             srvData.message ||
-            `Enviamos o e-mail personalizado do Miado para ${cleanEmail}. Verifique sua caixa de entrada.`,
+            `Enviamos o e-mail no estilo Miado para ${cleanEmail} com validade de 24 horas e código de 6 dígitos! Verifique sua caixa de entrada.`,
         };
       },
 

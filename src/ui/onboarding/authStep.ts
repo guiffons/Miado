@@ -969,6 +969,37 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
 
   const root = h("section", { class: "ob-step-auth" }, wall.root, rightCol);
 
+  try {
+    const sp = new URLSearchParams(window.location.search || "");
+    const rawPath = decodeURIComponent(window.location.pathname || "/").replace(/\/+$/, "") || "/";
+    const isReset =
+      sp.get("action") === "reset-password" ||
+      sp.get("mode") === "resetPassword" ||
+      rawPath.startsWith("/redefinir-senha") ||
+      Boolean(sp.get("resetCode")) ||
+      Boolean(sp.get("code") && (sp.get("email") || sp.get("resetEmail")));
+
+    if (isReset) {
+      const targetEmail = (sp.get("email") || sp.get("resetEmail") || "").trim().toLowerCase();
+      const targetCode = (sp.get("code") || sp.get("resetCode") || "").trim();
+      if (targetEmail) {
+        emailField.setValue(targetEmail);
+      }
+      forgotPanelEl.style.display = "flex";
+      passwordField.root.style.display = "none";
+      submitBtn.style.display = "none";
+      forgotRowEl.style.display = "none";
+      if (targetCode && targetCode.length >= 6) {
+        forgotCodeInput.value = targetCode;
+        syncEmailValidationState(true);
+        forgotStatusBanner.style.display = "block";
+        forgotStatusBanner.textContent =
+          "Código de recuperação de 24h validado pelo link! Digite sua nova senha abaixo.";
+        setTimeout(() => forgotNewPassInput.focus(), 160);
+      }
+    }
+  } catch {}
+
   return {
     root,
     titleEl,
