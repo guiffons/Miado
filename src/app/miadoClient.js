@@ -4690,8 +4690,14 @@ export function initMiadoClient() {
           this.audio.volume = Math.max(0, Math.min(1, state.volume ?? 0.85));
           this.playRequestId = 0;
           this.isSwitchingTrack = false;
+          this.isRecoveringStream = false;
           this.animFrameId = null;
           this.lastTimeUpdatePerf = 0;
+          this.lastKnownPosition = 0;
+          this.pausedAtTime = 0;
+          this.pausedAtTimestamp = 0;
+          this.resumeWatchdogTimer = null;
+          this.stallWatchdogTimer = null;
 
           // O AudioContext NUNCA é instanciado no carregamento inicial da página,
           // sendo criado exclusivamente após a primeira interação do usuário.
@@ -4743,27 +4749,90 @@ export function initMiadoClient() {
                 this.analyser.connect(this.audioCtx.destination);
               } catch (srcErr) {}
             }
-            if (this.audioCtx && this.audioCtx.state === "suspended") {
+            if (this.audioCtx && this.audioCtx.state !== "running") {
               this.audioCtx.resume().catch(() => {});
+            }
+            if (this.gainNode) {
+              const targetVol = state.isMuted ? 0 : Math.max(0, Math.min(1, state.volume ?? 0.85));
+              this.gainNode.gain.value = targetVol;
             }
           } catch (e) {}
         }
 
+        clearWatchdogs() {
+          if (this.resumeWatchdogTimer) {
+            clearTimeout(this.resumeWatchdogTimer);
+            this.resumeWatchdogTimer = null;
+          }
+          if (this.stallWatchdogTimer) {
+            clearTimeout(this.stallWatchdogTimer);
+            this.stallWatchdogTimer = null;
+          }
+        }
+
         setupAudioListeners() {
           this.audio.addEventListener("play", () => {
+            this.ensureAudioContext();
             state.setIsPlaying(true);
             this.startVisualizerLoop();
           });
 
           this.audio.addEventListener("playing", () => {
+            this.clearWatchdogs();
             this.isSwitchingTrack = false;
+            this.isRecoveringStream = false;
+            this.pausedAtTimestamp = 0;
             state.setIsPlaying(true);
             this.startVisualizerLoop();
           });
 
           this.audio.addEventListener("pause", () => {
-            if (!this.isSwitchingTrack && !this.audio.ended) {
+            this.clearWatchdogs();
+            if (!this.isSwitchingTrack && !this.isRecoveringStream && !this.audio.ended) {
+              if (this.audio.currentTime > 0) {
+                this.pausedAtTime = this.audio.currentTime;
+                this.lastKnownPosition = this.audio.currentTime;
+              }
+              this.pausedAtTimestamp = Date.now();
               state.setIsPlaying(false);
+            }
+          });
+
+          const scheduleStallRecovery = () => {
+            if (this.isSwitchingTrack || this.isRecoveringStream || !state.currentTrack || !state.isPlaying) {
+              return;
+            }
+            if (this.stallWatchdogTimer) clearTimeout(this.stallWatchdogTimer);
+            const snapshotPos = this.audio.currentTime || this.lastKnownPosition || this.pausedAtTime || 0;
+            this.stallWatchdogTimer = setTimeout(() => {
+              this.stallWatchdogTimer = null;
+              if (!state.isPlaying || this.isSwitchingTrack || this.isRecoveringStream || !state.currentTrack) {
+                return;
+              }
+              const currentPos = this.audio.currentTime || 0;
+              if (this.audio.paused || this.audio.error || Math.abs(currentPos - snapshotPos) < 0.05) {
+                this.recoverStreamAtPosition(snapshotPos);
+              }
+            }, 2600);
+          };
+
+          this.audio.addEventListener("stalled", scheduleStallRecovery);
+          this.audio.addEventListener("waiting", scheduleStallRecovery);
+
+          this.audio.addEventListener("error", () => {
+            if (!this.isSwitchingTrack && !this.isRecoveringStream && state.currentTrack && (state.isPlaying || !this.audio.paused)) {
+              const targetPos = this.audio.currentTime || this.lastKnownPosition || this.pausedAtTime || 0;
+              this.recoverStreamAtPosition(targetPos);
+            }
+          });
+
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible" && state.isPlaying) {
+              this.ensureAudioContext();
+              if (this.audio.paused && state.currentTrack && !this.isSwitchingTrack && !this.isRecoveringStream) {
+                const targetPos = this.audio.currentTime || this.lastKnownPosition || this.pausedAtTime || 0;
+                this.recoverStreamAtPosition(targetPos);
+              }
             }
           });
 
@@ -4781,6 +4850,10 @@ export function initMiadoClient() {
           });
 
           this.audio.addEventListener("timeupdate", () => {
+            if (!this.audio.paused && this.audio.currentTime > 0) {
+              this.lastKnownPosition = this.audio.currentTime;
+              this.pausedAtTime = this.audio.currentTime;
+            }
             const now = performance.now();
             if (now - this.lastTimeUpdatePerf < 160) return;
             this.lastTimeUpdatePerf = now;
@@ -4817,9 +4890,17 @@ export function initMiadoClient() {
           });
 
           this.audio.addEventListener("ended", () => {
+            this.clearWatchdogs();
+            this.lastKnownPosition = 0;
+            this.pausedAtTime = 0;
+            this.pausedAtTimestamp = 0;
             if (state.isRepeat) {
               this.audio.currentTime = 0;
-              this.audio.play().then(() => state.setIsPlaying(true)).catch(() => {});
+              this.audio.play().then(() => state.setIsPlaying(true)).catch(() => {
+                if (state.currentTrack) {
+                  this.playTrack(state.currentTrack, state.currentAlbum);
+                }
+              });
             } else {
               this.nextTrack();
             }
@@ -4960,28 +5041,58 @@ export function initMiadoClient() {
         }
 
         /**
-         * Tenta reproduzir uma URL no elemento <audio> com timeout de segurança e verificação de erro
+         * Tenta reproduzir uma URL no elemento <audio> com timeout de segurança, verificação de erro e posição inicial opcional
          */
-        attemptPlayUrl(url, currentReq, timeoutMs = 11500) {
+        attemptPlayUrl(url, currentReq, timeoutMs = 11500, startTimeSec = 0) {
           return new Promise((resolve) => {
             if (currentReq !== this.playRequestId || !url) {
               resolve(false);
               return;
             }
             let settled = false;
+            let seekApplied = !(startTimeSec > 0.5);
+
+            const applyTargetSeek = () => {
+              if (seekApplied || !(startTimeSec > 0.5)) return;
+              try {
+                const dur = this.audio.duration;
+                if (!dur || !isFinite(dur) || startTimeSec < dur - 1) {
+                  this.audio.currentTime = startTimeSec;
+                  seekApplied = true;
+                }
+              } catch (_e) {}
+            };
+
             const finish = (ok) => {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
               this.audio.removeEventListener("error", onErr);
               this.audio.removeEventListener("playing", onPlaying);
+              this.audio.removeEventListener("loadedmetadata", onMeta);
+              this.audio.removeEventListener("canplay", onCanPlay);
               resolve(ok);
             };
             const onErr = () => finish(false);
-            const onPlaying = () => finish(true);
+            const onMeta = () => applyTargetSeek();
+            const onCanPlay = () => applyTargetSeek();
+            const onPlaying = () => {
+              applyTargetSeek();
+              if (startTimeSec > 0.5 && Math.abs((this.audio.currentTime || 0) - startTimeSec) > 3) {
+                try {
+                  const dur = this.audio.duration;
+                  if (!dur || !isFinite(dur) || startTimeSec < dur - 1) {
+                    this.audio.currentTime = startTimeSec;
+                  }
+                } catch (_e) {}
+              }
+              finish(true);
+            };
             const timer = setTimeout(() => finish(false), timeoutMs);
 
             this.audio.addEventListener("error", onErr, { once: true });
+            this.audio.addEventListener("loadedmetadata", onMeta, { once: true });
+            this.audio.addEventListener("canplay", onCanPlay, { once: true });
             this.audio.addEventListener("playing", onPlaying, { once: true });
 
             try {
@@ -4989,12 +5100,78 @@ export function initMiadoClient() {
               this.audio.load();
               const playPromise = this.audio.play();
               if (playPromise && typeof playPromise.then === "function") {
-                playPromise.then(() => finish(true)).catch(() => finish(false));
+                playPromise
+                  .then(() => {
+                    applyTargetSeek();
+                    finish(true);
+                  })
+                  .catch(() => finish(false));
               }
             } catch (e) {
               finish(false);
             }
           });
+        }
+
+        /**
+         * Recarrega a conexão de stream mantendo exatamente o segundo em que a música estava pausada (ex: 3:24)
+         */
+        async recoverStreamAtPosition(resumeTimeSec = 0) {
+          if (!state.currentTrack) return false;
+          const track = state.currentTrack;
+          const targetSec = Math.max(
+            0,
+            Number(resumeTimeSec) || this.pausedAtTime || this.lastKnownPosition || this.audio.currentTime || 0
+          );
+          this.clearWatchdogs();
+          this.isRecoveringStream = true;
+          this.isSwitchingTrack = true;
+          const currentReq = ++this.playRequestId;
+
+          this.ensureAudioContext();
+          if (this.audioCtx && this.audioCtx.state !== "running") {
+            try {
+              await this.audioCtx.resume();
+            } catch (_e) {}
+          }
+
+          const tKey = normalizeTrackKey(track);
+          try {
+            sessionStorage.removeItem("miado_stream_" + tKey);
+          } catch (_e) {}
+
+          const ts = Date.now();
+          const candidateUrls = [
+            `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&studioOnly=1&resume=1&_=${ts}`,
+            `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&retry=1&_=${ts + 1}`
+          ];
+
+          let recovered = false;
+          for (const url of candidateUrls) {
+            if (currentReq !== this.playRequestId) break;
+            recovered = await this.attemptPlayUrl(url, currentReq, 11000, targetSec);
+            if (recovered) {
+              try {
+                const cleanUrl = `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&studioOnly=1`;
+                sessionStorage.setItem("miado_stream_" + tKey, cleanUrl);
+              } catch (_e) {}
+              break;
+            }
+          }
+
+          if (currentReq === this.playRequestId) {
+            this.isRecoveringStream = false;
+            this.isSwitchingTrack = false;
+            if (recovered) {
+              this.pausedAtTimestamp = 0;
+              state.setIsPlaying(true);
+              this.startVisualizerLoop();
+              state.broadcastLivePlaybackState(track, true);
+            } else {
+              state.setIsPlaying(false);
+            }
+          }
+          return recovered;
         }
 
         /**
@@ -5004,9 +5181,14 @@ export function initMiadoClient() {
          */
         async playTrack(track, album = state.currentAlbum) {
           if (!track) return;
+          this.clearWatchdogs();
           this.ensureAudioContext();
           const currentReq = ++this.playRequestId;
           this.isSwitchingTrack = true;
+          this.isRecoveringStream = false;
+          this.lastKnownPosition = 0;
+          this.pausedAtTime = 0;
+          this.pausedAtTimestamp = 0;
 
           const isActualAlbum = album && !album.isPlaylist && !String(album.id || "").startsWith("pl_");
           track.coverUrl = ensureTrackCoverUrl(track, track.title, track.artist, isActualAlbum ? album.coverUrl : "");
@@ -5044,14 +5226,14 @@ export function initMiadoClient() {
 
           // 1. Tenta carregar do cache local de áudio da sessão (0ms de latência)
           if (cachedStream) {
-            started = await this.attemptPlayUrl(cachedStream, currentReq, 4500);
+            started = await this.attemptPlayUrl(cachedStream, currentReq, 4500, 0);
           }
 
           // 2. Tentativa Primária: Proxy Stream URL com resolução paralela ultrarrápida no backend
           if (!started && currentReq === this.playRequestId) {
             const rawCandidate = track.rawPreviewUrl || track.previewUrl || track.streamUrl || "";
             const primaryProxyStreamUrl = toProxyStreamUrl(rawCandidate, track.title, track.artist, true);
-            started = await this.attemptPlayUrl(primaryProxyStreamUrl, currentReq, 11500);
+            started = await this.attemptPlayUrl(primaryProxyStreamUrl, currentReq, 11500, 0);
             if (started) {
               try { sessionStorage.setItem("miado_stream_" + tKey, primaryProxyStreamUrl); } catch (_e) {}
             }
@@ -5059,8 +5241,8 @@ export function initMiadoClient() {
 
           // 3. Contingência rápida pelo servidor (otimizada sem loop de 6 instâncias que esquentava o celular)
           if (!started && currentReq === this.playRequestId) {
-            const contingencyUrl = `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&retry=1`;
-            started = await this.attemptPlayUrl(contingencyUrl, currentReq, 11500);
+            const contingencyUrl = `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&retry=1&_=${Date.now()}`;
+            started = await this.attemptPlayUrl(contingencyUrl, currentReq, 11500, 0);
             if (started) {
               try { sessionStorage.setItem("miado_stream_" + tKey, contingencyUrl); } catch (_e) {}
             }
@@ -5104,14 +5286,53 @@ export function initMiadoClient() {
             this.playTrack(state.currentTrack, state.currentAlbum);
             return;
           }
-          if (this.audio.paused) {
-            this.audio.play().then(() => {
-              state.setIsPlaying(true);
-              this.startVisualizerLoop();
-            }).catch(() => {
-              this.playTrack(state.currentTrack, state.currentAlbum);
-            });
+
+          const savedTime =
+            (this.audio.currentTime > 0 ? this.audio.currentTime : this.pausedAtTime) ||
+            this.lastKnownPosition ||
+            0;
+          const pauseDurationMs = this.pausedAtTimestamp > 0 ? Date.now() - this.pausedAtTimestamp : 0;
+          const isStreamDeadOrStalled =
+            Boolean(this.audio.error) ||
+            this.audio.networkState === HTMLMediaElement.NETWORK_NO_SOURCE ||
+            this.audio.networkState === HTMLMediaElement.NETWORK_EMPTY ||
+            this.audio.readyState < 2;
+
+          // Se o usuário clicou no botão enquanto a música está pausada (ou se ficou travada após pausa longa)
+          if (this.audio.paused || isStreamDeadOrStalled) {
+            if (isStreamDeadOrStalled || pauseDurationMs > 20000) {
+              this.recoverStreamAtPosition(savedTime);
+              return;
+            }
+
+            const startCheckTime = this.audio.currentTime || 0;
+            this.clearWatchdogs();
+            this.resumeWatchdogTimer = setTimeout(() => {
+              this.resumeWatchdogTimer = null;
+              if (!state.isPlaying || this.isSwitchingTrack || this.isRecoveringStream) return;
+              const nowTime = this.audio.currentTime || 0;
+              if (this.audio.paused || this.audio.error || Math.abs(nowTime - startCheckTime) < 0.04) {
+                this.recoverStreamAtPosition(savedTime);
+              }
+            }, 1100);
+
+            this.audio
+              .play()
+              .then(() => {
+                state.setIsPlaying(true);
+                this.startVisualizerLoop();
+              })
+              .catch(() => {
+                this.clearWatchdogs();
+                this.recoverStreamAtPosition(savedTime);
+              });
           } else {
+            this.clearWatchdogs();
+            if (this.audio.currentTime > 0) {
+              this.pausedAtTime = this.audio.currentTime;
+              this.lastKnownPosition = this.audio.currentTime;
+            }
+            this.pausedAtTimestamp = Date.now();
             this.audio.pause();
             state.setIsPlaying(false);
           }
@@ -6549,7 +6770,22 @@ export function initMiadoClient() {
               if (!isSeeking) return;
               isSeeking = false;
               if (engine.audio.duration && !isNaN(engine.audio.duration)) {
-                engine.audio.currentTime = pendingSeekRatio * engine.audio.duration;
+                const targetSec = pendingSeekRatio * engine.audio.duration;
+                engine.lastKnownPosition = targetSec;
+                engine.pausedAtTime = targetSec;
+                try {
+                  engine.audio.currentTime = targetSec;
+                } catch (_e) {}
+                if (state.isPlaying) {
+                  engine.clearWatchdogs();
+                  engine.resumeWatchdogTimer = setTimeout(() => {
+                    engine.resumeWatchdogTimer = null;
+                    if (!state.isPlaying || engine.isSwitchingTrack || engine.isRecoveringStream) return;
+                    if (engine.audio.paused || engine.audio.error || engine.audio.readyState < 2) {
+                      engine.recoverStreamAtPosition(targetSec);
+                    }
+                  }, 1400);
+                }
               }
             };
 
@@ -7326,20 +7562,78 @@ export function initMiadoClient() {
           const btnAuthSubmit = document.getElementById("btn-auth-submit");
           if (btnAuthSubmit) btnAuthSubmit.addEventListener("click", submitAuthAction);
 
-          // Eventos do painel "Esqueci minha senha?" no modal de autenticação (#modal-auth)
+          // Eventos do painel "Esqueci minha senha?" no modal de autenticação (#modal-auth) com estado isEmailValidated
+          let isEmailValidated = false;
+          let modalEmailPreviewUrl = "";
           const btnForgotToggle = document.getElementById("btn-auth-forgot-toggle");
           const forgotPanel = document.getElementById("auth-forgot-password-panel");
           const passFieldGroup = document.getElementById("auth-password-field-group");
           const forgotStatusBanner = document.getElementById("auth-forgot-status-banner");
           const btnForgotSendCode = document.getElementById("btn-forgot-send-code");
           const forgotStep2Wrap = document.getElementById("auth-forgot-step2-wrap");
+          const btnForgotOpenPreview = document.getElementById("btn-forgot-open-email-preview");
           const forgotCodeInput = document.getElementById("auth-forgot-code-input");
           const forgotNewPassInput = document.getElementById("auth-forgot-new-password");
           const forgotPassHint = document.getElementById("auth-forgot-pass-hint");
           const btnForgotConfirm = document.getElementById("btn-forgot-confirm-reset");
           const btnForgotCancel = document.getElementById("btn-forgot-cancel");
 
+          const syncModalEmailValidationState = (validated, previewUrl = "") => {
+            isEmailValidated = Boolean(validated);
+            modalEmailPreviewUrl = isEmailValidated ? String(previewUrl || "") : "";
+            if (forgotStep2Wrap) {
+              forgotStep2Wrap.setAttribute("data-email-validated", isEmailValidated ? "true" : "false");
+              forgotStep2Wrap.style.display = isEmailValidated ? "flex" : "none";
+            }
+            if (btnForgotOpenPreview) {
+              btnForgotOpenPreview.style.display =
+                isEmailValidated && modalEmailPreviewUrl ? "flex" : "none";
+            }
+            if (!isEmailValidated) {
+              if (forgotCodeInput) forgotCodeInput.value = "";
+              if (forgotNewPassInput) forgotNewPassInput.value = "";
+              if (forgotPassHint) forgotPassHint.textContent = "";
+            }
+          };
+
+          if (btnForgotOpenPreview) {
+            btnForgotOpenPreview.addEventListener("click", () => {
+              if (!isEmailValidated || !modalEmailPreviewUrl) return;
+              if (window.miadoFirestore && typeof window.miadoFirestore.openMiadoEmailModal === "function") {
+                window.miadoFirestore.openMiadoEmailModal(modalEmailPreviewUrl, (code) => {
+                  if (forgotCodeInput) forgotCodeInput.value = code;
+                  if (forgotNewPassInput) forgotNewPassInput.focus();
+                });
+              }
+            });
+          }
+
+          const modalEmailIn = document.getElementById("auth-input-email");
+          if (modalEmailIn) {
+            modalEmailIn.addEventListener("input", () => {
+              if (isEmailValidated) {
+                syncModalEmailValidationState(false);
+                if (forgotStatusBanner) {
+                  forgotStatusBanner.style.display = "none";
+                  forgotStatusBanner.textContent = "";
+                }
+                if (btnForgotSendCode) {
+                  btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
+                }
+              }
+            });
+          }
+
           const closeForgotInModal = () => {
+            syncModalEmailValidationState(false);
+            if (forgotStatusBanner) {
+              forgotStatusBanner.style.display = "none";
+              forgotStatusBanner.textContent = "";
+            }
+            if (btnForgotSendCode) {
+              btnForgotSendCode.disabled = false;
+              btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
+            }
             if (forgotPanel) forgotPanel.style.display = "none";
             if (passFieldGroup) passFieldGroup.style.display = "block";
             if (btnAuthSubmit) btnAuthSubmit.style.display = "block";
@@ -7347,6 +7641,11 @@ export function initMiadoClient() {
 
           if (btnForgotToggle) {
             btnForgotToggle.addEventListener("click", () => {
+              syncModalEmailValidationState(false);
+              if (forgotStatusBanner) {
+                forgotStatusBanner.style.display = "none";
+                forgotStatusBanner.textContent = "";
+              }
               const feedbackEl = document.getElementById("auth-feedback-msg");
               if (feedbackEl) feedbackEl.style.display = "none";
               if (forgotPanel) forgotPanel.style.display = "flex";
@@ -7374,50 +7673,62 @@ export function initMiadoClient() {
               const emailIn = document.getElementById("auth-input-email");
               const email = (emailIn ? emailIn.value : "").trim().toLowerCase();
               const feedbackEl = document.getElementById("auth-feedback-msg");
+              syncModalEmailValidationState(false);
+              if (forgotStatusBanner) {
+                forgotStatusBanner.style.display = "none";
+                forgotStatusBanner.textContent = "";
+              }
               if (!email || !email.includes("@")) {
                 if (feedbackEl) {
                   feedbackEl.style.display = "block";
                   feedbackEl.style.backgroundColor = "rgba(239, 68, 68, 0.14)";
                   feedbackEl.style.border = "1px solid rgba(239, 68, 68, 0.4)";
                   feedbackEl.style.color = "#fca5a5";
-                  feedbackEl.textContent = "Digite o seu e-mail no campo acima para receber o código.";
+                  feedbackEl.textContent = "Digite o seu e-mail cadastrado no campo acima para receber o código.";
                 }
                 if (emailIn) emailIn.focus();
                 return;
               }
               if (feedbackEl) feedbackEl.style.display = "none";
               btnForgotSendCode.disabled = true;
-              btnForgotSendCode.textContent = "Enviando código...";
+              btnForgotSendCode.textContent = "Verificando conta e enviando e-mail...";
               try {
-                const res = await fetch("/api/auth/forgot-password", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ email })
-                });
-                const data = await res.json().catch(() => null);
-                if (!res.ok || !data?.ok) {
-                  if (feedbackEl) {
-                    feedbackEl.style.display = "block";
-                    feedbackEl.textContent = data?.error || "Não foi possível enviar o código.";
+                let data = null;
+                if (window.miadoFirestore && typeof window.miadoFirestore.sendPasswordReset === "function") {
+                  data = await window.miadoFirestore.sendPasswordReset(email);
+                } else {
+                  const res = await fetch("/api/auth/forgot-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email })
+                  });
+                  data = await res.json().catch(() => null);
+                  if (!res.ok || !data?.ok || !data?.isEmailValidated) {
+                    throw new Error(data?.error || "Nenhuma conta cadastrada com este e-mail. Crie uma conta primeiro.");
                   }
-                  btnForgotSendCode.disabled = false;
-                  btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
-                  return;
                 }
+                if (!data || !data.ok || !data.isEmailValidated) {
+                  throw new Error(data?.error || "Nenhuma conta cadastrada com este e-mail. Crie uma conta primeiro.");
+                }
+                syncModalEmailValidationState(true, data.emailPreviewUrl || "");
                 if (forgotStatusBanner) {
                   forgotStatusBanner.style.display = "block";
-                  if (data.verificationCode) {
-                    forgotStatusBanner.textContent = `Código de 6 dígitos enviado para ${email}: ${data.verificationCode}`;
-                    if (forgotCodeInput) forgotCodeInput.value = String(data.verificationCode);
-                  } else {
-                    forgotStatusBanner.textContent = data.message || `Código de 6 dígitos enviado para ${email}.`;
-                  }
+                  forgotStatusBanner.textContent =
+                    data.message ||
+                    `Enviamos o e-mail de redefinição para ${email}. Verifique sua caixa de entrada e digite o código de 6 dígitos abaixo.`;
                 }
-                if (forgotStep2Wrap) forgotStep2Wrap.style.display = "flex";
                 btnForgotSendCode.disabled = false;
-                btnForgotSendCode.textContent = "Reenviar código";
-                if (forgotNewPassInput) forgotNewPassInput.focus();
-              } catch (_e) {
+                btnForgotSendCode.textContent = "Reenviar e-mail com código";
+                if (forgotCodeInput) forgotCodeInput.focus();
+              } catch (err) {
+                syncModalEmailValidationState(false);
+                if (feedbackEl) {
+                  feedbackEl.style.display = "block";
+                  feedbackEl.style.backgroundColor = "rgba(239, 68, 68, 0.14)";
+                  feedbackEl.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                  feedbackEl.style.color = "#fca5a5";
+                  feedbackEl.textContent = err?.message || "Nenhuma conta cadastrada com este e-mail.";
+                }
                 btnForgotSendCode.disabled = false;
                 btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
               }
@@ -7426,10 +7737,6 @@ export function initMiadoClient() {
 
           if (btnForgotConfirm) {
             btnForgotConfirm.addEventListener("click", async () => {
-              const emailIn = document.getElementById("auth-input-email");
-              const email = (emailIn ? emailIn.value : "").trim().toLowerCase();
-              const code = (forgotCodeInput ? forgotCodeInput.value : "").trim();
-              const newPassword = forgotNewPassInput ? forgotNewPassInput.value : "";
               const feedbackEl = document.getElementById("auth-feedback-msg");
               const showErr = (m) => {
                 if (!feedbackEl) return;
@@ -7439,12 +7746,20 @@ export function initMiadoClient() {
                 feedbackEl.style.color = "#fca5a5";
                 feedbackEl.textContent = m;
               };
+              if (!isEmailValidated) {
+                showErr("Valide seu e-mail e solicite o código antes de redefinir a senha.");
+                return;
+              }
+              const emailIn = document.getElementById("auth-input-email");
+              const email = (emailIn ? emailIn.value : "").trim().toLowerCase();
+              const code = (forgotCodeInput ? forgotCodeInput.value : "").trim();
+              const newPassword = forgotNewPassInput ? forgotNewPassInput.value : "";
               if (!email || !email.includes("@")) {
                 showErr("Informe seu endereço de e-mail.");
                 return;
               }
               if (!code || code.length !== 6) {
-                showErr("Digite o código de 6 dígitos.");
+                showErr("Digite o código de 6 dígitos recebido no seu e-mail.");
                 return;
               }
               const pwdCheck = evaluatePasswordDetailed(newPassword);

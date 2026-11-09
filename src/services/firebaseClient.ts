@@ -29,6 +29,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendEmailVerification,
+  sendPasswordResetEmail,
   GoogleAuthProvider,
   EmailAuthProvider,
   linkWithCredential,
@@ -107,6 +108,43 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   };
   console.error("Firestore Error: ", JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+export interface FirebaseAuthDebugEntry {
+  timestamp: string;
+  action: "login" | "register" | "forgot-password" | "reset-password";
+  inputEmail: string;
+  normalizedEmail: string;
+  firebaseCurrentUserEmail: string | null;
+  emailMatchesActiveSession: boolean;
+  firebaseErrorCode: string;
+  firebaseErrorMessage: string;
+  backendHttpStatus: number | null;
+  backendErrorCode: string | null;
+  accountExistsOnServer: boolean;
+  resolution: string;
+}
+
+export function logFirebaseAuthDebug(
+  partial: Omit<FirebaseAuthDebugEntry, "timestamp" | "firebaseCurrentUserEmail" | "emailMatchesActiveSession">
+): FirebaseAuthDebugEntry {
+  const currentEmail = auth.currentUser?.email ? auth.currentUser.email.toLowerCase() : null;
+  const entry: FirebaseAuthDebugEntry = {
+    timestamp: new Date().toISOString(),
+    firebaseCurrentUserEmail: currentEmail,
+    emailMatchesActiveSession: Boolean(currentEmail && currentEmail === partial.normalizedEmail),
+    ...partial,
+  };
+  const w = window as any;
+  if (!Array.isArray(w.__miadoAuthDebugLogs)) {
+    w.__miadoAuthDebugLogs = [];
+  }
+  w.__miadoAuthDebugLogs.unshift(entry);
+  if (w.__miadoAuthDebugLogs.length > 40) {
+    w.__miadoAuthDebugLogs.length = 40;
+  }
+  console.info("[MiadoAuthDebug]", JSON.stringify(entry));
+  return entry;
 }
 
 export function normalizeBareHandle(raw: unknown, fallbackSeed = "user"): string {
@@ -810,25 +848,38 @@ export function initFirebaseClient(): void {
             (p) => p.providerId === "password"
           );
           if (!hasPasswordProvider) {
+            let linkStatus = "linked";
             try {
               const credential = EmailAuthProvider.credential(cleanEmail, password);
               await linkWithCredential(auth.currentUser, credential);
             } catch (linkErr: any) {
               const lCode = String(linkErr?.code || "").toLowerCase();
+              linkStatus = lCode || "link_fallback";
               if (lCode.includes("provider-already-linked")) {
                 await updatePassword(auth.currentUser, password).catch(() => {});
               }
             }
             const token = await auth.currentUser.getIdToken();
             localStorage.setItem("miado_auth_token", token);
-            await fetch("/api/auth/link-password", {
+            const linkRes = await fetch("/api/auth/link-password", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
               },
               body: JSON.stringify({ email: cleanEmail, password }),
-            }).catch(() => {});
+            }).catch(() => null);
+            logFirebaseAuthDebug({
+              action: "login",
+              inputEmail: email,
+              normalizedEmail: cleanEmail,
+              firebaseErrorCode: linkStatus,
+              firebaseErrorMessage: "Google active session password link",
+              backendHttpStatus: linkRes?.status || 200,
+              backendErrorCode: null,
+              accountExistsOnServer: true,
+              resolution: "google_session_password_linked",
+            });
             const profile = await ensureAndHydrateUser(auth.currentUser, {
               isGoogle: true,
               isExistingLogin: true,
@@ -863,21 +914,29 @@ export function initFirebaseClient(): void {
           const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
           const token = await cred.user.getIdToken();
           localStorage.setItem("miado_auth_token", token);
-          await fetch("/api/auth/login", {
+          const srvLoginRes = await fetch("/api/auth/login", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ email: cleanEmail, password }),
-          })
-            .then((r) => r.json())
-            .then((d) => {
-              if (d && d.ok && w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
-                w.miadoState.applyAccountPayload(d);
-              }
-            })
-            .catch(() => {});
+            body: JSON.stringify({ email: cleanEmail, password, firebaseErrorCode: "OK" }),
+          }).catch(() => null);
+          const srvLoginData = srvLoginRes ? await srvLoginRes.json().catch(() => null) : null;
+          if (srvLoginData && srvLoginData.ok && w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
+            w.miadoState.applyAccountPayload(srvLoginData);
+          }
+          logFirebaseAuthDebug({
+            action: "login",
+            inputEmail: email,
+            normalizedEmail: cleanEmail,
+            firebaseErrorCode: "OK",
+            firebaseErrorMessage: "Firebase signInWithEmailAndPassword succeeded",
+            backendHttpStatus: srvLoginRes?.status || 200,
+            backendErrorCode: null,
+            accountExistsOnServer: true,
+            resolution: "firebase_native_login_success",
+          });
           const profile = await ensureAndHydrateUser(cred.user, {
             isGoogle: false,
             isExistingLogin: true,
@@ -894,13 +953,16 @@ export function initFirebaseClient(): void {
             linkedToGoogleAccount: false,
           };
         } catch (err: any) {
-          // Autentica diretamente no servidor (/api/auth/login) para suportar contas de e-mail/senha e contas vinculadas
+          const fbErrCode = String(err?.code || "auth/unknown");
+          const fbErrMsg = String(err?.message || "");
+          // Autentica diretamente no servidor (/api/auth/login) comparando o e-mail inserido e o status da API
           const srvRes = await fetch("/api/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               email: cleanEmail,
               password,
+              firebaseErrorCode: fbErrCode,
               name: cachedMeta?.name || cachedMeta?.user?.name || "",
               username: cachedMeta?.username || cachedMeta?.user?.username || "",
               handle: cachedMeta?.username || cachedMeta?.user?.handle || "",
@@ -909,6 +971,20 @@ export function initFirebaseClient(): void {
             }),
           }).catch(() => null);
           const srvData = srvRes ? await srvRes.json().catch(() => null) : null;
+
+          logFirebaseAuthDebug({
+            action: "login",
+            inputEmail: email,
+            normalizedEmail: cleanEmail,
+            firebaseErrorCode: fbErrCode,
+            firebaseErrorMessage: fbErrMsg,
+            backendHttpStatus: srvRes?.status || null,
+            backendErrorCode: srvData?.errorCode || srvData?.error || null,
+            accountExistsOnServer: Boolean(srvData?.accountExists ?? srvData?.ok),
+            resolution: srvData?.ok
+              ? srvData?.debug?.resolution || "backend_existing_account_authenticated"
+              : srvData?.debug?.resolution || "login_rejected",
+          });
 
           if (srvData && srvData.ok) {
             const resolvedUid = String(
@@ -941,7 +1017,7 @@ export function initFirebaseClient(): void {
           const customErr: any = new Error(
             (srvData && srvData.error) || "E-mail ou senha incorretos."
           );
-          customErr.code = "auth/invalid-credential";
+          customErr.code = (srvData && srvData.errorCode) || "auth/invalid-credential";
           throw customErr;
         }
       },
@@ -1050,6 +1126,18 @@ export function initFirebaseClient(): void {
           }).catch(() => null);
           const srvData = srvRes ? await srvRes.json().catch(() => null) : null;
 
+          logFirebaseAuthDebug({
+            action: "register",
+            inputEmail: email,
+            normalizedEmail: cleanEmail,
+            firebaseErrorCode: String(regErr?.code || "auth/register-fallback"),
+            firebaseErrorMessage: String(regErr?.message || ""),
+            backendHttpStatus: srvRes?.status || null,
+            backendErrorCode: srvData?.error || null,
+            accountExistsOnServer: Boolean(srvData?.isExistingAccount || srvData?.error === "email_already_registered"),
+            resolution: srvData?.ok ? "registered_on_backend" : srvData?.error || "register_failed",
+          });
+
           if (srvData && srvData.ok) {
             const resolvedUid = String(
               srvData.account?.uid || srvData.user?.uid || `usr_${Date.now()}`
@@ -1091,6 +1179,169 @@ export function initFirebaseClient(): void {
 
           throw regErr;
         }
+      },
+
+      async sendPasswordReset(email: string) {
+        const cleanEmail = email.trim().toLowerCase();
+        // 1. Valida primeiro no servidor se o e-mail pertence a uma conta existente antes de qualquer ação
+        const srvRes = await fetch("/api/auth/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: cleanEmail }),
+        }).catch(() => null);
+        const srvData = srvRes ? await srvRes.json().catch(() => null) : null;
+
+        if (!srvRes || !srvRes.ok || !srvData?.ok) {
+          const errCode = String(srvData?.errorCode || "auth/user-not-found");
+          const errMsg = String(
+            srvData?.error ||
+              "Nenhuma conta cadastrada com este e-mail. Verifique o endereço digitado ou crie uma conta primeiro."
+          );
+          logFirebaseAuthDebug({
+            action: "forgot-password",
+            inputEmail: email,
+            normalizedEmail: cleanEmail,
+            firebaseErrorCode: errCode,
+            firebaseErrorMessage: errMsg,
+            backendHttpStatus: srvRes?.status || 404,
+            backendErrorCode: errCode,
+            accountExistsOnServer: false,
+            resolution: "rejected_unregistered_email_before_reset",
+          });
+          const err: any = new Error(errMsg);
+          err.code = errCode;
+          throw err;
+        }
+
+        // 2. Com o e-mail validado no servidor, aguarda a promessa da API Firebase (sendPasswordResetEmail)
+        let fbResetStatus = "OK";
+        let fbResetMessage = "Firebase sendPasswordResetEmail resolved";
+        try {
+          await sendPasswordResetEmail(auth, cleanEmail);
+        } catch (fbErr: any) {
+          fbResetStatus = String(fbErr?.code || "auth/reset-fallback");
+          fbResetMessage = String(fbErr?.message || "");
+          if (fbResetStatus.includes("invalid-email") || fbResetStatus.includes("too-many-requests")) {
+            logFirebaseAuthDebug({
+              action: "forgot-password",
+              inputEmail: email,
+              normalizedEmail: cleanEmail,
+              firebaseErrorCode: fbResetStatus,
+              firebaseErrorMessage: fbResetMessage,
+              backendHttpStatus: srvRes.status,
+              backendErrorCode: fbResetStatus,
+              accountExistsOnServer: true,
+              resolution: "rejected_by_firebase_sendPasswordResetEmail",
+            });
+            throw fbErr;
+          }
+        }
+
+        logFirebaseAuthDebug({
+          action: "forgot-password",
+          inputEmail: email,
+          normalizedEmail: cleanEmail,
+          firebaseErrorCode: fbResetStatus,
+          firebaseErrorMessage: fbResetMessage,
+          backendHttpStatus: srvRes.status,
+          backendErrorCode: null,
+          accountExistsOnServer: true,
+          resolution: "password_reset_email_sent_after_validation",
+        });
+
+        return {
+          ok: true,
+          accountExists: true,
+          isEmailValidated: Boolean(srvData.isEmailValidated ?? true),
+          email: cleanEmail,
+          emailDispatched: Boolean(srvData.emailDispatched),
+          emailPreviewUrl: String(srvData.emailPreviewUrl || ""),
+          expiresInMinutes: Number(srvData.expiresInMinutes || 15),
+          message:
+            srvData.message ||
+            `Enviamos o e-mail personalizado do Miado para ${cleanEmail}. Verifique sua caixa de entrada.`,
+        };
+      },
+
+      async openMiadoEmailModal(emailPreviewUrl: string, onSelectCode?: (code: string) => void) {
+        if (!emailPreviewUrl) return;
+        try {
+          const jsonUrl = `${emailPreviewUrl}${emailPreviewUrl.includes("?") ? "&" : "?"}format=json`;
+          const res = await fetch(jsonUrl);
+          const data = await res.json().catch(() => null);
+          if (!res.ok || !data?.ok) return;
+
+          const existingModal = document.getElementById("miado-custom-email-viewer-modal");
+          if (existingModal) existingModal.remove();
+
+          const overlay = document.createElement("div");
+          overlay.id = "miado-custom-email-viewer-modal";
+          overlay.style.cssText =
+            "position:fixed;inset:0;z-index:99999;background:rgba(4,2,10,0.86);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:16px;";
+
+          const card = document.createElement("div");
+          card.style.cssText =
+            "width:100%;max-width:560px;max-height:92vh;background:#0f081d;border:1px solid rgba(192,132,252,0.42);border-radius:22px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 28px 80px rgba(0,0,0,0.8);";
+
+          const topBar = document.createElement("div");
+          topBar.style.cssText =
+            "padding:14px 18px;background:rgba(24,14,42,0.95);border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;gap:12px;";
+          topBar.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+              <img src="/assets/aistudio/thumbnail_7fd222f18747391112b3e415abb27c67a303376a_alpha_45d028e7.jpg" alt="Miado" style="width:32px;height:32px;border-radius:9px;object-fit:cover;border:1px solid rgba(192,132,252,0.5);" />
+              <div style="min-width:0;">
+                <div style="font-size:0.78rem;font-weight:800;color:#f3e8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${data.subject || "Recuperação de Senha • Miado"}</div>
+                <div style="font-size:0.7rem;color:#a78bfa;">De: ${data.from || "Miado <seguranca@miado.app>"} • Para: ${data.email}</div>
+              </div>
+            </div>
+          `;
+
+          const closeBtn = document.createElement("button");
+          closeBtn.type = "button";
+          closeBtn.textContent = "Fechar";
+          closeBtn.style.cssText =
+            "padding:6px 12px;border-radius:8px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);color:#e2e8f0;font-size:0.75rem;font-weight:700;cursor:pointer;";
+          closeBtn.addEventListener("click", () => overlay.remove());
+          topBar.appendChild(closeBtn);
+
+          const iframe = document.createElement("iframe");
+          iframe.style.cssText = "width:100%;height:470px;border:none;background:#090511;";
+          iframe.srcdoc = String(data.html || "");
+
+          const footerBar = document.createElement("div");
+          footerBar.style.cssText =
+            "padding:12px 18px;background:rgba(20,11,36,0.98);border-top:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;gap:10px;";
+
+          const codeNote = document.createElement("div");
+          codeNote.style.cssText = "font-size:0.76rem;color:#cbd5e1;font-weight:600;";
+          codeNote.textContent = "E-mail autenticado pelo servidor Miado & Firebase";
+
+          const useCodeBtn = document.createElement("button");
+          useCodeBtn.type = "button";
+          useCodeBtn.textContent = `Copiar código (${data.code}) para o formulário`;
+          useCodeBtn.style.cssText =
+            "padding:8px 14px;border-radius:10px;background:linear-gradient(135deg,#a855f7,#ec4899);border:none;color:#fff;font-size:0.78rem;font-weight:800;cursor:pointer;";
+          useCodeBtn.addEventListener("click", () => {
+            if (navigator.clipboard && data.code) {
+              navigator.clipboard.writeText(String(data.code)).catch(() => {});
+            }
+            if (onSelectCode && data.code) {
+              onSelectCode(String(data.code));
+            }
+            overlay.remove();
+          });
+
+          footerBar.appendChild(codeNote);
+          footerBar.appendChild(useCodeBtn);
+          card.appendChild(topBar);
+          card.appendChild(iframe);
+          card.appendChild(footerBar);
+          overlay.appendChild(card);
+          overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) overlay.remove();
+          });
+          document.body.appendChild(overlay);
+        } catch {}
       },
 
       async resendVerificationEmail() {

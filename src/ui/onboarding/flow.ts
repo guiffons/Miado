@@ -179,27 +179,37 @@ export function evaluatePasswordStrength(password: string): PasswordStrengthResu
 
 export function mapFirebaseError(err: unknown): string {
   let rawCode = "";
+  let customMsg = "";
   if (typeof err === "string") {
     rawCode = err;
   } else if (err && typeof err === "object") {
     const anyErr = err as { code?: string; message?: string };
     rawCode = `${anyErr.code || ""} ${anyErr.message || ""}`;
+    if (
+      typeof anyErr.message === "string" &&
+      anyErr.message.trim().length > 0 &&
+      !anyErr.message.startsWith("Firebase:")
+    ) {
+      customMsg = anyErr.message.trim();
+    }
   }
   const lower = rawCode.toLowerCase();
 
+  if (lower.includes("auth/user-not-found")) {
+    return customMsg || "Nenhuma conta cadastrada com este e-mail. Crie uma conta primeiro.";
+  }
   if (
     lower.includes("auth/invalid-credential") ||
-    lower.includes("auth/user-not-found") ||
     lower.includes("auth/wrong-password") ||
     lower.includes("invalid-login-credentials")
   ) {
-    return OB_TEXT.errors.invalidCredentials;
+    return customMsg || OB_TEXT.errors.invalidCredentials;
   }
   if (lower.includes("auth/email-already-in-use") || lower.includes("email-already-in-use")) {
-    return OB_TEXT.errors.emailInUse;
+    return customMsg || OB_TEXT.errors.emailInUse;
   }
   if (lower.includes("auth/weak-password") || lower.includes("weak-password")) {
-    return OB_TEXT.errors.weakPassword;
+    return customMsg || OB_TEXT.errors.weakPassword;
   }
   if (lower.includes("auth/too-many-requests") || lower.includes("too-many-requests")) {
     return OB_TEXT.errors.tooManyRequests;
@@ -210,7 +220,7 @@ export function mapFirebaseError(err: unknown): string {
   if (lower.includes("auth/invalid-email")) {
     return OB_TEXT.errors.invalidEmail;
   }
-  return OB_TEXT.errors.generic;
+  return customMsg || OB_TEXT.errors.generic;
 }
 
 export function formatArtistsButtonLabel(count: number): string {

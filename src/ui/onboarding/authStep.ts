@@ -153,6 +153,12 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       emailField.clearError();
       globalErrorEl.className = "ob-form-error";
       globalErrorEl.textContent = "";
+      if (isEmailValidated) {
+        syncEmailValidationState(false);
+        forgotStatusBanner.style.display = "none";
+        forgotStatusBanner.textContent = "";
+        forgotSendCodeBtn.textContent = "Enviar código para o meu e-mail";
+      }
     },
     onEnter: () => {
       passwordField.focus();
@@ -180,7 +186,10 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     },
   });
 
-  // --- Fluxo Funcional de "Esqueci minha senha" com Código de 6 Dígitos ---
+  // --- Fluxo Funcional de "Esqueci minha senha" com Estado de Verificação (isEmailValidated) ---
+  let isEmailValidated = false;
+  let currentEmailPreviewUrl = "";
+
   const forgotToggleBtn = h(
     "button",
     {
@@ -204,11 +213,26 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       "display:none; padding:10px 12px; border-radius:10px; font-size:0.78rem; font-weight:600; line-height:1.45; background:rgba(168,85,247,0.16); border:1px solid rgba(192,132,252,0.4); color:#e9d5ff;",
   });
 
+  const forgotOpenEmailPreviewBtn = h(
+    "button",
+    {
+      type: "button",
+      style:
+        "display:none; width:100%; height:38px; border-radius:10px; background:rgba(168,85,247,0.16); border:1px dashed rgba(192,132,252,0.55); color:#f3e8ff; font-size:0.78rem; font-weight:700; cursor:pointer; align-items:center; justify-content:center; gap:8px;",
+    },
+    h("img", {
+      src: MIADO_CAT_LOGO_DATA_URI,
+      alt: "Miado",
+      style: "width:18px; height:18px; border-radius:5px; object-fit:cover;",
+    }),
+    h("span", null, "Abrir e-mail enviado (Estilo Miado)")
+  ) as HTMLButtonElement;
+
   const forgotCodeInput = h("input", {
     type: "text",
     inputmode: "numeric",
     maxlength: "6",
-    placeholder: "Código de 6 dígitos (ex: 482910)",
+    placeholder: "Digite o código de 6 dígitos recebido no e-mail",
     style:
       "width:100%; height:42px; padding:0 12px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.16); color:#fff; font-size:0.9rem; font-weight:700; letter-spacing:2px;",
   }) as HTMLInputElement;
@@ -265,32 +289,74 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     "Voltar para o login"
   ) as HTMLButtonElement;
 
+  // Container de código de 6 dígitos com display: none por padrão (controlado estritamente por isEmailValidated)
   const forgotStep2Wrap = h(
     "div",
     {
       style: "display:none; flex-direction:column; gap:8px;",
+      dataset: { emailValidated: "false" },
     },
+    forgotOpenEmailPreviewBtn,
     forgotCodeInput,
     forgotNewPassInput,
     forgotPassHintEl,
     forgotConfirmBtn
   );
 
+  const syncEmailValidationState = (validated: boolean, previewUrl = "") => {
+    isEmailValidated = Boolean(validated);
+    currentEmailPreviewUrl = isEmailValidated ? previewUrl : "";
+    forgotStep2Wrap.dataset.emailValidated = isEmailValidated ? "true" : "false";
+    forgotStep2Wrap.style.display = isEmailValidated ? "flex" : "none";
+    forgotOpenEmailPreviewBtn.style.display =
+      isEmailValidated && currentEmailPreviewUrl ? "flex" : "none";
+    if (!isEmailValidated) {
+      forgotCodeInput.value = "";
+      forgotNewPassInput.value = "";
+      forgotPassHintEl.textContent = "";
+    }
+  };
+
+  forgotOpenEmailPreviewBtn.addEventListener(
+    "click",
+    () => {
+      if (!isEmailValidated || !currentEmailPreviewUrl) return;
+      const w = window as any;
+      if (w.miadoFirestore && typeof w.miadoFirestore.openMiadoEmailModal === "function") {
+        w.miadoFirestore.openMiadoEmailModal(currentEmailPreviewUrl, (code: string) => {
+          forgotCodeInput.value = code;
+          forgotNewPassInput.focus();
+        });
+      }
+    },
+    { signal: opts.signal }
+  );
+
   const forgotPanelEl = h(
     "div",
     {
+      class: "auth-forgot-password-panel",
       style:
         "display:none; flex-direction:column; gap:10px; padding:14px; border-radius:14px; background:rgba(20,12,34,0.88); border:1px solid rgba(168,85,247,0.38);",
     },
     h(
       "div",
-      { style: "font-size:0.86rem; font-weight:800; color:#f3e8ff;" },
-      "Recuperar Senha por Código"
+      { style: "display:flex; align-items:center; gap:8px;" },
+      h("img", {
+        src: MIADO_CAT_LOGO_DATA_URI,
+        alt: "Miado Logo",
+        style: "width:22px; height:22px; border-radius:6px; object-fit:cover;",
+      }),
+      h(
+        "div",
+        { style: "font-size:0.86rem; font-weight:800; color:#f3e8ff;" },
+        "Recuperar Senha por Código"
+      )
     ),
     h(
       "div",
       { style: "font-size:0.76rem; color:rgba(255,255,255,0.72); line-height:1.4;" },
-      "Informe seu e-mail no campo acima para receber um código de 6 dígitos e cadastrar uma nova senha."
+      "Informe seu e-mail cadastrado no campo acima para receber um código de 6 dígitos no seu e-mail."
     ),
     forgotStatusBanner,
     forgotSendCodeBtn,
@@ -299,6 +365,11 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
   );
 
   const closeForgotPasswordPanel = () => {
+    syncEmailValidationState(false);
+    forgotStatusBanner.style.display = "none";
+    forgotStatusBanner.textContent = "";
+    forgotSendCodeBtn.disabled = false;
+    forgotSendCodeBtn.textContent = "Enviar código para o meu e-mail";
     forgotPanelEl.style.display = "none";
     passwordField.root.style.display = "";
     submitBtn.style.display = "";
@@ -308,6 +379,9 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
   forgotToggleBtn.addEventListener(
     "click",
     () => {
+      syncEmailValidationState(false);
+      forgotStatusBanner.style.display = "none";
+      forgotStatusBanner.textContent = "";
       globalErrorEl.className = "ob-form-error";
       globalErrorEl.textContent = "";
       forgotPanelEl.style.display = "flex";
@@ -327,46 +401,65 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     "click",
     async () => {
       const email = emailField.getValue().trim().toLowerCase();
+      syncEmailValidationState(false);
+      forgotStatusBanner.style.display = "none";
+      forgotStatusBanner.textContent = "";
+      globalErrorEl.className = "ob-form-error";
+      globalErrorEl.textContent = "";
+
       if (!email || !isValidEmail(email)) {
-        emailField.setError("Digite seu e-mail acima para receber o código.");
+        emailField.setError("Digite seu e-mail cadastrado acima para receber o código.");
         emailField.focus();
         return;
       }
+
       forgotSendCodeBtn.disabled = true;
-      forgotSendCodeBtn.textContent = "Enviando código...";
-      globalErrorEl.className = "ob-form-error";
-      globalErrorEl.textContent = "";
+      forgotSendCodeBtn.textContent = "Verificando conta e enviando e-mail...";
+
       try {
-        const res = await fetch("/api/auth/forgot-password", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data?.ok) {
-          globalErrorEl.className = "ob-form-error is-visible";
-          globalErrorEl.textContent = data?.error || "Não foi possível enviar o código.";
-          forgotSendCodeBtn.disabled = false;
-          forgotSendCodeBtn.textContent = "Enviar código para o meu e-mail";
-          return;
-        }
-        forgotStatusBanner.style.display = "block";
-        if (data.verificationCode) {
-          forgotStatusBanner.textContent = `Código de 6 dígitos enviado para ${email}: ${data.verificationCode}`;
-          forgotCodeInput.value = String(data.verificationCode);
+        const w = window as any;
+        let data: any = null;
+        if (w.miadoFirestore && typeof w.miadoFirestore.sendPasswordReset === "function") {
+          data = await w.miadoFirestore.sendPasswordReset(email);
         } else {
-          forgotStatusBanner.textContent =
-            data.message || `Enviamos o código de 6 dígitos para ${email}.`;
+          const res = await fetch("/api/auth/forgot-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+          });
+          data = await res.json().catch(() => null);
+          if (!res.ok || !data?.ok || !data?.isEmailValidated) {
+            const err: any = new Error(
+              data?.error || "Nenhuma conta cadastrada com este e-mail. Crie uma conta primeiro."
+            );
+            err.code = data?.errorCode || "auth/user-not-found";
+            throw err;
+          }
         }
-        forgotStep2Wrap.style.display = "flex";
+
+        if (!data || !data.ok || !data.isEmailValidated) {
+          throw new Error(
+            data?.error || "Nenhuma conta cadastrada com este e-mail. Crie uma conta primeiro."
+          );
+        }
+
+        // Somente APÓS a promessa do servidor + Firebase resolver positivamente, ativamos isEmailValidated = true
+        syncEmailValidationState(true, String(data.emailPreviewUrl || ""));
+        forgotStatusBanner.style.display = "block";
+        forgotStatusBanner.textContent =
+          data.message ||
+          `Enviamos o e-mail de redefinição para ${email}. Verifique sua caixa de entrada e digite o código de 6 dígitos abaixo.`;
         forgotSendCodeBtn.disabled = false;
-        forgotSendCodeBtn.textContent = "Reenviar código";
-        forgotNewPassInput.focus();
-      } catch {
+        forgotSendCodeBtn.textContent = "Reenviar e-mail com código";
+        forgotCodeInput.focus();
+      } catch (err: any) {
+        syncEmailValidationState(false);
+        const errMsg = mapFirebaseError(err);
         globalErrorEl.className = "ob-form-error is-visible";
-        globalErrorEl.textContent = "Erro de conexão ao enviar o código.";
+        globalErrorEl.textContent = errMsg;
         forgotSendCodeBtn.disabled = false;
         forgotSendCodeBtn.textContent = "Enviar código para o meu e-mail";
+        shake(cardEl);
       }
     },
     { signal: opts.signal }
@@ -375,6 +468,11 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
   forgotConfirmBtn.addEventListener(
     "click",
     async () => {
+      if (!isEmailValidated) {
+        globalErrorEl.className = "ob-form-error is-visible";
+        globalErrorEl.textContent = "Valide seu e-mail e solicite o código antes de redefinir a senha.";
+        return;
+      }
       const email = emailField.getValue().trim().toLowerCase();
       const code = forgotCodeInput.value.trim();
       const newPassword = forgotNewPassInput.value;
@@ -384,7 +482,7 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       }
       if (!code || code.length !== 6) {
         globalErrorEl.className = "ob-form-error is-visible";
-        globalErrorEl.textContent = "Digite o código de 6 dígitos.";
+        globalErrorEl.textContent = "Digite o código de 6 dígitos recebido no seu e-mail.";
         return;
       }
       const st = evaluatePasswordStrength(newPassword);
@@ -663,27 +761,25 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
         }
 
         if (w.miadoFirestore && typeof w.miadoFirestore.loginWithEmail === "function") {
-          try {
-            const fbRes = await w.miadoFirestore.loginWithEmail(email, password);
-            if (fbRes && (fbRes.ok || fbRes.user || fbRes.token)) {
-              const backendData = await syncBackendAuthSession("login", email, password, auth.currentUser);
-              localStorage.setItem("miado_user_onboarded_v1", "true");
-              const activeUser =
-                auth.currentUser ||
-                ({
-                  uid: String(fbRes.uid || backendData?.account?.uid || `usr_${Date.now()}`),
-                  email,
-                  displayName: String(backendData?.user?.name || fbRes.user?.name || email.split("@")[0]),
-                  emailVerified: true,
-                  photoURL: String(backendData?.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
-                  providerData: [],
-                  getIdToken: async () => String(fbRes.token || backendData?.token || ""),
-                } as unknown as User);
-              setButtonState("success");
-              opts.onAuthenticated(activeUser, false);
-              return;
-            }
-          } catch {}
+          const fbRes = await w.miadoFirestore.loginWithEmail(email, password);
+          if (fbRes && (fbRes.ok || fbRes.user || fbRes.token)) {
+            const backendData = await syncBackendAuthSession("login", email, password, auth.currentUser);
+            localStorage.setItem("miado_user_onboarded_v1", "true");
+            const activeUser =
+              auth.currentUser ||
+              ({
+                uid: String(fbRes.uid || backendData?.account?.uid || `usr_${Date.now()}`),
+                email,
+                displayName: String(backendData?.user?.name || fbRes.user?.name || email.split("@")[0]),
+                emailVerified: true,
+                photoURL: String(backendData?.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+                providerData: [],
+                getIdToken: async () => String(fbRes.token || backendData?.token || ""),
+              } as unknown as User);
+            setButtonState("success");
+            opts.onAuthenticated(activeUser, false);
+            return;
+          }
         }
 
         const backendData = await syncBackendAuthSession("login", email, password, null);

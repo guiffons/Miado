@@ -18,30 +18,30 @@ import {
 } from "./flow";
 
 const INITIAL_CURATED_ARTISTS: OnboardingArtistItem[] = [
-  { name: "Billie Eilish", genre: "Pop", coverUrl: "https://cdn-images.dzcdn.net/images/artist/8eab1a9a644889aabaca1e193e05f984/500x500-000000-80-0-0.jpg" },
-  { name: "The Weeknd", genre: "R&B", coverUrl: "https://cdn-images.dzcdn.net/images/artist/581693b4724a7fcfa754455101e13a44/500x500-000000-80-0-0.jpg" },
-  { name: "Linkin Park", genre: "Rock", coverUrl: "https://cdn-images.dzcdn.net/images/artist/4886905210739af3438990897bad3a98/500x500-000000-80-0-0.jpg" },
-  { name: "Sabrina Carpenter", genre: "Pop", coverUrl: "https://cdn-images.dzcdn.net/images/artist/4a9cdc7737e2a0e59b4917b47884b859/500x500-000000-80-0-0.jpg" },
-  { name: "Kendrick Lamar", genre: "Rap", coverUrl: "https://cdn-images.dzcdn.net/images/artist/be0a7c550567f4af0ed202d7235b74d6/500x500-000000-80-0-0.jpg" },
-  { name: "Djavan", genre: "MPB", coverUrl: "https://cdn-images.dzcdn.net/images/artist/c7183e3802a594964d9f3b2e981b77e0/500x500-000000-80-0-0.jpg" },
-  { name: "Tame Impala", genre: "Indie", coverUrl: "https://cdn-images.dzcdn.net/images/artist/879015e713cc6ad6ffaeec154c027505/500x500-000000-80-0-0.jpg" },
-  { name: "Daft Punk", genre: "Eletronica", coverUrl: "https://cdn-images.dzcdn.net/images/artist/638e69b9caaf9f9f3f8826febea7b543/500x500-000000-80-0-0.jpg" },
-  { name: "Anitta", genre: "Funk", coverUrl: "https://cdn-images.dzcdn.net/images/artist/e1a33054b719a936f00dc2050f3c90a9/500x500-000000-80-0-0.jpg" },
-  { name: "Marilia Mendonca", genre: "Sertanejo", coverUrl: "https://cdn-images.dzcdn.net/images/artist/1ee9d64e22df6a19b21698995ae90fdf/500x500-000000-80-0-0.jpg" },
-  { name: "SZA", genre: "R&B", coverUrl: "https://cdn-images.dzcdn.net/images/artist/8ced041da2bed70d5715f0860956169b/500x500-000000-80-0-0.jpg" },
-  { name: "Metallica", genre: "Metal", coverUrl: "https://cdn-images.dzcdn.net/images/artist/056578a9c2007f69ce198c81875eca41/500x500-000000-80-0-0.jpg" },
-  { name: "Arctic Monkeys", genre: "Rock", coverUrl: "https://cdn-images.dzcdn.net/images/artist/6c03e4c7c36800897fd468633286db24/500x500-000000-80-0-0.jpg" },
-  { name: "Lana Del Rey", genre: "Indie", coverUrl: "https://cdn-images.dzcdn.net/images/artist/8994d3be1a59a72f887f1f8afd2d4c6c/500x500-000000-80-0-0.jpg" },
-  { name: "Travis Scott", genre: "Rap", coverUrl: "https://cdn-images.dzcdn.net/images/artist/8d8316146026d7e6ce377e314536df62/500x500-000000-80-0-0.jpg" },
-  { name: "Taylor Swift", genre: "Pop", coverUrl: "https://cdn-images.dzcdn.net/images/artist/cc2495870fe1a792ad0cdb05501ad5ec/500x500-000000-80-0-0.jpg" },
-  { name: "Jorge Ben Jor", genre: "MPB", coverUrl: "https://cdn-images.dzcdn.net/images/artist/286f47429fd6072dc1a4c4203e373f9f/500x500-000000-80-0-0.jpg" },
-  { name: "Bring Me The Horizon", genre: "Metal", coverUrl: "https://cdn-images.dzcdn.net/images/artist/d159e783c1f419ae27fd2deca5b89b54/500x500-000000-80-0-0.jpg" },
-  { name: "Frank Ocean", genre: "R&B", coverUrl: "https://cdn-images.dzcdn.net/images/artist/882155c08dc31d6464d6d580083c968c/500x500-000000-80-0-0.jpg" },
-  { name: "Paramore", genre: "Rock", coverUrl: "https://cdn-images.dzcdn.net/images/artist/60dc1956a36a5e552384b4a32b0cbf9b/500x500-000000-80-0-0.jpg" },
-  { name: "Ghost", genre: "Metal", coverUrl: "https://cdn-images.dzcdn.net/images/artist/d5b38f1d0d9b0c219549aa3add5169a4/500x500-000000-80-0-0.jpg" },
-  { name: "Olivia Rodrigo", genre: "Pop", coverUrl: "https://cdn-images.dzcdn.net/images/artist/2c9e480317183c037eaebcd7ba96daf4/500x500-000000-80-0-0.jpg" },
-  { name: "Racionais MCs", genre: "Rap", coverUrl: "https://cdn-images.dzcdn.net/images/artist/eb2451cb8d2eefe925a8ecffc8ff5e55/500x500-000000-80-0-0.jpg" },
-  { name: "Tim Maia", genre: "MPB", coverUrl: "https://cdn-images.dzcdn.net/images/artist/fa32f3688e3b5901b7588020b0377623/500x500-000000-80-0-0.jpg" },
+  { name: "Billie Eilish", genre: "Pop", coverUrl: "/api/artist-image?name=Billie%20Eilish" },
+  { name: "The Weeknd", genre: "R&B", coverUrl: "/api/artist-image?name=The%20Weeknd" },
+  { name: "Linkin Park", genre: "Rock", coverUrl: "/api/artist-image?name=Linkin%20Park" },
+  { name: "Sabrina Carpenter", genre: "Pop", coverUrl: "/api/artist-image?name=Sabrina%20Carpenter" },
+  { name: "Kendrick Lamar", genre: "Rap", coverUrl: "/api/artist-image?name=Kendrick%20Lamar" },
+  { name: "Djavan", genre: "MPB", coverUrl: "/api/artist-image?name=Djavan" },
+  { name: "Tame Impala", genre: "Indie", coverUrl: "/api/artist-image?name=Tame%20Impala" },
+  { name: "Daft Punk", genre: "Eletronica", coverUrl: "/api/artist-image?name=Daft%20Punk" },
+  { name: "Anitta", genre: "Funk", coverUrl: "/api/artist-image?name=Anitta" },
+  { name: "Marilia Mendonca", genre: "Sertanejo", coverUrl: "/api/artist-image?name=Marilia%20Mendonca" },
+  { name: "SZA", genre: "R&B", coverUrl: "/api/artist-image?name=SZA" },
+  { name: "Metallica", genre: "Metal", coverUrl: "/api/artist-image?name=Metallica" },
+  { name: "Arctic Monkeys", genre: "Rock", coverUrl: "/api/artist-image?name=Arctic%20Monkeys" },
+  { name: "Lana Del Rey", genre: "Indie", coverUrl: "/api/artist-image?name=Lana%20Del%20Rey" },
+  { name: "Travis Scott", genre: "Rap", coverUrl: "/api/artist-image?name=Travis%20Scott" },
+  { name: "Taylor Swift", genre: "Pop", coverUrl: "/api/artist-image?name=Taylor%20Swift" },
+  { name: "Jorge Ben Jor", genre: "MPB", coverUrl: "/api/artist-image?name=Jorge%20Ben%20Jor" },
+  { name: "Bring Me The Horizon", genre: "Metal", coverUrl: "/api/artist-image?name=Bring%20Me%20The%20Horizon" },
+  { name: "Frank Ocean", genre: "R&B", coverUrl: "/api/artist-image?name=Frank%20Ocean" },
+  { name: "Paramore", genre: "Rock", coverUrl: "/api/artist-image?name=Paramore" },
+  { name: "Ghost", genre: "Metal", coverUrl: "/api/artist-image?name=Ghost" },
+  { name: "Olivia Rodrigo", genre: "Pop", coverUrl: "/api/artist-image?name=Olivia%20Rodrigo" },
+  { name: "Racionais MCs", genre: "Rap", coverUrl: "/api/artist-image?name=Racionais%20MCs" },
+  { name: "Tim Maia", genre: "MPB", coverUrl: "/api/artist-image?name=Tim%20Maia" },
 ];
 
 export interface ArtistsStepOptions {
@@ -63,7 +63,11 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
   const selectedMap = new Map<string, OnboardingArtistItem>();
   for (const item of draft.artists || []) {
     if (item && item.name) {
-      selectedMap.set(item.name.toLowerCase(), item);
+      const safeCover =
+        !item.coverUrl || item.coverUrl.includes("dzcdn.net")
+          ? `/api/artist-image?name=${encodeURIComponent(item.name)}`
+          : item.coverUrl;
+      selectedMap.set(item.name.toLowerCase(), { ...item, coverUrl: safeCover });
     }
   }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "miado-v5";
+const CACHE_NAME = "miado-v6";
 const ASSETS_TO_CACHE = [
   "/app-logo.svg",
   "/manifest.webmanifest"
@@ -7,7 +7,7 @@ const ASSETS_TO_CACHE = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE).catch(() => { });
+      return cache.addAll(ASSETS_TO_CACHE).catch(() => {});
     })
   );
   self.skipWaiting();
@@ -17,41 +17,41 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      const hadOldCache = keys.some((key) => key !== CACHE_NAME);
       await Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
             return caches.delete(key);
           }
+          return Promise.resolve(false);
         })
       );
       await self.clients.claim();
-      if (hadOldCache) {
-        const windowClients = await self.clients.matchAll({ type: "window" });
-        for (const client of windowClients) {
-          try {
-            client.navigate(client.url);
-          } catch { }
-        }
-      }
     })()
   );
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  const url = new URL(event.request.url);
+  let url;
+  try {
+    url = new URL(event.request.url);
+  } catch {
+    return;
+  }
 
-  // Let API, streaming, and hashed Vite assets go straight to network
+  // Only handle same-origin static requests; let cross-origin, API, streaming, audio/video, and Range requests go directly to network
   if (
+    url.origin !== self.location.origin ||
     url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/stream") ||
-    url.pathname.startsWith("/assets/")
+    url.pathname.startsWith("/assets/") ||
+    event.request.headers.has("range") ||
+    event.request.destination === "audio" ||
+    event.request.destination === "video"
   ) {
     return;
   }
 
-  // Network-first for HTML navigations so new deployments never serve stale index.html
   const isHtmlNavigation =
     event.request.mode === "navigate" ||
     url.pathname === "/" ||
@@ -60,20 +60,41 @@ self.addEventListener("fetch", (event) => {
 
   if (isHtmlNavigation) {
     event.respondWith(
-      fetch(event.request)
-        .then((res) => {
+      (async () => {
+        try {
+          const res = await fetch(event.request);
           if (res && res.ok) {
             const clone = res.clone();
-            caches.open(CACHE_NAME).then((c) => c.put(event.request, clone)).catch(() => { });
+            caches.open(CACHE_NAME).then((c) => c.put("/index.html", clone)).catch(() => {});
           }
           return res;
-        })
-        .catch(() => caches.match(event.request).then((c) => c || caches.match("/index.html")))
+        } catch {
+          const cachedPage =
+            (await caches.match(event.request)) ||
+            (await caches.match("/index.html")) ||
+            (await caches.match("/"));
+          return (
+            cachedPage ||
+            new Response("<!doctype html><title>Miado</title>", {
+              status: 200,
+              headers: { "Content-Type": "text/html; charset=utf-8" }
+            })
+          );
+        }
+      })()
     );
     return;
   }
 
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    (async () => {
+      try {
+        return await fetch(event.request);
+      } catch {
+        const cached = await caches.match(event.request);
+        return cached || new Response("", { status: 504, statusText: "Gateway Timeout" });
+      }
+    })()
   );
 });
+

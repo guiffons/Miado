@@ -118,51 +118,42 @@
       "followingCount": 0,
       "online": false,
       "updatedAt": "1970-01-01T00:00:00.000Z"
-    },
-    "@teste_login_verificacao": {
-      "id": "prof_teste_login_verificacao",
-      "name": "teste_login_verificacao",
-      "username": "@teste_login_verificacao",
-      "bio": "",
-      "avatarUrl": "/api/cat-avatar?id=cat_1",
-      "bannerUrl": "",
-      "currentTrack": "",
-      "trackObj": null,
-      "albumId": "billie_hmhas",
-      "favoriteArtists": [],
-      "followersCount": 0,
-      "followingCount": 0,
-      "online": true,
-      "updatedAt": "2026-11-09T14:31:16.569Z"
     }
   },
   "activeAccountEmail": "",
   "favoriteArtists": [],
   "feedPosts": [],
   "volume": 0.85,
-  "resetCodes": {},
+  "resetCodes": {
+    "lauraoliveirasouza105@gmail.com": {
+      "email": "lauraoliveirasouza105@gmail.com",
+      "code": "463605",
+      "expiresAt": 1794241077717,
+      "createdAt": "2026-11-09T16:02:57.717Z"
+    }
+  },
   "accounts": {
-    "teste_login_verificacao@gmail.com": {
-      "uid": "usr_c6cf63bcd513e0cf",
-      "email": "teste_login_verificacao@gmail.com",
-      "passwordHash": "fd261cb52cccc5aaef3e7ecdcc05cb4c366ea8477f546b9d9b649f499b947642535da6525e49816e5144e25ee2a9e25fbf7f9996f0254c2036e122d3b5776822",
-      "salt": "1461ebac05b4d5e73eba93e3b405e8ef",
-      "createdAt": "2026-11-09T14:31:16.486Z",
-      "updatedAt": "2026-11-09T14:31:16.603Z",
+    "lauraoliveirasouza105@gmail.com": {
+      "uid": "usr_10cdc491de2b4fe4",
+      "email": "lauraoliveirasouza105@gmail.com",
+      "passwordHash": "",
+      "salt": "",
+      "createdAt": "2026-11-09T15:56:38.729Z",
+      "updatedAt": "2026-11-09T15:56:38.729Z",
       "user": {
-        "uid": "usr_c6cf63bcd513e0cf",
-        "email": "teste_login_verificacao@gmail.com",
-        "name": "teste_login_verificacao",
-        "username": "@teste_login_verificacao",
-        "handle": "@teste_login_verificacao",
+        "uid": "usr_10cdc491de2b4fe4",
+        "email": "lauraoliveirasouza105@gmail.com",
+        "name": "Laura Oliveira",
+        "username": "@lauraoliveira",
+        "handle": "@lauraoliveira",
         "bio": "",
         "catId": "cat_1",
-        "avatarUrl": "undefined",
+        "avatarUrl": "/api/cat-avatar?id=cat_1",
         "favoriteArtists": [],
         "followedArtists": [],
         "followingProfiles": [],
         "onboardingCompleted": true,
-        "createdAt": "2026-11-09T14:31:16.486Z"
+        "createdAt": "2026-11-09T15:56:38.729Z"
       },
       "favoriteArtists": [],
       "followedArtists": [],
@@ -172,9 +163,52 @@
       "playlists": [],
       "recentHistory": [],
       "feedPosts": [],
-      "volume": 0.85,
-      "passwordSyncedV2": true
+      "volume": 0.85
+    },
+    "guilhermefonseca2707@gmail.com": {
+      "uid": "AHscQJvU80gVeSLER8gMfIwMNX12",
+      "email": "guilhermefonseca2707@gmail.com",
+      "passwordHash": "",
+      "salt": "",
+      "createdAt": "2026-11-09T15:56:38.729Z",
+      "updatedAt": "2026-11-09T15:56:38.729Z",
+      "user": {
+        "uid": "AHscQJvU80gVeSLER8gMfIwMNX12",
+        "email": "guilhermefonseca2707@gmail.com",
+        "name": "GUIF",
+        "username": "@guifons",
+        "handle": "@guifons",
+        "bio": "Ouvindo som em alta definição no Miado",
+        "catId": "cat_1",
+        "avatarUrl": "https://lh3.googleusercontent.com/a/ACg8ocL7avN2XReCMufiYyJvRA4aoHiryF4iNJDatREkw_4stNbrH23W=s96-c",
+        "favoriteArtists": [
+          "YUNG LIXO",
+          "The Marías"
+        ],
+        "followedArtists": [
+          "YUNG LIXO",
+          "The Marías"
+        ],
+        "followingProfiles": [],
+        "onboardingCompleted": true,
+        "createdAt": "2026-11-09T15:56:38.729Z"
+      },
+      "favoriteArtists": [
+        "YUNG LIXO",
+        "The Marías"
+      ],
+      "followedArtists": [
+        "YUNG LIXO",
+        "The Marías"
+      ],
+      "followingProfiles": [],
+      "onboardingCompleted": true,
+      "likedTracks": [],
+      "playlists": [],
+      "recentHistory": [],
+      "feedPosts": [],
+      "volume": 0.85
     }
   },
-  "_encryptedVault": "enc_v1:V/YZwh1DgODy/hy8:CZlaXQrL8+BMues8iAzG1w==:EFiuSmoadOeI+KEM5nl96JV3CURu2Mq0WD3hLNr+WbkXFEPJGE2aH5xWkfCd1aIUMRRAmIUGBVVFmjAZA+eGlNvQQfOutCrH3c058icEGyrTfrYb+V5yA37kEgaFFY822NSFPxbvNl69qNfHn+bdTDZM5w+Pk7Pnrc/n1CGDkVMEsz9cM7a7JsBWJu643REgXprPZA74zcs41Eqfj7iw8GN68nunuoUpWqhimKl7LPcDtVnnlnBPzIccIg7G9e+CT57OfooOgkO31c8oVWa0IcRk4xTnUH6xVzR24CyxFybtt1yeJdqt1jrfA3rl2MS5zPe+2OyCNRxfL126/u/ZMLmbCIvlH6LNb+l+XvV2H/Km2KFovO+8odzvAEOa/o8pROVtXONzduhsXywdAbVDuRSpJNc05Laak/o9E4BWb3e2FmyPFob/CrK1pZMQjCrRiywYGy/Fb4FA31VxrmQy3thKI3A8DV9kCC0NcC52cOktZVVwVX4/3zV8hUFdux1EuT7uzuEWAMm/ofbawXtSaVYFw/0njonfEgoNgKytE555AkUtsyGKwfjAVyziBQc/RBDh25Rscnur5xX3Zf4to13gF42IXcr2UxxBRk3CL3p8TMyfteJJW6gB4aeeIxPSbgsjxjeNUCXsdlRA1Z1X2glugbEsasaRFOpJKUMBfY4tDIamgM8MVNq3Wh21Xv6B2rcXRAs12UmnSjLtSVoRtc0/NaI1AEyeIrHB7wdMPCGBdhLg0feMX6F8jDDuzJ5SQFVlt+u+AHt9z6vkMMRQZOBeItWxgcKPcUgkTuz6ykmXIbmcuvqFINSMnY1OwC38nOMReZf4V5+vUNjKWQ1AhIgrdcs8KTqG1hM7VTcoRnAGXCRouj3QHe/3F3NMhFazEt3C0+iNr64eFmgewWIZ6LPqzxV8lvXH7rgXb6zoZ0gldx+yYENY6yV1VBULqjYzbapFAKAtsbFl5KmsEd7LvkGyvR9OHxhai3RJVVsTKQBjNNFbS4J2Gz7QCeDRASeTCumwFqZtG/VlFsSL0QtoA2J6L63mYlyZHcGXIWy8Br6QhZQlp0qL8TJ6bRSB/yve2Nz/ADlikGMUwKZttT7D20CzF7D9z2rhqRDTMJ+M3UaSOsgOGwWVX5Iu8HJY32VXQtfOeF/Lbkq15FG1kxcmeiZaKjrotPimlXTdNZhYHwNdruWMOvTYBAZXAKf/Xqhhj0CojrcBFqzBTtsD/AYCJkmYhIFxXwG5SwjGEkVtLm5qimNOGW5xnyo9bjnc5eYpB9yxihIWi643Ld4F2fGrktDztahLuQ89+lMjrRpASnIw3fc2gjuhuxGYxr1zohehCL7/QaYn5hcy"
+  "_encryptedVault": "enc_v1:WbhOZ0XtBsjCTpum:d+6uN7x3cE0igtZV+zBd8w==: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"
 }
