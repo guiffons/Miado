@@ -7,11 +7,17 @@
   "orientation": "portrait",
   "background_color": "#050508",
   "theme_color": "#050508",
-  "icons": [
+    "icons": [
     {
       "src": "/app-logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
     },
     {
