@@ -9,7 +9,9 @@ export function bindImageFallback(
   altText = ""
 ): void {
   img.decoding = "async";
-  img.loading = "lazy";
+  if (!img.loading || img.loading !== "eager") {
+    img.loading = "lazy";
+  }
   img.draggable = false;
   img.referrerPolicy = "no-referrer";
   img.alt = altText;

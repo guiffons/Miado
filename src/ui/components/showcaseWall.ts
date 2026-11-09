@@ -70,6 +70,11 @@ function normalizeTitleDedupKey(title: string): string {
     .trim();
 }
 
+function isMobileViewport(): boolean {
+  if (typeof window === "undefined") return true;
+  return window.innerWidth < 1024 || (window.matchMedia && !window.matchMedia("(min-width: 1024px)").matches);
+}
+
 export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallController {
   const col1Inner = h("div", { class: "ob-wall-col-track ob-wall-col-1" });
   const col2Inner = h("div", { class: "ob-wall-col-track ob-wall-col-2" });
@@ -204,6 +209,10 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
       };
 
       const playTileAudio = (recordIndex: number, soft = true) => {
+        if (isMobileViewport()) {
+          stopPreviewAudio();
+          return;
+        }
         const rec = allTileRecords[recordIndex];
         if (!rec) return;
 
@@ -257,15 +266,19 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
           nextIdx = (nextIdx + 1) % allTileRecords.length;
         }
         setFocusedTile(nextIdx);
-        if (autoPlay) {
+        if (autoPlay && !isMobileViewport()) {
           playTileAudio(nextIdx, true);
         }
       };
 
       const schedule30sSpotlightTimer = () => {
         if (focusTimer) clearInterval(focusTimer);
+        if (isMobileViewport()) return;
         focusTimer = setInterval(() => {
-          if (opts.signal.aborted) return;
+          if (opts.signal.aborted || isMobileViewport()) {
+            stopPreviewAudio();
+            return;
+          }
           spotlightRandomSong(true);
         }, 30000);
       };
@@ -396,9 +409,26 @@ export function createShowcaseWall(opts: ShowcaseWallOptions): ShowcaseWallContr
 
       root.classList.remove("is-loading");
 
-      // Inicia com um álbum em destaque e toca baixinho de fundo
-      spotlightRandomSong(true);
-      schedule30sSpotlightTimer();
+      // Inicia com um álbum em destaque. Só toca áudio de prévia se for Desktop (>= 1024px)
+      const canAutoPlay = !isMobileViewport();
+      spotlightRandomSong(canAutoPlay);
+      if (canAutoPlay) {
+        schedule30sSpotlightTimer();
+      }
+
+      if (typeof window !== "undefined" && window.matchMedia) {
+        const mql = window.matchMedia("(min-width: 1024px)");
+        const onBpChange = (e: MediaQueryListEvent) => {
+          if (!e.matches) {
+            stopPreviewAudio();
+            if (focusTimer) {
+              clearInterval(focusTimer);
+              focusTimer = null;
+            }
+          }
+        };
+        mql.addEventListener("change", onBpChange);
+      }
     } catch {
       root.classList.add("is-hidden");
     }

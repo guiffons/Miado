@@ -736,6 +736,25 @@ function artistMatchesTarget(candidateArtist: string, targetArtist: string): boo
   return false;
 }
 
+export function albumBelongsToArtist(albumArtist: string, targetArtist: string): boolean {
+  if (!albumArtist || !targetArtist) return false;
+  const aNorm = normalizeStr(albumArtist).replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
+  const tNorm = normalizeStr(targetArtist).replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
+  if (!aNorm || !tNorm) return false;
+  if (aNorm === tNorm) return true;
+
+  const tAliases = ARTIST_ALIASES[tNorm] || [];
+  if (tAliases.includes(aNorm)) return true;
+
+  const aParts = splitCollaboratingArtists(albumArtist).map(p => normalizeStr(p)).filter(Boolean);
+  const primaryAlbArtist = aParts[0] || aNorm;
+  if (primaryAlbArtist === tNorm || tAliases.includes(primaryAlbArtist)) {
+    return true;
+  }
+
+  return false;
+}
+
 function scoreStudioCandidateServer(s: any, canonicalSec = 0): number {
   let score = 100;
   const rawTitle = String(s?.title || "").trim();
@@ -4262,17 +4281,25 @@ export async function createMiadoApp() {
         });
       });
 
+      const rejectedAlbumTitleKeys = new Set<string>();
       itunesAlbums.forEach(alb => {
-        if (!alb.collectionName || !artistMatchesTarget(alb.artistName || "", targetArtistRef) || !isOriginalStudioTrack(alb.collectionName, alb.artistName || targetArtistRef)) return;
-        const cover = toCoverProxyUrl(alb.artworkUrl100, alb.collectionName, alb.artistName || targetArtistRef);
+        const albArt = alb.artistName || "";
+        const albTitle = alb.collectionName || "";
+        if (!albTitle) return;
+        if (!albumBelongsToArtist(albArt, targetArtistRef)) {
+          rejectedAlbumTitleKeys.add(normalizeSongTitleKey(albTitle));
+          return;
+        }
+        if (!isOriginalStudioTrack(albTitle, albArt || targetArtistRef)) return;
+        const cover = toCoverProxyUrl(alb.artworkUrl100, albTitle, albArt || targetArtistRef);
         if (cover) {
           upsertMergedAlbum(albumsMap, {
             id: `itunes_alb_${alb.collectionId}`,
             collectionId: alb.collectionId,
             trackCount: Number(alb.trackCount) || 0,
-            searchQuery: `${alb.artistName || targetArtistRef} ${cleanAlbumDisplayTitle(alb.collectionName)}`,
-            title: alb.collectionName,
-            artist: alb.artistName || targetArtistRef,
+            searchQuery: `${albArt || targetArtistRef} ${cleanAlbumDisplayTitle(albTitle)}`,
+            title: albTitle,
+            artist: albArt || targetArtistRef,
             year: alb.releaseDate ? new Date(alb.releaseDate).getFullYear() : 2024,
             releaseDate: alb.releaseDate ? new Date(alb.releaseDate).toLocaleDateString("pt-BR") : "Lançamento Oficial",
             genre: alb.primaryGenreName || "Pop",
@@ -4286,6 +4313,10 @@ export async function createMiadoApp() {
 
       dzAlbums.forEach(alb => {
         if (!alb.title || !isOriginalStudioTrack(alb.title, targetArtistRef)) return;
+        const albKey = normalizeSongTitleKey(alb.title);
+        if (rejectedAlbumTitleKeys.has(albKey)) return;
+        if (alb.explicit_lyrics) return;
+        if (alb.record_type === "compile") return;
         const rawArt = alb.cover_xl || alb.cover_big || alb.cover_medium || "";
         const cover = toCoverProxyUrl(rawArt, alb.title, targetArtistRef);
         if (cover) {
@@ -4482,6 +4513,7 @@ export async function createMiadoApp() {
 
       artAlbums.forEach(alb => {
         if (!alb?.title || !isOriginalStudioTrack(alb.title, topMatchedArtist.name)) return;
+        if (alb.explicit_lyrics || alb.record_type === "compile") return;
         const rawArt = alb.cover_xl || alb.cover_big || alb.cover_medium || "";
         const cover = toCoverProxyUrl(rawArt, alb.title, topMatchedArtist.name);
         if (cover) {
@@ -4537,16 +4569,22 @@ export async function createMiadoApp() {
     }
 
     itunesAlbums.forEach(alb => {
-      if (!alb.collectionName || !isOriginalStudioTrack(alb.collectionName, alb.artistName || q)) return;
-      const cover = toCoverProxyUrl(alb.artworkUrl100, alb.collectionName, alb.artistName || q);
+      if (!alb.collectionName) return;
+      const albArt = String(alb.artistName || "").trim();
+      const albTitle = String(alb.collectionName || "").trim();
+      const matchesArtist = albumBelongsToArtist(albArt, q);
+      const matchesTitle = normalizeSongTitleKey(albTitle).includes(normQuery) || normQuery.includes(normalizeSongTitleKey(albTitle));
+      if (!matchesArtist && !matchesTitle) return;
+      if (!isOriginalStudioTrack(albTitle, albArt || q)) return;
+      const cover = toCoverProxyUrl(alb.artworkUrl100, albTitle, albArt || q);
       if (cover) {
         upsertMergedAlbum(albumMap, {
           id: `itunes_alb_${alb.collectionId}`,
           collectionId: alb.collectionId,
           trackCount: Number(alb.trackCount) || 0,
-          searchQuery: `${alb.artistName} ${cleanAlbumDisplayTitle(alb.collectionName)}`,
-          title: alb.collectionName,
-          artist: alb.artistName,
+          searchQuery: `${albArt} ${cleanAlbumDisplayTitle(albTitle)}`,
+          title: albTitle,
+          artist: albArt,
           year: alb.releaseDate ? new Date(alb.releaseDate).getFullYear() : 2024,
           releaseDate: alb.releaseDate ? new Date(alb.releaseDate).toLocaleDateString("pt-BR") : "Lançamento Oficial",
           genre: alb.primaryGenreName || "Pop",
@@ -4586,14 +4624,18 @@ export async function createMiadoApp() {
         });
 
         if (item.collectionId && item.collectionName && isOriginalStudioTrack(item.collectionName, item.artistName || q)) {
-          if (cover) {
+          const albArt = item.artistName || q;
+          const albTitle = item.collectionName;
+          const matchesArtist = albumBelongsToArtist(albArt, q);
+          const matchesTitle = normalizeSongTitleKey(albTitle).includes(normQuery) || normQuery.includes(normalizeSongTitleKey(albTitle));
+          if ((matchesArtist || matchesTitle) && cover) {
             upsertMergedAlbum(albumMap, {
               id: `itunes_alb_${item.collectionId}`,
               collectionId: item.collectionId,
               trackCount: Number(item.trackCount) || 0,
-              searchQuery: `${item.artistName} ${cleanAlbumDisplayTitle(item.collectionName)}`,
-              title: item.collectionName,
-              artist: item.artistName,
+              searchQuery: `${albArt} ${cleanAlbumDisplayTitle(albTitle)}`,
+              title: albTitle,
+              artist: albArt,
               year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024,
               releaseDate: item.releaseDate ? new Date(item.releaseDate).toLocaleDateString("pt-BR") : "Lançamento Oficial",
               genre: item.primaryGenreName || "Pop",
@@ -4635,13 +4677,17 @@ export async function createMiadoApp() {
         });
 
         if (item.album?.id && item.album?.title && isOriginalStudioTrack(item.album.title, artistName)) {
-          if (cover) {
+          const albArt = artistName;
+          const albTitle = item.album.title;
+          const matchesArtist = albumBelongsToArtist(albArt, q);
+          const matchesTitle = normalizeSongTitleKey(albTitle).includes(normQuery) || normQuery.includes(normalizeSongTitleKey(albTitle));
+          if ((matchesArtist || matchesTitle) && cover) {
             upsertMergedAlbum(albumMap, {
               id: `dz_alb_${item.album.id}`,
               dzAlbumId: item.album.id,
-              searchQuery: `${artistName} ${cleanAlbumDisplayTitle(item.album.title)}`,
-              title: item.album.title,
-              artist: artistName,
+              searchQuery: `${albArt} ${cleanAlbumDisplayTitle(albTitle)}`,
+              title: albTitle,
+              artist: albArt,
               year: 2024,
               releaseDate: "Lançamento Oficial HD",
               genre: "Lossless Master",
@@ -4719,7 +4765,24 @@ export async function createMiadoApp() {
       return bPlays - aPlays;
     });
 
-    const albums = Array.from(albumMap.values()).slice(0, 14);
+    const filteredAlbums = Array.from(albumMap.values()).filter(alb => {
+      const albArt = alb.artist || "";
+      const albTitle = alb.title || "";
+      const matchesArtist = albumBelongsToArtist(albArt, q);
+      const matchesTitle = normalizeSongTitleKey(albTitle).includes(normQuery) || normQuery.includes(normalizeSongTitleKey(albTitle));
+      return matchesArtist || matchesTitle;
+    });
+
+    filteredAlbums.sort((a, b) => {
+      const aMatchesArtist = albumBelongsToArtist(a.artist || "", q) ? 1 : 0;
+      const bMatchesArtist = albumBelongsToArtist(b.artist || "", q) ? 1 : 0;
+      if (aMatchesArtist !== bMatchesArtist) return bMatchesArtist - aMatchesArtist;
+      const aYear = Number(a.year) || 0;
+      const bYear = Number(b.year) || 0;
+      return bYear - aYear;
+    });
+
+    const albums = filteredAlbums.slice(0, 14);
 
     albums.forEach(alb => {
       const matching = songs.filter(

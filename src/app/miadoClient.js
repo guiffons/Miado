@@ -1363,6 +1363,26 @@ export function initMiadoClient() {
         return false;
       }
 
+      function albumBelongsToArtistClient(candidateArtist, targetArtist) {
+        const candNorm = normalizeTextKey(candidateArtist);
+        const targNorm = normalizeTextKey(targetArtist);
+        if (!candNorm || !targNorm) return false;
+        if (candNorm === targNorm) return true;
+
+        const yunLiAliases = ["yun li", "yung lixo", "gemaplys", "victor gemaplys", "mc vv"];
+        if (yunLiAliases.includes(targNorm) && yunLiAliases.includes(candNorm)) return true;
+        const anavitoriaAliases = ["anavitoria", "ana vitoria"];
+        if (anavitoriaAliases.includes(targNorm) && anavitoriaAliases.includes(candNorm)) return true;
+
+        const collabParts = splitCollaboratingArtistsClient(candidateArtist).map(p => normalizeTextKey(p)).filter(Boolean);
+        const primaryArtist = collabParts[0] || candNorm;
+        if (primaryArtist === targNorm) return true;
+        if (yunLiAliases.includes(targNorm) && yunLiAliases.includes(primaryArtist)) return true;
+        if (anavitoriaAliases.includes(targNorm) && anavitoriaAliases.includes(primaryArtist)) return true;
+
+        return false;
+      }
+
       function getArtistListenersCount(artistObjOrName) {
         const rawName = typeof artistObjOrName === "string"
           ? artistObjOrName
@@ -4162,7 +4182,12 @@ export function initMiadoClient() {
                   const mergedAlbums = deduplicateAlbumsGlobal([
                     ...MiadoMusicResolver.filterStudioOnlyAlbums(apiData.albums || []),
                     ...localAlbums
-                  ]);
+                  ]).filter(alb => {
+                    const albArt = alb.artist || "";
+                    const albTitle = alb.title || "";
+                    const normTitle = normalizeTextKey(albTitle);
+                    return albumBelongsToArtistClient(albArt, cleanQ) || normTitle === cleanQNorm || normTitle.startsWith(cleanQNorm) || normTitle.includes(cleanQNorm);
+                  });
 
                   const combinedSongs = sortSongsHidden(
                     MiadoMusicResolver.filterStudioOnlyTracks([...(apiData.songs || []), ...localSongs])
@@ -11581,7 +11606,7 @@ export function initMiadoClient() {
           this.scrollContainer.innerHTML = `<div style="padding:48px; text-align:center; color:var(--text-secondary);">Carregando perfil oficial, foto 1000x1000 HD e discografia de ${cleanArtist}...</div>`;
 
           const dirEntry = POPULAR_ARTISTS_DIRECTORY.find(a => artistMatchesClient(a.name, cleanArtist));
-          let localAlbums = state.albums.filter(a => artistMatchesClient(a.artist, cleanArtist));
+          let localAlbums = state.albums.filter(a => albumBelongsToArtistClient(a.artist, cleanArtist));
           let songs = [];
           let apiAlbums = [];
           let artistPortrait = `/api/artist-image?name=${encodeURIComponent(cleanArtist)}`;
@@ -11591,7 +11616,7 @@ export function initMiadoClient() {
             const profileData = await MiadoMusicResolver.fetchArtistProfile(cleanArtist);
             if (profileData) {
               songs = deduplicateTracks((profileData.songs || []).filter(s => artistMatchesClient(s.artist || "", cleanArtist)));
-              apiAlbums = (profileData.albums || []).filter(a => artistMatchesClient(a.artist || "", cleanArtist));
+              apiAlbums = (profileData.albums || []).filter(a => albumBelongsToArtistClient(a.artist || "", cleanArtist));
               if (profileData.artist?.pictureUrl && !profileData.artist.pictureUrl.startsWith("data:")) {
                 artistPortrait = profileData.artist.pictureUrl;
               }
@@ -11605,7 +11630,7 @@ export function initMiadoClient() {
             try {
               const res = await MiadoMusicResolver.searchCatalog(cleanArtist);
               songs = deduplicateTracks((res.songs || []).filter(s => artistMatchesClient(s.artist || "", cleanArtist)));
-              apiAlbums = (res.albums || []).filter(a => artistMatchesClient(a.artist || "", cleanArtist));
+              apiAlbums = (res.albums || []).filter(a => albumBelongsToArtistClient(a.artist || "", cleanArtist));
               if (res.artists?.[0]?.coverUrl && !res.artists[0].coverUrl.startsWith("data:")) {
                 artistPortrait = res.artists[0].coverUrl;
               }
