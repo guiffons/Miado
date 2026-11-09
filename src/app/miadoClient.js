@@ -7577,6 +7577,7 @@ export function initMiadoClient() {
           const forgotPassHint = document.getElementById("auth-forgot-pass-hint");
           const btnForgotConfirm = document.getElementById("btn-forgot-confirm-reset");
           const btnForgotCancel = document.getElementById("btn-forgot-cancel");
+          const btnForgotResend = document.getElementById("btn-forgot-resend");
 
           const syncModalEmailValidationState = (validated, previewUrl = "") => {
             isEmailValidated = Boolean(validated);
@@ -7585,9 +7586,11 @@ export function initMiadoClient() {
               forgotStep2Wrap.setAttribute("data-email-validated", isEmailValidated ? "true" : "false");
               forgotStep2Wrap.style.display = isEmailValidated ? "flex" : "none";
             }
+            if (btnForgotSendCode) {
+              btnForgotSendCode.style.display = isEmailValidated ? "none" : "block";
+            }
             if (btnForgotOpenPreview) {
-              btnForgotOpenPreview.style.display =
-                isEmailValidated && modalEmailPreviewUrl ? "flex" : "none";
+              btnForgotOpenPreview.style.display = "none";
             }
             if (!isEmailValidated) {
               if (forgotCodeInput) forgotCodeInput.value = "";
@@ -7595,6 +7598,12 @@ export function initMiadoClient() {
               if (forgotPassHint) forgotPassHint.textContent = "";
             }
           };
+
+          if (btnForgotResend) {
+            btnForgotResend.addEventListener("click", () => {
+              if (btnForgotSendCode) btnForgotSendCode.click();
+            });
+          }
 
           if (btnForgotOpenPreview) {
             btnForgotOpenPreview.addEventListener("click", () => {
@@ -7618,7 +7627,8 @@ export function initMiadoClient() {
                   forgotStatusBanner.textContent = "";
                 }
                 if (btnForgotSendCode) {
-                  btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
+                  btnForgotSendCode.textContent = "Enviar código de recuperação";
+                  btnForgotSendCode.style.display = "block";
                 }
               }
             });
@@ -7632,7 +7642,8 @@ export function initMiadoClient() {
             }
             if (btnForgotSendCode) {
               btnForgotSendCode.disabled = false;
-              btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
+              btnForgotSendCode.style.display = "block";
+              btnForgotSendCode.textContent = "Enviar código de recuperação";
             }
             if (forgotPanel) forgotPanel.style.display = "none";
             if (passFieldGroup) passFieldGroup.style.display = "block";
@@ -7661,7 +7672,7 @@ export function initMiadoClient() {
               if (forgotStatusBanner) {
                 forgotStatusBanner.style.display = "block";
                 forgotStatusBanner.textContent =
-                  "Código de recuperação de 24h validado pelo link! Digite sua nova senha abaixo.";
+                  "Código validado pelo link! Digite sua nova senha abaixo.";
               }
               if (forgotNewPassInput) {
                 setTimeout(() => forgotNewPassInput.focus(), 150);
@@ -7748,10 +7759,10 @@ export function initMiadoClient() {
                   forgotStatusBanner.style.display = "block";
                   forgotStatusBanner.textContent =
                     data.message ||
-                    `Enviamos o e-mail de redefinição para ${email}. Verifique sua caixa de entrada e digite o código de 6 dígitos abaixo.`;
+                    `Código de verificação enviado para ${email}. Verifique sua caixa de entrada e spam.`;
                 }
                 btnForgotSendCode.disabled = false;
-                btnForgotSendCode.textContent = "Reenviar e-mail com código";
+                btnForgotSendCode.textContent = "Enviar código de recuperação";
                 if (forgotCodeInput) forgotCodeInput.focus();
               } catch (err) {
                 syncModalEmailValidationState(false);
@@ -7763,7 +7774,7 @@ export function initMiadoClient() {
                   feedbackEl.textContent = err?.message || "Nenhuma conta cadastrada com este e-mail.";
                 }
                 btnForgotSendCode.disabled = false;
-                btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
+                btnForgotSendCode.textContent = "Enviar código de recuperação";
               }
             });
           }

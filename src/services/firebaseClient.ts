@@ -1239,7 +1239,7 @@ export function initFirebaseClient(): void {
           expiresInMinutes: Number(srvData.expiresInMinutes || 1440),
           message:
             srvData.message ||
-            `Enviamos o e-mail no estilo Miado para ${cleanEmail} com validade de 24 horas e código de 6 dígitos! Verifique sua caixa de entrada.`,
+            `Código de verificação enviado para ${cleanEmail}. Verifique sua caixa de entrada e spam.`,
         };
       },
 

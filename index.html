@@ -579,25 +579,39 @@
           </div>
 
           <!-- Painel de Recuperação de Senha por Código de 6 Dígitos (com estado isEmailValidated) -->
-          <div id="auth-forgot-password-panel" class="auth-forgot-password-panel" style="display:none; flex-direction:column; gap:10px; padding:14px; border-radius:14px; background:rgba(20,12,34,0.92); border:1px solid rgba(168,85,247,0.4);">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <img src="/assets/aistudio/thumbnail_7fd222f18747391112b3e415abb27c67a303376a_alpha_45d028e7.jpg" alt="Miado" style="width:22px; height:22px; border-radius:6px; object-fit:cover;" />
-              <div style="font-size:0.86rem; font-weight:800; color:#f3e8ff;">Recuperar Senha por Código</div>
+          <div id="auth-forgot-password-panel" class="auth-forgot-password-panel" style="display:none; flex-direction:column; gap:12px; padding:16px 18px; border-radius:16px; background:rgba(22, 14, 38, 0.88); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border:1px solid rgba(168, 85, 247, 0.28); box-shadow:0 12px 36px rgba(0,0,0,0.45);">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d8b4fe" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="m7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <div style="font-size:0.95rem; font-weight:800; color:#f3e8ff; letter-spacing:-0.01em;">Recuperar Senha</div>
+              </div>
+              <div id="auth-forgot-intro-text" style="font-size:0.78rem; color:rgba(255,255,255,0.65); line-height:1.45;">Informe o seu e-mail acima para receber o código e link de recuperação.</div>
             </div>
-            <div style="font-size:0.76rem; color:var(--text-secondary); line-height:1.4;">Informe o seu e-mail cadastrado no campo acima para enviarmos um código de 6 dígitos no seu e-mail.</div>
-            <div id="auth-forgot-status-banner" style="display:none; padding:10px 12px; border-radius:10px; font-size:0.78rem; font-weight:600; line-height:1.45; background:rgba(168,85,247,0.16); border:1px solid rgba(192,132,252,0.4); color:#e9d5ff;"></div>
-            <button type="button" id="btn-forgot-send-code" class="btn-modal-cancel" style="width:100%; height:40px; font-size:0.82rem; font-weight:700; background:rgba(168,85,247,0.22); border:1px solid rgba(192,132,252,0.45); color:#fff;">Enviar código para o meu e-mail</button>
-            <div id="auth-forgot-step2-wrap" data-email-validated="false" style="display:none; flex-direction:column; gap:8px;">
-              <button type="button" id="btn-forgot-open-email-preview" class="btn-modal-cancel" style="display:none; width:100%; height:38px; font-size:0.78rem; font-weight:700; background:rgba(168,85,247,0.16); border:1px dashed rgba(192,132,252,0.55); color:#f3e8ff; align-items:center; justify-content:center; gap:8px;">
-                <img src="/assets/aistudio/thumbnail_7fd222f18747391112b3e415abb27c67a303376a_alpha_45d028e7.jpg" alt="Miado" style="width:18px; height:18px; border-radius:5px; object-fit:cover;" />
-                <span>Abrir e-mail enviado (Estilo Miado)</span>
-              </button>
-              <input type="text" id="auth-forgot-code-input" inputmode="numeric" maxlength="6" placeholder="Digite o código de 6 dígitos recebido no e-mail" style="width:100%; font-weight:700; letter-spacing:2px;" />
-              <input type="password" id="auth-forgot-new-password" placeholder="Nova senha (mín. 6, 1 maiúscula e 1 especial)" autocomplete="new-password" style="width:100%;" />
-              <div id="auth-forgot-pass-hint" style="font-size:0.74rem; font-weight:600; line-height:1.35; color:var(--text-secondary);"></div>
-              <button type="button" id="btn-forgot-confirm-reset" class="btn-modal-confirm" style="width:100%; height:42px; font-size:0.86rem;">Redefinir Senha e Entrar</button>
+
+            <div id="auth-forgot-status-banner" style="display:none; padding:10px 12px; border-radius:10px; font-size:0.78rem; font-weight:500; line-height:1.45; background:rgba(168,85,247,0.14); border:1px solid rgba(192,132,252,0.35); color:#f3e8ff;"></div>
+
+            <button type="button" id="btn-forgot-send-code" class="btn-modal-confirm" style="width:100%; height:42px; font-size:0.86rem; font-weight:700; border-radius:12px; background:linear-gradient(135deg, #a855f7 0%, #ec4899 100%); border:none; color:#ffffff; cursor:pointer; transition:transform 0.15s ease, opacity 0.15s ease;">Enviar código de recuperação</button>
+
+            <div id="auth-forgot-step2-wrap" data-email-validated="false" style="display:none; flex-direction:column; gap:12px;">
+              <input type="hidden" id="btn-forgot-open-email-preview" style="display:none !important;" />
+              <div>
+                <label for="auth-forgot-code-input" style="display:block; font-size:0.74rem; font-weight:700; color:rgba(255,255,255,0.7); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.06em;">Código de 6 dígitos</label>
+                <input type="text" id="auth-forgot-code-input" inputmode="numeric" maxlength="6" placeholder="000000" style="width:100%; height:46px; text-align:center; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:1.35rem; font-weight:800; letter-spacing:0.35em; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); color:#ffffff; outline:none; transition:border-color 0.2s ease;" />
+              </div>
+              <div>
+                <label for="auth-forgot-new-password" style="display:block; font-size:0.74rem; font-weight:700; color:rgba(255,255,255,0.7); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.06em;">Nova senha</label>
+                <input type="password" id="auth-forgot-new-password" placeholder="Mínimo 6 caracteres" autocomplete="new-password" style="width:100%; height:42px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); color:#ffffff; padding:0 12px; outline:none;" />
+                <div id="auth-forgot-pass-hint" style="font-size:0.72rem; font-weight:500; margin-top:4px; min-height:16px;"></div>
+              </div>
+              <button type="button" id="btn-forgot-confirm-reset" class="btn-modal-confirm" style="width:100%; height:44px; font-size:0.88rem; font-weight:800; border-radius:12px; background:linear-gradient(135deg, #a855f7 0%, #ec4899 100%); border:none; color:#ffffff; cursor:pointer;">Redefinir Senha e Entrar</button>
+              <div style="display:flex; justify-content:center; margin-top:2px;">
+                <button type="button" id="btn-forgot-resend" style="background:transparent; border:none; color:#d8b4fe; font-size:0.76rem; font-weight:600; cursor:pointer; padding:4px 8px; text-decoration:underline; text-underline-offset:3px;">Não recebeu? Reenviar código</button>
+              </div>
             </div>
-            <button type="button" id="btn-forgot-cancel" class="btn-modal-cancel" style="width:100%; height:34px; font-size:0.76rem;">Voltar para o login</button>
+
+            <div style="display:flex; justify-content:center; margin-top:2px;">
+              <button type="button" id="btn-forgot-cancel" style="background:transparent; border:none; color:rgba(255,255,255,0.65); font-size:0.78rem; font-weight:600; cursor:pointer; padding:6px 12px; display:inline-flex; align-items:center; gap:6px;">← Voltar ao login</button>
+            </div>
           </div>
 
           <div id="auth-feedback-msg" style="display:none; padding:8px 12px; border-radius:10px; font-size:0.8rem; font-weight:600;"></div>

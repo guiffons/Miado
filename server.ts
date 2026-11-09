@@ -3943,6 +3943,33 @@ export async function createMiadoApp() {
       });
 
       let emailDispatched = false;
+      let firebaseOobSent = false;
+
+      // Dispara o envio real de e-mail de redefinição via Google Firebase Identity Toolkit
+      const fbApiKey = "AIzaSyAFqGmBT7JYHKBUQQXqXVslA-jPXJq_uCA";
+      try {
+        const fbRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${fbApiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requestType: "PASSWORD_RESET",
+              email: cleanEmail
+            })
+          }
+        );
+        const fbData = (await fbRes.json().catch(() => null)) as any;
+        if (fbRes.ok && fbData && !fbData.error) {
+          firebaseOobSent = true;
+          emailDispatched = true;
+          console.info("[AuthDebug][FirebaseOobSent]", cleanEmail);
+        } else {
+          console.warn("[AuthDebug][FirebaseOobError]", fbData?.error?.message || fbRes.status);
+        }
+      } catch (fbErr: any) {
+        console.warn("[AuthDebug][FirebaseOobException]", fbErr?.message || fbErr);
+      }
 
       // Envia o e-mail HTML personalizado Liquid Glass do Miado via Resend API se configurado
       const resendKey = process.env.RESEND_API_KEY || "";
@@ -3957,7 +3984,7 @@ export async function createMiadoApp() {
             body: JSON.stringify({
               from: process.env.RESEND_FROM_EMAIL || "Miado <seguranca@resend.dev>",
               to: [cleanEmail],
-              subject: `${code} é o seu código secreto de recuperação • Miado 🐾`,
+              subject: `${code} é o seu código de recuperação • Miado`,
               html: customEmailHtml
             })
           });
@@ -3974,19 +4001,21 @@ export async function createMiadoApp() {
         email: cleanEmail,
         code,
         resetLink,
-        emailDispatched: Boolean(emailDispatched),
+        emailDispatched: Boolean(emailDispatched || firebaseOobSent),
+        firebaseOobSent,
         expiresInHours: 24,
         expiresInMinutes: 1440,
         emailPreviewUrl: `/api/auth/reset-email-preview?email=${encodeURIComponent(cleanEmail)}&token=${encodeURIComponent(previewToken)}`,
-        message: `Enviamos o e-mail no estilo Miado para ${cleanEmail} com link válido por 24 horas e código de 6 dígitos!`,
+        message: `Código de verificação enviado para ${cleanEmail}. Verifique sua caixa de entrada e spam.`,
         debug: {
           inputEmail: cleanEmail,
           accountExists: true,
           isEmailValidated: true,
           status: 200,
           expiresInHours: 24,
+          firebaseOobSent,
           resendDispatched: emailDispatched,
-          resolution: "password_reset_email_liquid_glass_prepared"
+          resolution: "password_reset_email_dispatched"
         }
       });
     } catch (_err: any) {

@@ -217,36 +217,29 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     "button",
     {
       type: "button",
-      style:
-        "display:none; width:100%; height:38px; border-radius:10px; background:rgba(168,85,247,0.16); border:1px dashed rgba(192,132,252,0.55); color:#f3e8ff; font-size:0.78rem; font-weight:700; cursor:pointer; align-items:center; justify-content:center; gap:8px;",
-    },
-    h("img", {
-      src: MIADO_CAT_LOGO_DATA_URI,
-      alt: "Miado",
-      style: "width:18px; height:18px; border-radius:5px; object-fit:cover;",
-    }),
-    h("span", null, "Abrir e-mail enviado (Estilo Miado)")
+      style: "display:none !important;",
+    }
   ) as HTMLButtonElement;
 
   const forgotCodeInput = h("input", {
     type: "text",
     inputmode: "numeric",
     maxlength: "6",
-    placeholder: "Digite o código de 6 dígitos recebido no e-mail",
+    placeholder: "000000",
     style:
-      "width:100%; height:42px; padding:0 12px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.16); color:#fff; font-size:0.9rem; font-weight:700; letter-spacing:2px;",
+      "width:100%; height:46px; text-align:center; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:1.35rem; font-weight:800; letter-spacing:0.35em; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); color:#ffffff; outline:none; transition:border-color 0.2s ease;",
   }) as HTMLInputElement;
 
   const forgotNewPassInput = h("input", {
     type: "password",
-    placeholder: "Nova senha (mín. 6, 1 maiúscula e 1 especial)",
+    placeholder: "Mínimo 6 caracteres",
     autocomplete: "new-password",
     style:
-      "width:100%; height:42px; padding:0 12px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.16); color:#fff; font-size:0.86rem;",
+      "width:100%; height:42px; padding:0 12px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); color:#ffffff; font-size:0.86rem; outline:none;",
   }) as HTMLInputElement;
 
   const forgotPassHintEl = h("div", {
-    style: "font-size:0.74rem; font-weight:600; line-height:1.35; color:rgba(255,255,255,0.72);",
+    style: "font-size:0.72rem; font-weight:500; margin-top:4px; min-height:16px;",
   });
 
   forgotNewPassInput.addEventListener(
@@ -264,9 +257,9 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     {
       type: "button",
       style:
-        "width:100%; height:40px; border-radius:10px; background:rgba(168,85,247,0.25); border:1px solid rgba(192,132,252,0.5); color:#fff; font-size:0.82rem; font-weight:700; cursor:pointer;",
+        "width:100%; height:42px; border-radius:12px; background:linear-gradient(135deg, #a855f7 0%, #ec4899 100%); border:none; color:#ffffff; font-size:0.86rem; font-weight:700; cursor:pointer; transition:transform 0.15s ease, opacity 0.15s ease;",
     },
-    "Enviar código para o meu e-mail"
+    "Enviar código de recuperação"
   ) as HTMLButtonElement;
 
   const forgotConfirmBtn = h(
@@ -274,33 +267,76 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     {
       type: "button",
       style:
-        "width:100%; height:42px; border-radius:10px; background:linear-gradient(135deg,#a855f7,#ec4899); border:none; color:#fff; font-size:0.86rem; font-weight:800; cursor:pointer;",
+        "width:100%; height:44px; border-radius:12px; background:linear-gradient(135deg, #a855f7 0%, #ec4899 100%); border:none; color:#ffffff; font-size:0.88rem; font-weight:800; cursor:pointer;",
     },
     "Redefinir senha e entrar"
   ) as HTMLButtonElement;
+
+  const forgotResendBtn = h(
+    "button",
+    {
+      type: "button",
+      style:
+        "background:transparent; border:none; color:#d8b4fe; font-size:0.76rem; font-weight:600; cursor:pointer; padding:4px 8px; text-decoration:underline; text-underline-offset:3px;",
+    },
+    "Não recebeu? Reenviar código"
+  ) as HTMLButtonElement;
+
+  forgotResendBtn.addEventListener(
+    "click",
+    () => {
+      forgotSendCodeBtn.click();
+    },
+    { signal: opts.signal }
+  );
 
   const forgotCancelBtn = h(
     "button",
     {
       type: "button",
       style:
-        "width:100%; height:34px; border-radius:8px; background:transparent; border:1px solid rgba(255,255,255,0.14); color:rgba(255,255,255,0.75); font-size:0.76rem; font-weight:600; cursor:pointer;",
+        "background:transparent; border:none; color:rgba(255,255,255,0.65); font-size:0.78rem; font-weight:600; cursor:pointer; padding:6px 12px; display:inline-flex; align-items:center; gap:6px;",
     },
-    "Voltar para o login"
+    "← Voltar ao login"
   ) as HTMLButtonElement;
 
   // Container de código de 6 dígitos com display: none por padrão (controlado estritamente por isEmailValidated)
   const forgotStep2Wrap = h(
     "div",
     {
-      style: "display:none; flex-direction:column; gap:8px;",
+      style: "display:none; flex-direction:column; gap:12px;",
       dataset: { emailValidated: "false" },
     },
     forgotOpenEmailPreviewBtn,
-    forgotCodeInput,
-    forgotNewPassInput,
-    forgotPassHintEl,
-    forgotConfirmBtn
+    h(
+      "div",
+      null,
+      h(
+        "label",
+        {
+          style:
+            "display:block; font-size:0.74rem; font-weight:700; color:rgba(255,255,255,0.7); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.06em;",
+        },
+        "Código de 6 dígitos"
+      ),
+      forgotCodeInput
+    ),
+    h(
+      "div",
+      null,
+      h(
+        "label",
+        {
+          style:
+            "display:block; font-size:0.74rem; font-weight:700; color:rgba(255,255,255,0.7); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.06em;",
+        },
+        "Nova senha"
+      ),
+      forgotNewPassInput,
+      forgotPassHintEl
+    ),
+    forgotConfirmBtn,
+    h("div", { style: "display:flex; justify-content:center; margin-top:2px;" }, forgotResendBtn)
   );
 
   const syncEmailValidationState = (validated: boolean, previewUrl = "") => {
@@ -308,8 +344,8 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     currentEmailPreviewUrl = isEmailValidated ? previewUrl : "";
     forgotStep2Wrap.dataset.emailValidated = isEmailValidated ? "true" : "false";
     forgotStep2Wrap.style.display = isEmailValidated ? "flex" : "none";
-    forgotOpenEmailPreviewBtn.style.display =
-      isEmailValidated && currentEmailPreviewUrl ? "flex" : "none";
+    forgotSendCodeBtn.style.display = isEmailValidated ? "none" : "block";
+    forgotOpenEmailPreviewBtn.style.display = "none";
     if (!isEmailValidated) {
       forgotCodeInput.value = "";
       forgotNewPassInput.value = "";
@@ -317,51 +353,40 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     }
   };
 
-  forgotOpenEmailPreviewBtn.addEventListener(
-    "click",
-    () => {
-      if (!isEmailValidated || !currentEmailPreviewUrl) return;
-      const w = window as any;
-      if (w.miadoFirestore && typeof w.miadoFirestore.openMiadoEmailModal === "function") {
-        w.miadoFirestore.openMiadoEmailModal(currentEmailPreviewUrl, (code: string) => {
-          forgotCodeInput.value = code;
-          forgotNewPassInput.focus();
-        });
-      }
-    },
-    { signal: opts.signal }
-  );
-
   const forgotPanelEl = h(
     "div",
     {
       class: "auth-forgot-password-panel",
       style:
-        "display:none; flex-direction:column; gap:10px; padding:14px; border-radius:14px; background:rgba(20,12,34,0.88); border:1px solid rgba(168,85,247,0.38);",
+        "display:none; flex-direction:column; gap:12px; padding:16px 18px; border-radius:16px; background:rgba(22, 14, 38, 0.88); backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px); border:1px solid rgba(168, 85, 247, 0.28); box-shadow:0 12px 36px rgba(0,0,0,0.45);",
     },
     h(
       "div",
-      { style: "display:flex; align-items:center; gap:8px;" },
-      h("img", {
-        src: MIADO_CAT_LOGO_DATA_URI,
-        alt: "Miado Logo",
-        style: "width:22px; height:22px; border-radius:6px; object-fit:cover;",
-      }),
+      { style: "display:flex; flex-direction:column; gap:4px;" },
       h(
         "div",
-        { style: "font-size:0.86rem; font-weight:800; color:#f3e8ff;" },
-        "Recuperar Senha por Código"
+        { style: "display:flex; align-items:center; gap:8px;" },
+        h("img", {
+          src: MIADO_CAT_LOGO_DATA_URI,
+          alt: "Miado Logo",
+          style: "width:20px; height:20px; border-radius:6px; object-fit:cover;",
+        }),
+        h(
+          "div",
+          { style: "font-size:0.95rem; font-weight:800; color:#f3e8ff; letter-spacing:-0.01em;" },
+          "Recuperar Senha"
+        )
+      ),
+      h(
+        "div",
+        { style: "font-size:0.78rem; color:rgba(255,255,255,0.65); line-height:1.45;" },
+        "Informe seu e-mail acima para receber o código e link de recuperação."
       )
-    ),
-    h(
-      "div",
-      { style: "font-size:0.76rem; color:rgba(255,255,255,0.72); line-height:1.4;" },
-      "Informe seu e-mail cadastrado no campo acima para receber um código de 6 dígitos no seu e-mail."
     ),
     forgotStatusBanner,
     forgotSendCodeBtn,
     forgotStep2Wrap,
-    forgotCancelBtn
+    h("div", { style: "display:flex; justify-content:center; margin-top:2px;" }, forgotCancelBtn)
   );
 
   const closeForgotPasswordPanel = () => {
@@ -369,7 +394,8 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     forgotStatusBanner.style.display = "none";
     forgotStatusBanner.textContent = "";
     forgotSendCodeBtn.disabled = false;
-    forgotSendCodeBtn.textContent = "Enviar código para o meu e-mail";
+    forgotSendCodeBtn.style.display = "block";
+    forgotSendCodeBtn.textContent = "Enviar código de recuperação";
     forgotPanelEl.style.display = "none";
     passwordField.root.style.display = "";
     submitBtn.style.display = "";
@@ -448,9 +474,9 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
         forgotStatusBanner.style.display = "block";
         forgotStatusBanner.textContent =
           data.message ||
-          `Enviamos o e-mail de redefinição para ${email}. Verifique sua caixa de entrada e digite o código de 6 dígitos abaixo.`;
+          `Código de verificação enviado para ${email}. Verifique sua caixa de entrada e spam.`;
         forgotSendCodeBtn.disabled = false;
-        forgotSendCodeBtn.textContent = "Reenviar e-mail com código";
+        forgotSendCodeBtn.textContent = "Enviar código de recuperação";
         forgotCodeInput.focus();
       } catch (err: any) {
         syncEmailValidationState(false);
@@ -458,7 +484,7 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
         globalErrorEl.className = "ob-form-error is-visible";
         globalErrorEl.textContent = errMsg;
         forgotSendCodeBtn.disabled = false;
-        forgotSendCodeBtn.textContent = "Enviar código para o meu e-mail";
+        forgotSendCodeBtn.textContent = "Enviar código de recuperação";
         shake(cardEl);
       }
     },
