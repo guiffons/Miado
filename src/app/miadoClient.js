@@ -2684,6 +2684,7 @@ export function initMiadoClient() {
               : (Array.isArray(incomingUser.likedTracks) ? incomingUser.likedTracks : []);
             const cleanName = String(incomingUser.name || this.user.name || "Ouvinte").trim();
             const cleanHandle = sanitizeCleanHandle(incomingUser.username || incomingUser.handle || this.user.username, cleanName);
+            const prevSessionAvatar = this.user.avatarUrl;
             this.user = {
               ...this.user,
               ...incomingUser,
@@ -2704,7 +2705,13 @@ export function initMiadoClient() {
                 coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
               })))
             };
-            if (!this.user.avatarUrl || this.user.avatarUrl.startsWith("data:image/svg")) {
+            const isCustomAv = (u) => {
+              const str = String(u || "").trim();
+              return Boolean(str && str !== "/api/cat-avatar?id=cat_1" && !str.startsWith("data:image/svg") && !str.includes("placeholder"));
+            };
+            if (isCustomAv(prevSessionAvatar) && !isCustomAv(this.user.avatarUrl)) {
+              this.user.avatarUrl = prevSessionAvatar;
+            } else if (!this.user.avatarUrl || this.user.avatarUrl.startsWith("data:image/svg")) {
               this.user.avatarUrl = CAT_AVATAR_PRESETS[0].url;
             }
             if (this.user.email && this.user.email !== "usr_guest@miado.app") {
@@ -2833,6 +2840,7 @@ export function initMiadoClient() {
             const resolvedBio = (typeof db.user.bio === "string" && db.user.bio.trim() !== "")
               ? db.user.bio.trim().slice(0, 100)
               : (this.user.bio || "").slice(0, 100);
+            const prevSessionAvatar = this.user.avatarUrl;
             this.user = {
               ...this.user,
               ...db.user,
@@ -2851,6 +2859,9 @@ export function initMiadoClient() {
             };
             if (!this.user.avatarUrl || this.user.avatarUrl.startsWith("data:image/svg")) {
               this.user.avatarUrl = CAT_AVATAR_PRESETS[0].url;
+            }
+            if (isCustomAv(prevSessionAvatar) && !isCustomAv(this.user.avatarUrl)) {
+              this.user.avatarUrl = prevSessionAvatar;
             }
             localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
             localStorage.setItem("miado_active_session_v1", "true");
@@ -4085,8 +4096,8 @@ export function initMiadoClient() {
                 .sort((a, b) => {
                   const aNorm = normalizeTextKey(a.name || "");
                   const bNorm = normalizeTextKey(b.name || "");
-                  const aRel = aNorm === cleanQNorm ? 3 : aNorm.startsWith(cleanQNorm) ? 2 : aNorm.includes(cleanQNorm) ? 1 : 0;
-                  const bRel = bNorm === cleanQNorm ? 3 : bNorm.startsWith(cleanQNorm) ? 2 : bNorm.includes(cleanQNorm) ? 1 : 0;
+                  const aRel = aNorm === cleanQNorm ? 10 : aNorm.startsWith(cleanQNorm) ? 5 : aNorm.includes(cleanQNorm) ? 2 : 0;
+                  const bRel = bNorm === cleanQNorm ? 10 : bNorm.startsWith(cleanQNorm) ? 5 : bNorm.includes(cleanQNorm) ? 2 : 0;
                   if (aRel !== bRel) return bRel - aRel;
                   return (b.nbFan || 0) - (a.nbFan || 0);
                 });
@@ -5371,13 +5382,18 @@ export function initMiadoClient() {
           if (!menu) return;
 
           document.addEventListener("contextmenu", (e) => {
-            const row = e.target.closest(".track-row, .album-card, .fs-up-next-item");
+            const row = e.target.closest(".track-row, .fs-up-next-item, [data-track-id], [data-track-key]");
             if (!row) {
               this.closeContextMenu();
               return;
             }
+            const track = this.findTrackFromElement(row);
+            if (!track) {
+              this.closeContextMenu();
+              return;
+            }
             e.preventDefault();
-            this.openContextMenu(e, row);
+            this.openContextMenu(e, row, track);
           });
 
           document.addEventListener("click", (e) => {
@@ -5457,11 +5473,15 @@ export function initMiadoClient() {
           });
         }
 
-        openContextMenu(e, targetEl) {
+        openContextMenu(e, targetEl, explicitTrack) {
           const menu = document.getElementById("spotify-context-menu");
           if (!menu) return;
 
-          const track = this.findTrackFromElement(targetEl);
+          const track = explicitTrack || this.findTrackFromElement(targetEl);
+          if (!track) {
+            this.closeContextMenu();
+            return;
+          }
           this.contextMenuTrack = track;
           this.contextMenuAlbum = state.currentAlbum;
 

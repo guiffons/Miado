@@ -338,9 +338,34 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
     const seq = ++handleCheckSeq;
     handleDebounceTimer = setTimeout(async () => {
       try {
-        const snap = await getDoc(doc(db, "handles", normalized));
+        const [snapResult, apiCheckResult] = await Promise.allSettled([
+          getDoc(doc(db, "handles", normalized)),
+          fetch(
+            `/api/check-handle?handle=${encodeURIComponent(normalized)}&email=${encodeURIComponent(opts.user.email || "")}`,
+            { signal: opts.signal }
+          ).then((r) => (r.ok ? r.json() : null)),
+        ]);
+
         if (seq !== handleCheckSeq || opts.signal.aborted) return;
-        if (!snap.exists() || snap.data()?.uid === opts.user.uid) {
+
+        let takenByFirestore = false;
+        if (snapResult.status === "fulfilled" && snapResult.value && snapResult.value.exists()) {
+          const ownerUid = (snapResult.value as any).data()?.uid;
+          if (ownerUid && ownerUid !== opts.user.uid) {
+            takenByFirestore = true;
+          }
+        }
+
+        let takenByApi = false;
+        if (apiCheckResult.status === "fulfilled" && apiCheckResult.value) {
+          if (apiCheckResult.value.available === false) {
+            takenByApi = true;
+          }
+        }
+
+        const isTaken = takenByFirestore || takenByApi;
+
+        if (!isTaken) {
           handleStatus = "available";
           handleField.setHandleStatus("available");
         } else if (isAutoSuggestion && !handleManuallyEdited) {
@@ -360,7 +385,7 @@ export function createProfileStep(opts: ProfileStepOptions): ProfileStepControll
         handleField.setHandleStatus("available");
       }
       syncNextButtonState();
-    }, 400);
+    }, 350);
   };
 
   const nameField = createField({

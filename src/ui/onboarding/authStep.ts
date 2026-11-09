@@ -393,6 +393,13 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       const provider = new GoogleAuthProvider();
       try {
         const cred = await signInWithPopup(auth, provider);
+        try {
+          const idToken = await cred.user.getIdToken();
+          localStorage.setItem("miado_auth_token", idToken);
+          localStorage.setItem("miado_user_uid", cred.user.uid);
+          localStorage.setItem("miado_active_session_v1", "true");
+          await syncBackendAuthSession("login", cred.user.email || "", "", cred.user);
+        } catch {}
         opts.onAuthenticated(cred.user, false);
       } catch (err: any) {
         const code = String(err?.code || "").toLowerCase();

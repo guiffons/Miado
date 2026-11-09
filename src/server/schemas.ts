@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { ALLOWED_IMAGE_HOSTS, isHostAllowed } from "./net/allowlists.ts";
 
-export function isSafeImageUrl(val: string, maxLen = 150000): boolean {
+export function isSafeImageUrl(val: string, maxLen = 250000): boolean {
   const s = String(val || "").trim();
   if (!s) return true;
   if (s.length > maxLen) return false;
   if (/^\/api\/cat-avatar\?id=[a-z0-9_]{1,40}$/.test(s)) return true;
   if (/^\/api\/cover\?[A-Za-z0-9._~:/?#@!$&()*+,;=%-]{1,1990}$/.test(s)) return true;
   if (/^\/api\/artist-image\?[A-Za-z0-9._~:/?#@!$&()*+,;=%-]{1,1990}$/.test(s)) return true;
-  if (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(s)) return true;
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s)) return true;
   try {
     const parsed = new URL(s);
     if (parsed.protocol !== "https:") return false;

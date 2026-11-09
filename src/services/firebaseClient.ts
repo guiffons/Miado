@@ -148,7 +148,7 @@ export function sanitizeImageForRules(rawUrl: unknown, maxLen: number, fallback 
   if (!s || s.length > maxLen) return fallback;
   if (/^\/api\/cat-avatar\?id=[a-z0-9_]{1,40}$/.test(s)) return s;
   if (/^https:\/\/[A-Za-z0-9._~:/?#@!$&()*+,;=%-]{4,2000}$/.test(s)) return s;
-  if (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(s)) return s;
+  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s)) return s;
   return fallback;
 }
 
@@ -667,6 +667,10 @@ export function initFirebaseClient(): void {
           this.currentUser = user;
           if (user) {
             try {
+              const token = await user.getIdToken();
+              localStorage.setItem("miado_auth_token", token);
+              localStorage.setItem("miado_user_uid", user.uid);
+              localStorage.setItem("miado_active_session_v1", "true");
               const hydrated = await ensureAndHydrateUser(user, { forceCreateIfMissing: false });
               this.subscribeLiveCommunity();
               if (!hydrated || hydrated.onboardingCompleted !== true) {

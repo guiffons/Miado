@@ -2775,6 +2775,49 @@ export async function createMiadoApp() {
     res.json({ ok: true });
   });
 
+  // 2a-2. Checagem em Tempo Real de Disponibilidade de @handle (/api/check-handle)
+  app.get("/api/check-handle", (req: Request, res: Response) => {
+    try {
+      const rawHandle = String(req.query.handle || "").trim();
+      const slug = rawHandle
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/^@+/, "")
+        .replace(/[^a-z0-9_.]/g, "")
+        .slice(0, 28);
+
+      if (!slug || slug.length < 2) {
+        res.json({ available: false, reason: "invalid" });
+        return;
+      }
+
+      const cleanHandle = `@${slug}`;
+      const db = readDb();
+      const accounts = db.accounts || {};
+      const currentEmail = String(req.query.email || "").toLowerCase().trim();
+
+      const takenByAccount = Object.values(accounts).some(acc => {
+        if (!acc || !acc.user) return false;
+        if (currentEmail && acc.email.toLowerCase() === currentEmail) return false;
+        const h = String(acc.user.username || acc.user.handle || "").toLowerCase().trim();
+        const normH = h.startsWith("@") ? h : `@${h}`;
+        return normH === cleanHandle;
+      });
+
+      const profiles = db.profiles || {};
+      const takenByProfile = Boolean(
+        profiles[cleanHandle] &&
+        (!currentEmail || (profiles[cleanHandle] as any).email?.toLowerCase() !== currentEmail)
+      );
+
+      const isTaken = takenByAccount || takenByProfile;
+      res.json({ available: !isTaken, handle: slug });
+    } catch {
+      res.json({ available: true });
+    }
+  });
+
   // 2b. Autenticação Segura e Banco de Dados de Contas com E-mail e Senha (/api/auth/*)
   app.post("/api/auth/register", (req: Request, res: Response) => {
     try {

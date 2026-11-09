@@ -1,5 +1,5 @@
 import type { User } from "firebase/auth";
-import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../services/firebaseClient";
 import { createArtistCard, type ArtistCardController } from "../components/artistCard";
 import { createField } from "../components/field";
@@ -18,30 +18,30 @@ import {
 } from "./flow";
 
 const INITIAL_CURATED_ARTISTS: OnboardingArtistItem[] = [
-  { name: "Billie Eilish", genre: "Pop" },
-  { name: "The Weeknd", genre: "R&B" },
-  { name: "Linkin Park", genre: "Rock" },
-  { name: "Sabrina Carpenter", genre: "Pop" },
-  { name: "Kendrick Lamar", genre: "Rap" },
-  { name: "Djavan", genre: "MPB" },
-  { name: "Tame Impala", genre: "Indie" },
-  { name: "Daft Punk", genre: "Eletronica" },
-  { name: "Anitta", genre: "Funk" },
-  { name: "Marilia Mendonca", genre: "Sertanejo" },
-  { name: "SZA", genre: "R&B" },
-  { name: "Metallica", genre: "Metal" },
-  { name: "Arctic Monkeys", genre: "Rock" },
-  { name: "Lana Del Rey", genre: "Indie" },
-  { name: "Travis Scott", genre: "Rap" },
-  { name: "Taylor Swift", genre: "Pop" },
-  { name: "Jorge Ben Jor", genre: "MPB" },
-  { name: "Bring Me The Horizon", genre: "Metal" },
-  { name: "Frank Ocean", genre: "R&B" },
-  { name: "Paramore", genre: "Rock" },
-  { name: "Ghost", genre: "Metal" },
-  { name: "Olivia Rodrigo", genre: "Pop" },
-  { name: "Racionais MCs", genre: "Rap" },
-  { name: "Tim Maia", genre: "MPB" },
+  { name: "Billie Eilish", genre: "Pop", coverUrl: "https://cdn-images.dzcdn.net/images/artist/8eab1a9a644889aabaca1e193e05f984/500x500-000000-80-0-0.jpg" },
+  { name: "The Weeknd", genre: "R&B", coverUrl: "https://cdn-images.dzcdn.net/images/artist/581693b4724a7fcfa754455101e13a44/500x500-000000-80-0-0.jpg" },
+  { name: "Linkin Park", genre: "Rock", coverUrl: "https://cdn-images.dzcdn.net/images/artist/4886905210739af3438990897bad3a98/500x500-000000-80-0-0.jpg" },
+  { name: "Sabrina Carpenter", genre: "Pop", coverUrl: "https://cdn-images.dzcdn.net/images/artist/4a9cdc7737e2a0e59b4917b47884b859/500x500-000000-80-0-0.jpg" },
+  { name: "Kendrick Lamar", genre: "Rap", coverUrl: "https://cdn-images.dzcdn.net/images/artist/be0a7c550567f4af0ed202d7235b74d6/500x500-000000-80-0-0.jpg" },
+  { name: "Djavan", genre: "MPB", coverUrl: "https://cdn-images.dzcdn.net/images/artist/c7183e3802a594964d9f3b2e981b77e0/500x500-000000-80-0-0.jpg" },
+  { name: "Tame Impala", genre: "Indie", coverUrl: "https://cdn-images.dzcdn.net/images/artist/879015e713cc6ad6ffaeec154c027505/500x500-000000-80-0-0.jpg" },
+  { name: "Daft Punk", genre: "Eletronica", coverUrl: "https://cdn-images.dzcdn.net/images/artist/638e69b9caaf9f9f3f8826febea7b543/500x500-000000-80-0-0.jpg" },
+  { name: "Anitta", genre: "Funk", coverUrl: "https://cdn-images.dzcdn.net/images/artist/e1a33054b719a936f00dc2050f3c90a9/500x500-000000-80-0-0.jpg" },
+  { name: "Marilia Mendonca", genre: "Sertanejo", coverUrl: "https://cdn-images.dzcdn.net/images/artist/1ee9d64e22df6a19b21698995ae90fdf/500x500-000000-80-0-0.jpg" },
+  { name: "SZA", genre: "R&B", coverUrl: "https://cdn-images.dzcdn.net/images/artist/8ced041da2bed70d5715f0860956169b/500x500-000000-80-0-0.jpg" },
+  { name: "Metallica", genre: "Metal", coverUrl: "https://cdn-images.dzcdn.net/images/artist/056578a9c2007f69ce198c81875eca41/500x500-000000-80-0-0.jpg" },
+  { name: "Arctic Monkeys", genre: "Rock", coverUrl: "https://cdn-images.dzcdn.net/images/artist/6c03e4c7c36800897fd468633286db24/500x500-000000-80-0-0.jpg" },
+  { name: "Lana Del Rey", genre: "Indie", coverUrl: "https://cdn-images.dzcdn.net/images/artist/8994d3be1a59a72f887f1f8afd2d4c6c/500x500-000000-80-0-0.jpg" },
+  { name: "Travis Scott", genre: "Rap", coverUrl: "https://cdn-images.dzcdn.net/images/artist/8d8316146026d7e6ce377e314536df62/500x500-000000-80-0-0.jpg" },
+  { name: "Taylor Swift", genre: "Pop", coverUrl: "https://cdn-images.dzcdn.net/images/artist/cc2495870fe1a792ad0cdb05501ad5ec/500x500-000000-80-0-0.jpg" },
+  { name: "Jorge Ben Jor", genre: "MPB", coverUrl: "https://cdn-images.dzcdn.net/images/artist/286f47429fd6072dc1a4c4203e373f9f/500x500-000000-80-0-0.jpg" },
+  { name: "Bring Me The Horizon", genre: "Metal", coverUrl: "https://cdn-images.dzcdn.net/images/artist/d159e783c1f419ae27fd2deca5b89b54/500x500-000000-80-0-0.jpg" },
+  { name: "Frank Ocean", genre: "R&B", coverUrl: "https://cdn-images.dzcdn.net/images/artist/882155c08dc31d6464d6d580083c968c/500x500-000000-80-0-0.jpg" },
+  { name: "Paramore", genre: "Rock", coverUrl: "https://cdn-images.dzcdn.net/images/artist/60dc1956a36a5e552384b4a32b0cbf9b/500x500-000000-80-0-0.jpg" },
+  { name: "Ghost", genre: "Metal", coverUrl: "https://cdn-images.dzcdn.net/images/artist/d5b38f1d0d9b0c219549aa3add5169a4/500x500-000000-80-0-0.jpg" },
+  { name: "Olivia Rodrigo", genre: "Pop", coverUrl: "https://cdn-images.dzcdn.net/images/artist/2c9e480317183c037eaebcd7ba96daf4/500x500-000000-80-0-0.jpg" },
+  { name: "Racionais MCs", genre: "Rap", coverUrl: "https://cdn-images.dzcdn.net/images/artist/eb2451cb8d2eefe925a8ecffc8ff5e55/500x500-000000-80-0-0.jpg" },
+  { name: "Tim Maia", genre: "MPB", coverUrl: "https://cdn-images.dzcdn.net/images/artist/fa32f3688e3b5901b7588020b0377623/500x500-000000-80-0-0.jpg" },
 ];
 
 export interface ArtistsStepOptions {
@@ -193,6 +193,15 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
               });
             }
           }
+          const normQ = searchQuery.toLowerCase().trim();
+          found.sort((a, b) => {
+            const aName = a.name.toLowerCase().trim();
+            const bName = b.name.toLowerCase().trim();
+            const aExact = aName === normQ ? 4 : aName.startsWith(normQ) ? 3 : aName.includes(normQ) ? 2 : 0;
+            const bExact = bName === normQ ? 4 : bName.startsWith(normQ) ? 3 : bName.includes(normQ) ? 2 : 0;
+            if (aExact !== bExact) return bExact - aExact;
+            return aName.localeCompare(bName);
+          });
           searchResultsPool = found;
           renderGrid();
         } catch {}
@@ -323,32 +332,61 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
       coverUrl: a.coverUrl || `/api/artist-image?name=${encodeURIComponent(a.name)}`,
     }));
 
+    const w = window as any;
+    const savedDraft = loadOnboardingDraft();
+    const uid = opts.user.uid;
+    const email = String(opts.user.email || w.miadoState?.user?.email || "").toLowerCase();
+    const cleanName = savedDraft.name || w.miadoState?.user?.name || opts.user.displayName || "Ouvinte";
+    const bareH = (savedDraft.handle || w.miadoState?.user?.username || "ouvinte").replace(/^@+/, "");
+    const displayH = `@${bareH}`;
+    const avatarUrl = savedDraft.avatarUrl || w.miadoState?.user?.avatarUrl || "/api/cat-avatar?id=cat_1";
+    const bio = (savedDraft.bio || w.miadoState?.user?.bio || "").slice(0, 100);
+    const privacy = savedDraft.privacy || "followers";
+
     try {
-      const uid = opts.user.uid;
+      const userPayload = {
+        uid,
+        email,
+        name: cleanName,
+        handle: displayH,
+        username: displayH,
+        bio,
+        avatarUrl,
+        favoriteArtists: chosenNames,
+        followedArtists: chosenNames,
+        privacy: { presence: privacy, activity: privacy },
+        onboardingCompleted: true,
+        updatedAt: serverTimestamp(),
+      };
       await Promise.all([
-        updateDoc(doc(db, "users", uid), {
-          favoriteArtists: chosenNames,
-          followedArtists: chosenNames,
-          onboardingCompleted: true,
-          updatedAt: serverTimestamp(),
-        }).catch(() => {}),
-        updateDoc(doc(db, "profiles", uid), {
-          favoriteArtists: chosenNames,
-          updatedAt: serverTimestamp(),
-        }).catch(() => {}),
+        setDoc(doc(db, "users", uid), userPayload, { merge: true }).catch(() => {}),
+        setDoc(doc(db, "profiles", uid), userPayload, { merge: true }).catch(() => {}),
+        setDoc(doc(db, "handles", bareH), { uid, handle: displayH, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {}),
       ]);
     } catch {}
 
     try {
-      const w = window as any;
-      const savedDraft = loadOnboardingDraft();
-      const uid = opts.user.uid;
-      const email = String(opts.user.email || w.miadoState?.user?.email || "").toLowerCase();
-      const cleanName = savedDraft.name || w.miadoState?.user?.name || opts.user.displayName || "Ouvinte";
-      const bareH = (savedDraft.handle || w.miadoState?.user?.username || "ouvinte").replace(/^@+/, "");
-      const displayH = `@${bareH}`;
-      const avatarUrl = savedDraft.avatarUrl || w.miadoState?.user?.avatarUrl || "/api/cat-avatar?id=cat_1";
+      const token = localStorage.getItem("miado_auth_token") || "";
+      fetch("/api/user/preferences", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          name: cleanName,
+          handle: displayH,
+          username: displayH,
+          bio,
+          customAvatar: avatarUrl,
+          favoriteArtists: chosenNames,
+          followedArtists: chosenNames,
+          onboardingCompleted: true,
+        }),
+      }).catch(() => {});
+    } catch {}
 
+    try {
       localStorage.setItem("miado_user_uid", uid);
       localStorage.setItem("miado_active_session_v1", "true");
       localStorage.setItem("miado_user_onboarded_v1", "true");
@@ -360,7 +398,7 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
           name: cleanName,
           username: displayH,
           handle: displayH,
-          bio: savedDraft.bio || w.miadoState.user?.bio || "",
+          bio,
           avatarUrl,
           favoriteArtists: chosenNames,
           followedArtists: followedObjects,
@@ -373,7 +411,7 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
           void w.miadoState.createOrUpdateCommunityProfile({
             name: cleanName,
             username: displayH,
-            bio: savedDraft.bio || "",
+            bio,
             avatarUrl,
             favoriteArtists: chosenNames,
           });

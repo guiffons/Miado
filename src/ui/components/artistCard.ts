@@ -6,36 +6,6 @@ import type { OnboardingArtistItem } from "../onboarding/flow";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-let activeImageLoads = 0;
-const imageLoadQueue: Array<() => void> = [];
-const MAX_CONCURRENT_IMAGE_LOADS = 6;
-
-function enqueueArtistImageBind(
-  img: HTMLImageElement,
-  chain: string[],
-  name: string
-): void {
-  const run = () => {
-    activeImageLoads++;
-    const release = () => {
-      img.removeEventListener("load", release);
-      img.removeEventListener("error", release);
-      activeImageLoads = Math.max(0, activeImageLoads - 1);
-      const next = imageLoadQueue.shift();
-      if (next) next();
-    };
-    img.addEventListener("load", release, { once: true });
-    img.addEventListener("error", release, { once: true });
-    bindImageFallback(img, chain, "artist", name, name);
-  };
-
-  if (activeImageLoads < MAX_CONCURRENT_IMAGE_LOADS) {
-    run();
-  } else {
-    imageLoadQueue.push(run);
-  }
-}
-
 export interface ArtistCardOptions {
   artist: OnboardingArtistItem;
   selected: boolean;
@@ -61,9 +31,10 @@ export function createArtistCard(opts: ArtistCardOptions): ArtistCardController 
 
   const img = h("img", {
     class: "ob-artist-card-img",
-    alt: name,
+    alt: "",
   }) as HTMLImageElement;
-  enqueueArtistImageBind(img, coverChain, name);
+  img.loading = "eager";
+  bindImageFallback(img, coverChain, "artist", name, "");
 
   const ringSvg = document.createElementNS(SVG_NS, "svg");
   ringSvg.setAttribute("viewBox", "0 0 100 100");
