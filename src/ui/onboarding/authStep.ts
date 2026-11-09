@@ -100,6 +100,10 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       }
       submitLabel.textContent =
         currentMode === "login" ? OB_TEXT.auth.login : OB_TEXT.auth.register;
+      forgotRowEl.style.display = currentMode === "login" ? "flex" : "none";
+      if (currentMode === "register") {
+        closeForgotPasswordPanel();
+      }
       updateStrengthMeter(passwordField.getValue());
     },
   });
@@ -176,6 +180,270 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     },
   });
 
+  // --- Fluxo Funcional de "Esqueci minha senha" com Código de 6 Dígitos ---
+  const forgotToggleBtn = h(
+    "button",
+    {
+      type: "button",
+      style:
+        "background:transparent; border:none; color:#d8b4fe; font-size:0.78rem; font-weight:700; cursor:pointer; padding:2px 0; text-decoration:underline; text-underline-offset:3px;",
+    },
+    "Esqueci minha senha"
+  ) as HTMLButtonElement;
+
+  const forgotRowEl = h(
+    "div",
+    {
+      style: "display:flex; justify-content:flex-end; margin-top:-4px; margin-bottom:2px;",
+    },
+    forgotToggleBtn
+  );
+
+  const forgotStatusBanner = h("div", {
+    style:
+      "display:none; padding:10px 12px; border-radius:10px; font-size:0.78rem; font-weight:600; line-height:1.45; background:rgba(168,85,247,0.16); border:1px solid rgba(192,132,252,0.4); color:#e9d5ff;",
+  });
+
+  const forgotCodeInput = h("input", {
+    type: "text",
+    inputmode: "numeric",
+    maxlength: "6",
+    placeholder: "Código de 6 dígitos (ex: 482910)",
+    style:
+      "width:100%; height:42px; padding:0 12px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.16); color:#fff; font-size:0.9rem; font-weight:700; letter-spacing:2px;",
+  }) as HTMLInputElement;
+
+  const forgotNewPassInput = h("input", {
+    type: "password",
+    placeholder: "Nova senha (mín. 6, 1 maiúscula e 1 especial)",
+    autocomplete: "new-password",
+    style:
+      "width:100%; height:42px; padding:0 12px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.16); color:#fff; font-size:0.86rem;",
+  }) as HTMLInputElement;
+
+  const forgotPassHintEl = h("div", {
+    style: "font-size:0.74rem; font-weight:600; line-height:1.35; color:rgba(255,255,255,0.72);",
+  });
+
+  forgotNewPassInput.addEventListener(
+    "input",
+    () => {
+      const st = evaluatePasswordStrength(forgotNewPassInput.value);
+      forgotPassHintEl.textContent = st.reason;
+      forgotPassHintEl.style.color = st.valid ? "#4ade80" : "#fca5a5";
+    },
+    { signal: opts.signal }
+  );
+
+  const forgotSendCodeBtn = h(
+    "button",
+    {
+      type: "button",
+      style:
+        "width:100%; height:40px; border-radius:10px; background:rgba(168,85,247,0.25); border:1px solid rgba(192,132,252,0.5); color:#fff; font-size:0.82rem; font-weight:700; cursor:pointer;",
+    },
+    "Enviar código para o meu e-mail"
+  ) as HTMLButtonElement;
+
+  const forgotConfirmBtn = h(
+    "button",
+    {
+      type: "button",
+      style:
+        "width:100%; height:42px; border-radius:10px; background:linear-gradient(135deg,#a855f7,#ec4899); border:none; color:#fff; font-size:0.86rem; font-weight:800; cursor:pointer;",
+    },
+    "Redefinir senha e entrar"
+  ) as HTMLButtonElement;
+
+  const forgotCancelBtn = h(
+    "button",
+    {
+      type: "button",
+      style:
+        "width:100%; height:34px; border-radius:8px; background:transparent; border:1px solid rgba(255,255,255,0.14); color:rgba(255,255,255,0.75); font-size:0.76rem; font-weight:600; cursor:pointer;",
+    },
+    "Voltar para o login"
+  ) as HTMLButtonElement;
+
+  const forgotStep2Wrap = h(
+    "div",
+    {
+      style: "display:none; flex-direction:column; gap:8px;",
+    },
+    forgotCodeInput,
+    forgotNewPassInput,
+    forgotPassHintEl,
+    forgotConfirmBtn
+  );
+
+  const forgotPanelEl = h(
+    "div",
+    {
+      style:
+        "display:none; flex-direction:column; gap:10px; padding:14px; border-radius:14px; background:rgba(20,12,34,0.88); border:1px solid rgba(168,85,247,0.38);",
+    },
+    h(
+      "div",
+      { style: "font-size:0.86rem; font-weight:800; color:#f3e8ff;" },
+      "Recuperar Senha por Código"
+    ),
+    h(
+      "div",
+      { style: "font-size:0.76rem; color:rgba(255,255,255,0.72); line-height:1.4;" },
+      "Informe seu e-mail no campo acima para receber um código de 6 dígitos e cadastrar uma nova senha."
+    ),
+    forgotStatusBanner,
+    forgotSendCodeBtn,
+    forgotStep2Wrap,
+    forgotCancelBtn
+  );
+
+  const closeForgotPasswordPanel = () => {
+    forgotPanelEl.style.display = "none";
+    passwordField.root.style.display = "";
+    submitBtn.style.display = "";
+    forgotRowEl.style.display = currentMode === "login" ? "flex" : "none";
+  };
+
+  forgotToggleBtn.addEventListener(
+    "click",
+    () => {
+      globalErrorEl.className = "ob-form-error";
+      globalErrorEl.textContent = "";
+      forgotPanelEl.style.display = "flex";
+      passwordField.root.style.display = "none";
+      submitBtn.style.display = "none";
+      forgotRowEl.style.display = "none";
+      if (!emailField.getValue().trim()) {
+        emailField.focus();
+      }
+    },
+    { signal: opts.signal }
+  );
+
+  forgotCancelBtn.addEventListener("click", closeForgotPasswordPanel, { signal: opts.signal });
+
+  forgotSendCodeBtn.addEventListener(
+    "click",
+    async () => {
+      const email = emailField.getValue().trim().toLowerCase();
+      if (!email || !isValidEmail(email)) {
+        emailField.setError("Digite seu e-mail acima para receber o código.");
+        emailField.focus();
+        return;
+      }
+      forgotSendCodeBtn.disabled = true;
+      forgotSendCodeBtn.textContent = "Enviando código...";
+      globalErrorEl.className = "ob-form-error";
+      globalErrorEl.textContent = "";
+      try {
+        const res = await fetch("/api/auth/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) {
+          globalErrorEl.className = "ob-form-error is-visible";
+          globalErrorEl.textContent = data?.error || "Não foi possível enviar o código.";
+          forgotSendCodeBtn.disabled = false;
+          forgotSendCodeBtn.textContent = "Enviar código para o meu e-mail";
+          return;
+        }
+        forgotStatusBanner.style.display = "block";
+        if (data.verificationCode) {
+          forgotStatusBanner.textContent = `Código de 6 dígitos enviado para ${email}: ${data.verificationCode}`;
+          forgotCodeInput.value = String(data.verificationCode);
+        } else {
+          forgotStatusBanner.textContent =
+            data.message || `Enviamos o código de 6 dígitos para ${email}.`;
+        }
+        forgotStep2Wrap.style.display = "flex";
+        forgotSendCodeBtn.disabled = false;
+        forgotSendCodeBtn.textContent = "Reenviar código";
+        forgotNewPassInput.focus();
+      } catch {
+        globalErrorEl.className = "ob-form-error is-visible";
+        globalErrorEl.textContent = "Erro de conexão ao enviar o código.";
+        forgotSendCodeBtn.disabled = false;
+        forgotSendCodeBtn.textContent = "Enviar código para o meu e-mail";
+      }
+    },
+    { signal: opts.signal }
+  );
+
+  forgotConfirmBtn.addEventListener(
+    "click",
+    async () => {
+      const email = emailField.getValue().trim().toLowerCase();
+      const code = forgotCodeInput.value.trim();
+      const newPassword = forgotNewPassInput.value;
+      if (!email || !isValidEmail(email)) {
+        emailField.setError(OB_TEXT.errors.invalidEmail);
+        return;
+      }
+      if (!code || code.length !== 6) {
+        globalErrorEl.className = "ob-form-error is-visible";
+        globalErrorEl.textContent = "Digite o código de 6 dígitos.";
+        return;
+      }
+      const st = evaluatePasswordStrength(newPassword);
+      if (!st.valid) {
+        forgotPassHintEl.textContent = st.reason;
+        forgotPassHintEl.style.color = "#fca5a5";
+        globalErrorEl.className = "ob-form-error is-visible";
+        globalErrorEl.textContent = st.reason;
+        return;
+      }
+      forgotConfirmBtn.disabled = true;
+      forgotConfirmBtn.textContent = "Salvando nova senha...";
+      try {
+        const res = await fetch("/api/auth/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, code, newPassword }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) {
+          globalErrorEl.className = "ob-form-error is-visible";
+          globalErrorEl.textContent = data?.error || "Código inválido ou expirado.";
+          forgotConfirmBtn.disabled = false;
+          forgotConfirmBtn.textContent = "Redefinir senha e entrar";
+          return;
+        }
+        if (data.token) {
+          localStorage.setItem("miado_auth_token", String(data.token));
+        }
+        const resolvedUid = String(data.account?.uid || data.user?.uid || `usr_${Date.now()}`);
+        localStorage.setItem("miado_user_uid", resolvedUid);
+        localStorage.setItem("miado_active_session_v1", "true");
+        localStorage.setItem("miado_user_onboarded_v1", "true");
+        const w = window as any;
+        if (w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
+          w.miadoState.applyAccountPayload(data);
+        }
+        const activeUser = {
+          uid: resolvedUid,
+          email,
+          displayName: String(data.user?.name || email.split("@")[0]),
+          emailVerified: true,
+          photoURL: String(data.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+          providerData: [],
+          getIdToken: async () => String(data.token || ""),
+        } as unknown as User;
+        closeForgotPasswordPanel();
+        setButtonState("success");
+        opts.onAuthenticated(activeUser, false);
+      } catch {
+        globalErrorEl.className = "ob-form-error is-visible";
+        globalErrorEl.textContent = "Erro de conexão ao redefinir a senha.";
+        forgotConfirmBtn.disabled = false;
+        forgotConfirmBtn.textContent = "Redefinir senha e entrar";
+      }
+    },
+    { signal: opts.signal }
+  );
+
   const globalErrorEl = h("div", {
     class: "ob-form-error",
     "aria-live": "polite",
@@ -246,6 +514,13 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       });
       const data = await res.json().catch(() => null);
       if (data && data.ok) {
+        if (data.token) {
+          localStorage.setItem("miado_auth_token", String(data.token));
+        }
+        const resolvedUid = String(data.account?.uid || data.user?.uid || fbUser?.uid || "");
+        if (resolvedUid) {
+          localStorage.setItem("miado_user_uid", resolvedUid);
+        }
         const w = window as any;
         if (w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
           w.miadoState.applyAccountPayload(data);
@@ -294,78 +569,82 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     try {
       if (currentMode === "register") {
         if (w.miadoFirestore && typeof w.miadoFirestore.registerWithEmail === "function") {
-          const fbRes = await w.miadoFirestore.registerWithEmail(
-            email,
-            password,
-            email.split("@")[0] || "Ouvinte",
-            `@${(email.split("@")[0] || "ouvinte").replace(/[^a-z0-9_.]/g, "")}`
-          );
-          if (fbRes && fbRes.ok) {
-            const backendData = await syncBackendAuthSession("register", email, password, auth.currentUser);
-            const isExisting = Boolean(
-              fbRes.linkedToGoogleAccount ||
-                fbRes.isExistingAccount ||
-                backendData?.linkedToGoogleAccount
-            );
-            const activeUser =
-              auth.currentUser ||
-              ({
-                uid: String(fbRes.uid || backendData?.account?.uid || `usr_${Date.now()}`),
-                email,
-                displayName: String(backendData?.user?.name || email.split("@")[0]),
-                emailVerified: true,
-                photoURL: String(backendData?.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
-                providerData: [],
-                getIdToken: async () => String(fbRes.token || backendData?.token || ""),
-              } as unknown as User);
-            setButtonState("success");
-            opts.onAuthenticated(activeUser, !isExisting);
-            return;
-          }
-        }
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, email, password);
           try {
-            await sendEmailVerification(cred.user);
-          } catch {}
-          const backendData = await syncBackendAuthSession("register", email, password, cred.user);
-          setButtonState("success");
-          opts.onAuthenticated(cred.user, !backendData?.linkedToGoogleAccount);
-          return;
-        } catch (regErr: any) {
-          const regCode = String(regErr?.code || "").toLowerCase();
-          if (regCode.includes("email-already-in-use")) {
-            try {
-              const loginCred = await signInWithEmailAndPassword(auth, email, password);
-              await syncBackendAuthSession("login", email, password, loginCred.user);
+            const fbRes = await w.miadoFirestore.registerWithEmail(
+              email,
+              password,
+              email.split("@")[0] || "Ouvinte",
+              `@${(email.split("@")[0] || "ouvinte").replace(/[^a-z0-9_.]/g, "")}`
+            );
+            if (fbRes && (fbRes.ok || fbRes.user || fbRes.token)) {
+              const backendData = await syncBackendAuthSession("register", email, password, auth.currentUser);
+              const isExisting = Boolean(
+                fbRes.linkedToGoogleAccount ||
+                  fbRes.isExistingAccount ||
+                  backendData?.linkedToGoogleAccount ||
+                  backendData?.isExistingAccount
+              );
+              const activeUser =
+                auth.currentUser ||
+                ({
+                  uid: String(fbRes.uid || backendData?.account?.uid || `usr_${Date.now()}`),
+                  email,
+                  displayName: String(backendData?.user?.name || fbRes.user?.name || email.split("@")[0]),
+                  emailVerified: true,
+                  photoURL: String(backendData?.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+                  providerData: [],
+                  getIdToken: async () => String(fbRes.token || backendData?.token || ""),
+                } as unknown as User);
               setButtonState("success");
-              opts.onAuthenticated(loginCred.user, false);
-              return;
-            } catch {
-              throw regErr;
-            }
-          }
-          if (!regCode.includes("weak-password") && !regCode.includes("invalid-email")) {
-            const backendReg = await syncBackendAuthSession("register", email, password, null);
-            if (backendReg && backendReg.ok) {
-              const fakeUser = {
-                uid: String(backendReg.account?.uid || backendReg.user?.uid || `usr_${Date.now()}`),
-                email,
-                displayName: String(backendReg.user?.name || email.split("@")[0]),
-                emailVerified: true,
-                photoURL: String(backendReg.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
-                providerData: [],
-                getIdToken: async () => String(backendReg.token || ""),
-              } as unknown as User;
-              setButtonState("success");
-              opts.onAuthenticated(fakeUser, !backendReg.linkedToGoogleAccount);
+              opts.onAuthenticated(activeUser, !isExisting);
               return;
             }
+          } catch (fbRegErr: any) {
+            const c = String(fbRegErr?.code || "").toLowerCase();
+            if (c.includes("email-already-in-use") || c.includes("weak-password")) {
+              throw fbRegErr;
+            }
           }
-          throw regErr;
         }
+
+        const backendReg = await syncBackendAuthSession("register", email, password, null);
+        if (backendReg && backendReg.ok) {
+          const fakeUser = {
+            uid: String(backendReg.account?.uid || backendReg.user?.uid || `usr_${Date.now()}`),
+            email,
+            displayName: String(backendReg.user?.name || email.split("@")[0]),
+            emailVerified: true,
+            photoURL: String(backendReg.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+            providerData: [],
+            getIdToken: async () => String(backendReg.token || ""),
+          } as unknown as User;
+          setButtonState("success");
+          opts.onAuthenticated(fakeUser, !backendReg.linkedToGoogleAccount && !backendReg.isExistingAccount);
+          return;
+        }
+
+        const loginFallback = await syncBackendAuthSession("login", email, password, null);
+        if (loginFallback && loginFallback.ok) {
+          localStorage.setItem("miado_user_onboarded_v1", "true");
+          const fakeUser = {
+            uid: String(loginFallback.account?.uid || loginFallback.user?.uid || `usr_${Date.now()}`),
+            email,
+            displayName: String(loginFallback.user?.name || email.split("@")[0]),
+            emailVerified: true,
+            photoURL: String(loginFallback.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+            providerData: [],
+            getIdToken: async () => String(loginFallback.token || ""),
+          } as unknown as User;
+          setButtonState("success");
+          opts.onAuthenticated(fakeUser, false);
+          return;
+        }
+
+        const dupErr: any = new Error("Este e-mail já está cadastrado. Use a aba Entrar.");
+        dupErr.code = "auth/email-already-in-use";
+        throw dupErr;
       } else {
-        // LOGIN MODE: If the user is already signed in via Google with this email and types a weak password to link, warn clearly
+        // LOGIN MODE
         if (
           auth.currentUser &&
           auth.currentUser.email &&
@@ -384,67 +663,49 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
         }
 
         if (w.miadoFirestore && typeof w.miadoFirestore.loginWithEmail === "function") {
-          const fbRes = await w.miadoFirestore.loginWithEmail(email, password);
-          if (fbRes && fbRes.ok) {
-            const backendData = await syncBackendAuthSession("login", email, password, auth.currentUser);
-            const activeUser =
-              auth.currentUser ||
-              ({
-                uid: String(fbRes.uid || backendData?.account?.uid || `usr_${Date.now()}`),
-                email,
-                displayName: String(backendData?.user?.name || email.split("@")[0]),
-                emailVerified: true,
-                photoURL: String(backendData?.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
-                providerData: [],
-                getIdToken: async () => String(fbRes.token || backendData?.token || ""),
-              } as unknown as User);
-            setButtonState("success");
-            opts.onAuthenticated(activeUser, false);
-            return;
-          }
-        }
-
-        try {
-          const cred = await signInWithEmailAndPassword(auth, email, password);
-          await syncBackendAuthSession("login", email, password, cred.user);
-          setButtonState("success");
-          opts.onAuthenticated(cred.user, false);
-          return;
-        } catch (loginErr: any) {
-          const loginCode = String(loginErr?.code || "").toLowerCase();
-          if (
-            loginCode.includes("invalid-credential") ||
-            loginCode.includes("user-not-found")
-          ) {
-            const backendData = await syncBackendAuthSession("login", email, password, null);
-            if (backendData && backendData.ok) {
-              try {
-                const paddedPass = password.length >= 6 ? password : `${password}_miado`;
-                const migratedCred = await createUserWithEmailAndPassword(auth, email, paddedPass).catch(() =>
-                  signInWithEmailAndPassword(auth, email, paddedPass)
-                );
-                if (migratedCred?.user) {
-                  setButtonState("success");
-                  opts.onAuthenticated(migratedCred.user, false);
-                  return;
-                }
-              } catch {}
-              const fakeUser = {
-                uid: String(backendData.account?.uid || backendData.user?.uid || `usr_${Date.now()}`),
-                email,
-                displayName: String(backendData.user?.name || email.split("@")[0]),
-                emailVerified: true,
-                photoURL: String(backendData.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
-                providerData: [],
-                getIdToken: async () => String(backendData.token || ""),
-              } as unknown as User;
+          try {
+            const fbRes = await w.miadoFirestore.loginWithEmail(email, password);
+            if (fbRes && (fbRes.ok || fbRes.user || fbRes.token)) {
+              const backendData = await syncBackendAuthSession("login", email, password, auth.currentUser);
+              localStorage.setItem("miado_user_onboarded_v1", "true");
+              const activeUser =
+                auth.currentUser ||
+                ({
+                  uid: String(fbRes.uid || backendData?.account?.uid || `usr_${Date.now()}`),
+                  email,
+                  displayName: String(backendData?.user?.name || fbRes.user?.name || email.split("@")[0]),
+                  emailVerified: true,
+                  photoURL: String(backendData?.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+                  providerData: [],
+                  getIdToken: async () => String(fbRes.token || backendData?.token || ""),
+                } as unknown as User);
               setButtonState("success");
-              opts.onAuthenticated(fakeUser, false);
+              opts.onAuthenticated(activeUser, false);
               return;
             }
-          }
-          throw loginErr;
+          } catch {}
         }
+
+        const backendData = await syncBackendAuthSession("login", email, password, null);
+        if (backendData && backendData.ok) {
+          localStorage.setItem("miado_user_onboarded_v1", "true");
+          const fakeUser = {
+            uid: String(backendData.account?.uid || backendData.user?.uid || `usr_${Date.now()}`),
+            email,
+            displayName: String(backendData.user?.name || email.split("@")[0]),
+            emailVerified: true,
+            photoURL: String(backendData.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+            providerData: [],
+            getIdToken: async () => String(backendData.token || ""),
+          } as unknown as User;
+          setButtonState("success");
+          opts.onAuthenticated(fakeUser, false);
+          return;
+        }
+
+        const loginErr: any = new Error("E-mail ou senha incorretos");
+        loginErr.code = "auth/invalid-credential";
+        throw loginErr;
       }
     } catch (err) {
       isSubmitting = false;
@@ -483,15 +744,15 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       if (w.miadoFirestore && typeof w.miadoFirestore.loginWithGoogle === "function") {
         try {
           const gRes = await w.miadoFirestore.loginWithGoogle();
-          if (gRes && gRes.ok) {
+          if (gRes && (gRes.ok || gRes.user || gRes.token)) {
             const activeUser =
               auth.currentUser ||
               ({
-                uid: String(gRes.uid || `usr_${Date.now()}`),
-                email: String(gRes.email || ""),
-                displayName: String(gRes.name || "Ouvinte"),
+                uid: String(gRes.uid || gRes.user?.uid || `usr_${Date.now()}`),
+                email: String(gRes.email || gRes.user?.email || ""),
+                displayName: String(gRes.name || gRes.user?.displayName || "Ouvinte"),
                 emailVerified: true,
-                photoURL: String(gRes.photoURL || "/api/cat-avatar?id=cat_1"),
+                photoURL: String(gRes.photoURL || gRes.user?.photoURL || "/api/cat-avatar?id=cat_1"),
                 providerData: [],
                 getIdToken: async () => String(gRes.token || ""),
               } as unknown as User);
@@ -592,6 +853,8 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     segmented.root,
     emailField.root,
     passwordField.root,
+    forgotRowEl,
+    forgotPanelEl,
     strengthCollapse,
     globalErrorEl,
     submitBtn,

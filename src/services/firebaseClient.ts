@@ -779,6 +779,18 @@ export function initFirebaseClient(): void {
               listenerRegistry.disposeAll();
               resetGuestStateInApp();
             }
+            const hasBackendSession = Boolean(
+              localStorage.getItem("miado_active_session_v1") === "true" &&
+                localStorage.getItem("miado_auth_token") &&
+                (localStorage.getItem("miado_user_onboarded_v1") === "true" ||
+                  (w.miadoState?.user?.email &&
+                    w.miadoState.user.email !== "usr_guest@miado.app" &&
+                    w.miadoState.user.onboardingCompleted !== false))
+            );
+            if (hasBackendSession) {
+              this.subscribeLiveCommunity();
+              return;
+            }
             if (typeof w.miadoMountOnboarding === "function") {
               w.miadoMountOnboarding();
             }
@@ -823,72 +835,129 @@ export function initFirebaseClient(): void {
               forceCreateIfMissing: true,
             });
             this.subscribeLiveCommunity();
-            return { user: auth.currentUser, token, profile, linkedToGoogleAccount: true };
+            return {
+              ok: true,
+              uid: auth.currentUser.uid,
+              email: cleanEmail,
+              user: auth.currentUser,
+              token,
+              profile,
+              linkedToGoogleAccount: true,
+            };
           }
         }
+
+        // Busca metadados salvos localmente para envio ao servidor em caso de recuperação
+        let cachedMeta: any = {};
+        try {
+          const savedList = JSON.parse(localStorage.getItem("miado_saved_accounts_v1") || "[]");
+          if (Array.isArray(savedList)) {
+            const match = savedList.find(
+              (a: any) => a && String(a.email || "").toLowerCase().trim() === cleanEmail
+            );
+            if (match) cachedMeta = match;
+          }
+        } catch {}
 
         try {
           const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
           const token = await cred.user.getIdToken();
           localStorage.setItem("miado_auth_token", token);
+          await fetch("/api/auth/login", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ email: cleanEmail, password }),
+          })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d && d.ok && w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
+                w.miadoState.applyAccountPayload(d);
+              }
+            })
+            .catch(() => {});
           const profile = await ensureAndHydrateUser(cred.user, {
             isGoogle: false,
             isExistingLogin: true,
             forceCreateIfMissing: true,
           });
           this.subscribeLiveCommunity();
-          return { user: cred.user, token, profile, linkedToGoogleAccount: false };
+          return {
+            ok: true,
+            uid: cred.user.uid,
+            email: cleanEmail,
+            user: cred.user,
+            token,
+            profile,
+            linkedToGoogleAccount: false,
+          };
         } catch (err: any) {
-          const code = String(err?.code || "").toLowerCase();
-          // Caso 2: A conta foi criada com Google (ainda sem senha no Firebase Auth) e o usuário digitou o Gmail + senha
-          if (
-            code.includes("invalid-credential") ||
-            code.includes("wrong-password") ||
-            code.includes("user-not-found") ||
-            code.includes("invalid-login-credentials")
-          ) {
-            // Verifica no servidor se é uma conta Google existente ou vincula via popup Google se for Gmail
-            try {
-              const srvRes = await fetch("/api/auth/login", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email: cleanEmail, password }),
-              });
-              const srvData = await srvRes.json().catch(() => null);
-              if (srvData && srvData.ok && srvData.linkedToGoogleAccount) {
-                const provider = new GoogleAuthProvider();
-                provider.setCustomParameters({ login_hint: cleanEmail });
-                const googleCred = await signInWithPopup(auth, provider);
-                if (googleCred.user.email?.toLowerCase() === cleanEmail) {
-                  try {
-                    await linkWithCredential(
-                      googleCred.user,
-                      EmailAuthProvider.credential(cleanEmail, password)
-                    );
-                  } catch {}
-                }
-                const token = await googleCred.user.getIdToken();
-                localStorage.setItem("miado_auth_token", token);
-                const profile = await ensureAndHydrateUser(googleCred.user, {
-                  isGoogle: true,
-                  isExistingLogin: true,
-                  forceCreateIfMissing: true,
-                });
-                this.subscribeLiveCommunity();
-                return { user: googleCred.user, token, profile, linkedToGoogleAccount: true };
-              }
-            } catch {}
+          // Autentica diretamente no servidor (/api/auth/login) para suportar contas de e-mail/senha e contas vinculadas
+          const srvRes = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: cleanEmail,
+              password,
+              name: cachedMeta?.name || cachedMeta?.user?.name || "",
+              username: cachedMeta?.username || cachedMeta?.user?.username || "",
+              handle: cachedMeta?.username || cachedMeta?.user?.handle || "",
+              avatarUrl: cachedMeta?.avatarUrl || cachedMeta?.user?.avatarUrl || "",
+              favoriteArtists: cachedMeta?.user?.favoriteArtists || [],
+            }),
+          }).catch(() => null);
+          const srvData = srvRes ? await srvRes.json().catch(() => null) : null;
+
+          if (srvData && srvData.ok) {
+            const resolvedUid = String(
+              srvData.account?.uid || srvData.user?.uid || `usr_${Date.now()}`
+            );
+            const resolvedToken = String(srvData.token || "");
+            if (resolvedToken) {
+              localStorage.setItem("miado_auth_token", resolvedToken);
+            }
+            localStorage.setItem("miado_user_uid", resolvedUid);
+            localStorage.setItem("miado_active_session_v1", "true");
+            localStorage.setItem("miado_user_onboarded_v1", "true");
+
+            if (w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
+              w.miadoState.applyAccountPayload(srvData);
+            }
+            this.subscribeLiveCommunity();
+            return {
+              ok: true,
+              uid: resolvedUid,
+              email: cleanEmail,
+              user: srvData.user,
+              token: resolvedToken,
+              profile: srvData.user,
+              linkedToGoogleAccount: Boolean(srvData.linkedToGoogleAccount),
+              isExistingAccount: true,
+            };
           }
-          throw err;
+
+          const customErr: any = new Error(
+            (srvData && srvData.error) || "E-mail ou senha incorretos."
+          );
+          customErr.code = "auth/invalid-credential";
+          throw customErr;
         }
       },
 
       async registerWithEmail(
         email: string,
         password: string,
-        meta?: { name?: string; handle?: string; avatarUrl?: string }
+        metaOrName?: { name?: string; handle?: string; avatarUrl?: string } | string,
+        maybeHandle?: string
       ) {
         const cleanEmail = email.trim().toLowerCase();
+        const meta: { name?: string; handle?: string; avatarUrl?: string } =
+          typeof metaOrName === "string"
+            ? { name: metaOrName, handle: maybeHandle }
+            : metaOrName || {};
+
         // Se já estiver logado com Google no mesmo e-mail, apenas associa a senha à conta Google existente!
         if (
           auth.currentUser &&
@@ -904,8 +973,6 @@ export function initFirebaseClient(): void {
             const lCode = String(linkErr?.code || "").toLowerCase();
             if (lCode.includes("provider-already-linked")) {
               await updatePassword(auth.currentUser, password).catch(() => {});
-            } else {
-              throw linkErr;
             }
           }
           const token = await auth.currentUser.getIdToken();
@@ -926,7 +993,16 @@ export function initFirebaseClient(): void {
             forceCreateIfMissing: true,
           });
           this.subscribeLiveCommunity();
-          return { user: auth.currentUser, token, profile, linkedToGoogleAccount: true };
+          return {
+            ok: true,
+            uid: auth.currentUser.uid,
+            email: cleanEmail,
+            user: auth.currentUser,
+            token,
+            profile,
+            linkedToGoogleAccount: true,
+            isExistingAccount: true,
+          };
         }
 
         try {
@@ -943,54 +1019,76 @@ export function initFirebaseClient(): void {
             forceCreateIfMissing: true,
           });
           this.subscribeLiveCommunity();
-          return { user: cred.user, token, profile, linkedToGoogleAccount: false };
+          return {
+            ok: true,
+            uid: cred.user.uid,
+            email: cleanEmail,
+            user: cred.user,
+            token,
+            profile,
+            linkedToGoogleAccount: false,
+          };
         } catch (regErr: any) {
           const regCode = String(regErr?.code || "").toLowerCase();
-          if (regCode.includes("email-already-in-use")) {
-            // Tenta entrar direto com e-mail e senha caso já tenha senha
-            try {
-              const loginCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
-              const token = await loginCred.user.getIdToken();
-              localStorage.setItem("miado_auth_token", token);
-              const profile = await ensureAndHydrateUser(loginCred.user, {
-                isGoogle: false,
-                isExistingLogin: true,
-                forceCreateIfMissing: true,
-              });
-              this.subscribeLiveCommunity();
-              return { user: loginCred.user, token, profile, linkedToGoogleAccount: false, isExistingAccount: true };
-            } catch {
-              // Conta existe pelo Google sem senha: autentica com Google e associa a senha automaticamente!
-              const provider = new GoogleAuthProvider();
-              provider.setCustomParameters({ login_hint: cleanEmail });
-              const googleCred = await signInWithPopup(auth, provider);
-              if (googleCred.user.email?.toLowerCase() === cleanEmail) {
-                try {
-                  await linkWithCredential(
-                    googleCred.user,
-                    EmailAuthProvider.credential(cleanEmail, password)
-                  );
-                } catch {}
-              }
-              const token = await googleCred.user.getIdToken();
-              localStorage.setItem("miado_auth_token", token);
-              await fetch("/api/auth/link-password", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ email: cleanEmail, password }),
-              }).catch(() => {});
-              const profile = await ensureAndHydrateUser(googleCred.user, {
-                isGoogle: true,
-                isExistingLogin: true,
-                forceCreateIfMissing: true,
-              });
-              this.subscribeLiveCommunity();
-              return { user: googleCred.user, token, profile, linkedToGoogleAccount: true, isExistingAccount: true };
-            }
+          if (regCode.includes("weak-password") || regCode.includes("invalid-email")) {
+            throw regErr;
           }
+          // Registra ou vincula diretamente no servidor (/api/auth/register)
+          const cleanName = meta?.name || cleanEmail.split("@")[0] || "Ouvinte";
+          const cleanHandle =
+            meta?.handle || `@${cleanEmail.split("@")[0].replace(/[^a-z0-9_.]/gi, "") || "ouvinte"}`;
+          const srvRes = await fetch("/api/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: cleanEmail,
+              password,
+              name: cleanName,
+              username: cleanHandle,
+              handle: cleanHandle,
+            }),
+          }).catch(() => null);
+          const srvData = srvRes ? await srvRes.json().catch(() => null) : null;
+
+          if (srvData && srvData.ok) {
+            const resolvedUid = String(
+              srvData.account?.uid || srvData.user?.uid || `usr_${Date.now()}`
+            );
+            const resolvedToken = String(srvData.token || "");
+            if (resolvedToken) {
+              localStorage.setItem("miado_auth_token", resolvedToken);
+            }
+            localStorage.setItem("miado_user_uid", resolvedUid);
+            localStorage.setItem("miado_active_session_v1", "true");
+            if (w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
+              w.miadoState.applyAccountPayload(srvData);
+            }
+            this.subscribeLiveCommunity();
+            return {
+              ok: true,
+              uid: resolvedUid,
+              email: cleanEmail,
+              user: srvData.user,
+              token: resolvedToken,
+              profile: srvData.user,
+              linkedToGoogleAccount: Boolean(srvData.linkedToGoogleAccount),
+              isExistingAccount: Boolean(srvData.isExistingAccount || srvData.linkedToGoogleAccount),
+            };
+          }
+
+          if (srvData && srvData.error === "email_already_registered") {
+            // Se o usuário já tem conta e digitou a senha certa na aba Criar Conta, autentica direto!
+            try {
+              const loginFallback = await this.loginWithEmail(cleanEmail, password);
+              if (loginFallback && loginFallback.ok) {
+                return { ...loginFallback, isExistingAccount: true };
+              }
+            } catch {}
+            const dupErr: any = new Error("Este e-mail já está cadastrado. Use a aba Entrar.");
+            dupErr.code = "auth/email-already-in-use";
+            throw dupErr;
+          }
+
           throw regErr;
         }
       },

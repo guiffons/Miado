@@ -7249,17 +7249,13 @@ export function initMiadoClient() {
                   }
                 } catch (fbErr) {
                   const errMsg = String(fbErr && fbErr.message ? fbErr.message : "");
-                  if (errMsg.includes("weak-password")) {
+                  if (mode === "register" && errMsg.includes("weak-password")) {
                     renderStrengthBox(pwdCheck);
                     showAuthError(pwdCheck.reason);
                     return;
                   }
-                  if (errMsg.includes("já está em uso") || errMsg.includes("email-already-in-use")) {
+                  if (mode === "register" && (errMsg.includes("já está em uso") || errMsg.includes("email-already-in-use"))) {
                     showAuthError(errMsg.includes("já está em uso") ? errMsg : "Este e-mail já está cadastrado. Use a aba Entrar.");
-                    return;
-                  }
-                  if (errMsg.includes("invalid-credential") || errMsg.includes("wrong-password")) {
-                    showAuthError("E-mail ou senha incorretos.");
                     return;
                   }
                 }
@@ -7281,7 +7277,7 @@ export function initMiadoClient() {
               });
               const data = await res.json().catch(() => ({}));
               if ((!res.ok || !data.ok) && !firebaseProfile && !(fbResult && fbResult.ok)) {
-                showAuthError(data.error || "Não foi possível autenticar sua conta.");
+                showAuthError(data.error || "E-mail ou senha incorretos.");
                 return;
               }
               localStorage.setItem("miado_active_session_v1", "true");
@@ -7294,7 +7290,7 @@ export function initMiadoClient() {
 
               const wasLinkedToGoogle = Boolean(
                 (fbResult && (fbResult.linkedToGoogleAccount || fbResult.isExistingAccount)) ||
-                (data && data.linkedToGoogleAccount)
+                (data && (data.linkedToGoogleAccount || data.isExistingAccount))
               );
 
               if (mode === "register" && !wasLinkedToGoogle) {
@@ -7329,6 +7325,173 @@ export function initMiadoClient() {
 
           const btnAuthSubmit = document.getElementById("btn-auth-submit");
           if (btnAuthSubmit) btnAuthSubmit.addEventListener("click", submitAuthAction);
+
+          // Eventos do painel "Esqueci minha senha?" no modal de autenticação (#modal-auth)
+          const btnForgotToggle = document.getElementById("btn-auth-forgot-toggle");
+          const forgotPanel = document.getElementById("auth-forgot-password-panel");
+          const passFieldGroup = document.getElementById("auth-password-field-group");
+          const forgotStatusBanner = document.getElementById("auth-forgot-status-banner");
+          const btnForgotSendCode = document.getElementById("btn-forgot-send-code");
+          const forgotStep2Wrap = document.getElementById("auth-forgot-step2-wrap");
+          const forgotCodeInput = document.getElementById("auth-forgot-code-input");
+          const forgotNewPassInput = document.getElementById("auth-forgot-new-password");
+          const forgotPassHint = document.getElementById("auth-forgot-pass-hint");
+          const btnForgotConfirm = document.getElementById("btn-forgot-confirm-reset");
+          const btnForgotCancel = document.getElementById("btn-forgot-cancel");
+
+          const closeForgotInModal = () => {
+            if (forgotPanel) forgotPanel.style.display = "none";
+            if (passFieldGroup) passFieldGroup.style.display = "block";
+            if (btnAuthSubmit) btnAuthSubmit.style.display = "block";
+          };
+
+          if (btnForgotToggle) {
+            btnForgotToggle.addEventListener("click", () => {
+              const feedbackEl = document.getElementById("auth-feedback-msg");
+              if (feedbackEl) feedbackEl.style.display = "none";
+              if (forgotPanel) forgotPanel.style.display = "flex";
+              if (passFieldGroup) passFieldGroup.style.display = "none";
+              if (btnAuthSubmit) btnAuthSubmit.style.display = "none";
+              const emailIn = document.getElementById("auth-input-email");
+              if (emailIn && !emailIn.value.trim()) emailIn.focus();
+            });
+          }
+
+          if (btnForgotCancel) {
+            btnForgotCancel.addEventListener("click", closeForgotInModal);
+          }
+
+          if (forgotNewPassInput && forgotPassHint) {
+            forgotNewPassInput.addEventListener("input", () => {
+              const check = evaluatePasswordDetailed(forgotNewPassInput.value);
+              forgotPassHint.textContent = check.reason;
+              forgotPassHint.style.color = check.valid ? "#6ee7b7" : "#fca5a5";
+            });
+          }
+
+          if (btnForgotSendCode) {
+            btnForgotSendCode.addEventListener("click", async () => {
+              const emailIn = document.getElementById("auth-input-email");
+              const email = (emailIn ? emailIn.value : "").trim().toLowerCase();
+              const feedbackEl = document.getElementById("auth-feedback-msg");
+              if (!email || !email.includes("@")) {
+                if (feedbackEl) {
+                  feedbackEl.style.display = "block";
+                  feedbackEl.style.backgroundColor = "rgba(239, 68, 68, 0.14)";
+                  feedbackEl.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                  feedbackEl.style.color = "#fca5a5";
+                  feedbackEl.textContent = "Digite o seu e-mail no campo acima para receber o código.";
+                }
+                if (emailIn) emailIn.focus();
+                return;
+              }
+              if (feedbackEl) feedbackEl.style.display = "none";
+              btnForgotSendCode.disabled = true;
+              btnForgotSendCode.textContent = "Enviando código...";
+              try {
+                const res = await fetch("/api/auth/forgot-password", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email })
+                });
+                const data = await res.json().catch(() => null);
+                if (!res.ok || !data?.ok) {
+                  if (feedbackEl) {
+                    feedbackEl.style.display = "block";
+                    feedbackEl.textContent = data?.error || "Não foi possível enviar o código.";
+                  }
+                  btnForgotSendCode.disabled = false;
+                  btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
+                  return;
+                }
+                if (forgotStatusBanner) {
+                  forgotStatusBanner.style.display = "block";
+                  if (data.verificationCode) {
+                    forgotStatusBanner.textContent = `Código de 6 dígitos enviado para ${email}: ${data.verificationCode}`;
+                    if (forgotCodeInput) forgotCodeInput.value = String(data.verificationCode);
+                  } else {
+                    forgotStatusBanner.textContent = data.message || `Código de 6 dígitos enviado para ${email}.`;
+                  }
+                }
+                if (forgotStep2Wrap) forgotStep2Wrap.style.display = "flex";
+                btnForgotSendCode.disabled = false;
+                btnForgotSendCode.textContent = "Reenviar código";
+                if (forgotNewPassInput) forgotNewPassInput.focus();
+              } catch (_e) {
+                btnForgotSendCode.disabled = false;
+                btnForgotSendCode.textContent = "Enviar código para o meu e-mail";
+              }
+            });
+          }
+
+          if (btnForgotConfirm) {
+            btnForgotConfirm.addEventListener("click", async () => {
+              const emailIn = document.getElementById("auth-input-email");
+              const email = (emailIn ? emailIn.value : "").trim().toLowerCase();
+              const code = (forgotCodeInput ? forgotCodeInput.value : "").trim();
+              const newPassword = forgotNewPassInput ? forgotNewPassInput.value : "";
+              const feedbackEl = document.getElementById("auth-feedback-msg");
+              const showErr = (m) => {
+                if (!feedbackEl) return;
+                feedbackEl.style.display = "block";
+                feedbackEl.style.backgroundColor = "rgba(239, 68, 68, 0.14)";
+                feedbackEl.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+                feedbackEl.style.color = "#fca5a5";
+                feedbackEl.textContent = m;
+              };
+              if (!email || !email.includes("@")) {
+                showErr("Informe seu endereço de e-mail.");
+                return;
+              }
+              if (!code || code.length !== 6) {
+                showErr("Digite o código de 6 dígitos.");
+                return;
+              }
+              const pwdCheck = evaluatePasswordDetailed(newPassword);
+              if (!pwdCheck.valid) {
+                if (forgotPassHint) {
+                  forgotPassHint.textContent = pwdCheck.reason;
+                  forgotPassHint.style.color = "#fca5a5";
+                }
+                showErr(pwdCheck.reason);
+                return;
+              }
+              btnForgotConfirm.disabled = true;
+              btnForgotConfirm.textContent = "Salvando...";
+              try {
+                const res = await fetch("/api/auth/reset-password", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email, code, newPassword })
+                });
+                const data = await res.json().catch(() => null);
+                if (!res.ok || !data?.ok) {
+                  showErr(data?.error || "Código inválido ou expirado.");
+                  btnForgotConfirm.disabled = false;
+                  btnForgotConfirm.textContent = "Redefinir Senha e Entrar";
+                  return;
+                }
+                localStorage.setItem("miado_active_session_v1", "true");
+                localStorage.setItem("miado_user_onboarded_v1", "true");
+                state.applyAccountPayload(data);
+                state.user.onboardingCompleted = true;
+                state.saveUser();
+                closeForgotInModal();
+                const welcomeEl = document.getElementById("miado-welcome-screen");
+                if (welcomeEl) welcomeEl.classList.remove("active", "closing");
+                document.getElementById("modal-auth")?.classList.remove("active");
+                this.syncAccountStateAcrossApp();
+                btnForgotConfirm.disabled = false;
+                btnForgotConfirm.textContent = "Redefinir Senha e Entrar";
+                showToast("Sua senha foi redefinida com sucesso! Você já está conectado.");
+              } catch (_e) {
+                showErr("Erro ao redefinir a senha.");
+                btnForgotConfirm.disabled = false;
+                btnForgotConfirm.textContent = "Redefinir Senha e Entrar";
+              }
+            });
+          }
+
           const passInputEl = document.getElementById("auth-input-password");
           if (passInputEl) {
             passInputEl.addEventListener("input", () => {

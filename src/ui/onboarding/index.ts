@@ -72,10 +72,32 @@ export function mountOnboarding(
     user: User | null,
     isExplicitLogin = false
   ): Promise<{ step: OnboardingStep; existingHandle?: string }> => {
-    if (!user) return { step: "auth" };
+    const w = window as any;
+    let resolvedUser = user;
+    if (!resolvedUser) {
+      const stateU = w.miadoState?.user;
+      if (
+        localStorage.getItem("miado_active_session_v1") === "true" &&
+        localStorage.getItem("miado_auth_token") &&
+        stateU?.email &&
+        stateU.email !== "usr_guest@miado.app"
+      ) {
+        resolvedUser = {
+          uid: String(stateU.uid || localStorage.getItem("miado_user_uid") || `usr_${Date.now()}`),
+          email: String(stateU.email),
+          displayName: String(stateU.name || "Ouvinte"),
+          emailVerified: true,
+          photoURL: String(stateU.avatarUrl || "/api/cat-avatar?id=cat_1"),
+          providerData: [],
+          getIdToken: async () => String(localStorage.getItem("miado_auth_token") || ""),
+        } as unknown as User;
+      }
+    }
+    if (!resolvedUser) return { step: "auth" };
     if (!isExplicitLogin && localStorage.getItem("miado_active_session_v1") !== "true") {
       return { step: "auth" };
     }
+    user = resolvedUser;
     try {
       const [userSnap, profileSnap] = await Promise.all([
         getDoc(doc(db, "users", user.uid)).catch(() => null),
