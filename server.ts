@@ -430,6 +430,19 @@ const KNOWN_ARTIST_LISTENERS: Record<string, number> = {
 };
 
 function getCanonicalArtistListeners(artistName: string, rawNbFan = 0): number {
+  const nfcLower = String(artistName || "").normalize("NFC").trim().toLowerCase();
+  const primaryNfcLower = String(artistName || "")
+    .split(/[,&/]|feat\.?|ft\.?/i)[0]
+    ?.normalize("NFC")
+    .trim()
+    .toLowerCase() || "";
+  if (nfcLower === "rosé" || primaryNfcLower === "rosé") {
+    return Math.max(68400000, Number(rawNbFan) || 0);
+  }
+  if (nfcLower === "rose" || primaryNfcLower === "rose") {
+    const numericRawRose = Number(rawNbFan) || 0;
+    return numericRawRose > 0 ? numericRawRose : 55509;
+  }
   const norm = normalizeStr(artistName);
   const primaryNorm = normalizeStr(String(artistName || "").split(/[,&/]|feat\.?|ft\.?/i)[0] || "");
   const known = KNOWN_ARTIST_LISTENERS[norm] || KNOWN_ARTIST_LISTENERS[primaryNorm] || 0;
@@ -706,7 +719,35 @@ function matchesWordBoundarySubstring(longer: string, shorter: string): boolean 
   return new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`).test(longer);
 }
 
+function hasHomonymAccentConflict(candidateArtist: string, targetArtist: string): boolean {
+  const candTokens = splitCollaboratingArtists(candidateArtist)
+    .map(p => String(p || "").normalize("NFC").replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim().toLowerCase())
+    .filter(Boolean);
+  const targTokens = splitCollaboratingArtists(targetArtist)
+    .map(p => String(p || "").normalize("NFC").replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim().toLowerCase())
+    .filter(Boolean);
+
+  // Strict disambiguation between South Korean artist "ROSÉ" (with acute accent) and French/other artists named "Rose" (without accent)
+  const targetHasRoseKr = targTokens.some(t => t === "rosé" || t === "roseanne park");
+  const targetHasRosePlain = targTokens.some(t => t === "rose" || t === "rose.");
+
+  if (targetHasRoseKr) {
+    const candHasRoseKr = candTokens.some(c => c === "rosé" || c === "roseanne park");
+    const candHasRosePlain = candTokens.some(c => c === "rose" || c === "rose.");
+    if (candHasRosePlain && !candHasRoseKr) return true;
+  }
+
+  if (targetHasRosePlain) {
+    const candHasRoseKr = candTokens.some(c => c === "rosé" || c === "roseanne park");
+    const candHasRosePlain = candTokens.some(c => c === "rose" || c === "rose.");
+    if (candHasRoseKr && !candHasRosePlain) return true;
+  }
+
+  return false;
+}
+
 function artistMatchesTarget(candidateArtist: string, targetArtist: string): boolean {
+  if (hasHomonymAccentConflict(candidateArtist, targetArtist)) return false;
   const cNorm = normalizeStr(candidateArtist).replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
   const tNorm = normalizeStr(targetArtist).replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
   if (!cNorm || !tNorm) return false;
@@ -738,6 +779,7 @@ function artistMatchesTarget(candidateArtist: string, targetArtist: string): boo
 
 export function albumBelongsToArtist(albumArtist: string, targetArtist: string): boolean {
   if (!albumArtist || !targetArtist) return false;
+  if (hasHomonymAccentConflict(albumArtist, targetArtist)) return false;
   const aNorm = normalizeStr(albumArtist).replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
   const tNorm = normalizeStr(targetArtist).replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim();
   if (!aNorm || !tNorm) return false;
@@ -2338,12 +2380,15 @@ export async function createMiadoApp() {
     res.send(svg);
   });
 
-  // 1c. Paradas e Lançamentos em Tempo Real (Fase 5 — /api/charts com TTL 1h e stale-while-revalidate)
+  // 1c. Paradas e Lançamentos em Tempo Real (Fase 5 — /api/charts com TTL 1h e sincronização imediata)
   app.get("/api/charts", async (req: Request, res: Response) => {
     try {
-      const force = String(req.query.refresh || "") === "1";
+      const force =
+        String(req.query.refresh || "") === "1" ||
+        String(req.query.force || "") === "1" ||
+        String(req.query.force || "") === "true";
       const charts = await getRealTimeCharts(force);
-      res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
       res.json({
         ok: true,
         ...charts,
@@ -3442,19 +3487,32 @@ export async function createMiadoApp() {
     const rawNameParam = String(req.query.name || "Lady Gaga").trim().slice(0, 120);
     const name = extractPrimaryArtistName(rawNameParam) || rawNameParam;
     const explicitUrl = String(req.query.url || "").trim();
-    const key = normalizeStr(name);
+    const nfcLower = String(name || "").normalize("NFC").trim().toLowerCase();
+    const isRoseKorean = nfcLower === "rosé";
+    const key = isRoseKorean ? "rosé_kr" : nfcLower === "rose" ? "rose_fr" : normalizeStr(name);
+
+    const ROSE_KR_OFFICIAL_PORTRAIT =
+      "https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0e44c0/1000x1000-000000-80-0-0.jpg";
+    const ROSE_FR_PORTRAIT_HASH = "3acf41d6308b7e44fdbbe929d3ef0aef";
 
     let validatedExplicitUrl = "";
     if (explicitUrl) {
       try {
         const checked = await validateOutboundUrl(explicitUrl, ALLOWED_IMAGE_HOSTS);
         if (!checked.pathname.includes("/images/artist//")) {
-          validatedExplicitUrl = upgradeArtwork(checked.toString());
+          const candidateUrl = upgradeArtwork(checked.toString());
+          if (isRoseKorean && candidateUrl.includes(ROSE_FR_PORTRAIT_HASH)) {
+            validatedExplicitUrl = ROSE_KR_OFFICIAL_PORTRAIT;
+          } else {
+            validatedExplicitUrl = candidateUrl;
+          }
         }
       } catch {
         res.status(400).json({ error: "invalid_image_url", requestId: req.requestId });
         return;
       }
+    } else if (isRoseKorean) {
+      validatedExplicitUrl = ROSE_KR_OFFICIAL_PORTRAIT;
     }
 
     const urlHash = validatedExplicitUrl
@@ -3481,17 +3539,18 @@ export async function createMiadoApp() {
         if (dzRes.ok) {
           const dzData = (await dzRes.json()) as any;
           const list: any[] = Array.isArray(dzData?.data) ? dzData.data : [];
-          const sorted = [...list].sort((a, b) => {
+          const filteredList = list.filter(a => !hasHomonymAccentConflict(a?.name || "", name));
+          const sorted = [...filteredList].sort((a, b) => {
             const aNorm = normalizeStr(a?.name || "");
             const bNorm = normalizeStr(b?.name || "");
-            const aExact = aNorm === key ? 1 : 0;
-            const bExact = bNorm === key ? 1 : 0;
+            const aExact = aNorm === normalizeStr(name) ? 1 : 0;
+            const bExact = bNorm === normalizeStr(name) ? 1 : 0;
             if (aExact !== bExact) return bExact - aExact;
             return (Number(b?.nb_fan) || 0) - (Number(a?.nb_fan) || 0);
           });
           const match =
-            sorted.find(a => normalizeStr(a.name) === key) ||
-            sorted.find(a => normalizeStr(a.name).includes(key) || key.includes(normalizeStr(a.name))) ||
+            sorted.find(a => normalizeStr(a.name) === normalizeStr(name)) ||
+            sorted.find(a => normalizeStr(a.name).includes(normalizeStr(name)) || normalizeStr(name).includes(normalizeStr(a.name))) ||
             sorted[0];
           if (match) {
             let candidate = match.picture_xl || match.picture_big || match.picture_medium || "";
@@ -4109,23 +4168,35 @@ export async function createMiadoApp() {
   app.get("/api/artist", async (req: Request, res: Response) => {
     const rawInputName = String(req.query.name || "Lady Gaga").trim();
     const rawName = extractPrimaryArtistName(rawInputName) || rawInputName;
+    const nfcLowerReq = String(rawName || "").normalize("NFC").trim().toLowerCase();
+    const isRoseKorean = nfcLowerReq === "rosé";
     const normReq = normalizeStr(rawName);
     const lookupName =
       normReq === "yun li" || normReq === "gemaplys" || normReq === "victor gemaplys" || normReq === "mc vv"
         ? "YUNG LIXO"
+        : isRoseKorean
+        ? "ROSÉ"
         : rawName;
-    const name = rawName;
+    const name = isRoseKorean ? "ROSÉ" : rawName;
 
     try {
       const [dzArtistSearchSettled, itunesSongSettled, itunesAlbumSettled, saavnSettled] = await Promise.allSettled([
-        fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(lookupName)}&limit=15`, {}, 4000).then(r => (r.ok ? r.json() : null)),
-        fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(lookupName)}&country=BR&entity=song&limit=45`, {}, 4000).then(r => (r.ok ? r.json() : null)),
-        fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(lookupName)}&country=BR&entity=album&limit=25`, {}, 4000).then(r => (r.ok ? r.json() : null)),
-        fetchWithTimeout(
-          `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=25&p=1&q=${encodeURIComponent(lookupName)}`,
-          { headers: SAAVN_GLOBAL_HEADERS },
-          3600
-        ).then(r => (r.ok ? r.json() : null))
+        isRoseKorean
+          ? fetchWithTimeout("https://api.deezer.com/artist/126335112", {}, 4000).then(async r => (r.ok ? { data: [await r.json()] } : null))
+          : fetchWithTimeout(`https://api.deezer.com/search/artist?q=${encodeURIComponent(lookupName)}&limit=15`, {}, 4000).then(r => (r.ok ? r.json() : null)),
+        isRoseKorean
+          ? fetchWithTimeout("https://itunes.apple.com/lookup?id=1406242696&country=BR&entity=song&limit=60", {}, 4000).then(r => (r.ok ? r.json() : null))
+          : fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(lookupName)}&country=BR&entity=song&limit=45`, {}, 4000).then(r => (r.ok ? r.json() : null)),
+        isRoseKorean
+          ? fetchWithTimeout("https://itunes.apple.com/lookup?id=1406242696&country=BR&entity=album&limit=30", {}, 4000).then(r => (r.ok ? r.json() : null))
+          : fetchWithTimeout(`https://itunes.apple.com/search?term=${encodeURIComponent(lookupName)}&country=BR&entity=album&limit=25`, {}, 4000).then(r => (r.ok ? r.json() : null)),
+        isRoseKorean
+          ? Promise.resolve(null)
+          : fetchWithTimeout(
+              `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=25&p=1&q=${encodeURIComponent(lookupName)}`,
+              { headers: SAAVN_GLOBAL_HEADERS },
+              3600
+            ).then(r => (r.ok ? r.json() : null))
       ]);
 
       const rawDzArtists: any[] =
@@ -4135,7 +4206,7 @@ export async function createMiadoApp() {
 
       const normTarget = normalizeStr(lookupName);
       const dzArtists = [...rawDzArtists]
-        .filter(a => a?.name && !isCollaborationArtistEntry(a.name))
+        .filter(a => a?.name && !isCollaborationArtistEntry(a.name) && !hasHomonymAccentConflict(a.name, lookupName))
         .sort((a, b) => {
           const aNorm = normalizeStr(a?.name || "");
           const bNorm = normalizeStr(b?.name || "");
@@ -4146,7 +4217,7 @@ export async function createMiadoApp() {
         });
 
       const matchedArtist =
-        dzArtists.find(a => normalizeStr(a.name) === normTarget) ||
+        dzArtists.find(a => normalizeStr(a.name) === normTarget && !hasHomonymAccentConflict(a.name, lookupName)) ||
         dzArtists.find(a => artistMatchesTarget(a.name || "", lookupName)) ||
         null;
 

@@ -23,6 +23,7 @@ export const ALLOWED_API_HOSTS: readonly (string | RegExp)[] = [
   "api.deezer.com",
   "itunes.apple.com",
   "rss.applemarketingtools.com",
+  "rss.marketingtools.apple.com",
   "www.jiosaavn.com",
   "jiosaavn.com",
   "api.thecatapi.com",

@@ -148,6 +148,68 @@ function buildGlobalFallbackTracks(): ChartTrackItem[] {
   }));
 }
 
+function mapItunesRssEntry(entry: any, idx: number, prefix: string): ChartTrackItem | null {
+  const title = entry?.["im:name"]?.label;
+  const artist = entry?.["im:artist"]?.label;
+  if (!title || !artist) return null;
+  const albumTitle = entry?.["im:collection"]?.["im:name"]?.label || "Single";
+  if (!isCanonicalStudioTrack(title, artist, albumTitle, 205)) return null;
+  const images = Array.isArray(entry?.["im:image"]) ? entry["im:image"] : [];
+  const lastImg = images.length > 0 ? images[images.length - 1]?.label : "";
+  const cover = lastImg
+    ? String(lastImg).replace(/\d+x\d+bb\.(png|jpg)/i, "1000x1000bb.jpg")
+    : `/api/cover?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`;
+  const rawId = entry?.id?.attributes?.["im:id"] || `${idx + 1}`;
+  return {
+    id: `${prefix}_${rawId}`,
+    title: String(title).trim(),
+    artist: String(artist).trim(),
+    albumTitle: String(albumTitle).trim(),
+    albumId: `${prefix}_alb_${rawId}`,
+    duration: "3:25",
+    durationSec: 205,
+    coverUrl: cover,
+    streamUrl: buildFullStreamProxyUrl(title, artist),
+    rank: idx + 1,
+    popular: idx < 15
+  };
+}
+
+function normalizeArtistDistinctKey(name: string): string {
+  const nfc = String(name || "").normalize("NFC").trim().toLowerCase();
+  if (nfc === "rosé") return "rosé_kr";
+  if (nfc === "rose") return "rose_fr";
+  return normalizeCatalogText(name);
+}
+
+function resolveCanonicalArtistChartEntry(
+  rawName: string,
+  rawId?: string | number,
+  rawPic?: string
+): { id: string; name: string; coverUrl: string } {
+  const nfc = String(rawName || "").normalize("NFC").trim();
+  const lower = nfc.toLowerCase();
+  if (lower === "rosé" || String(rawId || "") === "126335112") {
+    const roseKrPic = "https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0e44c0/1000x1000-000000-80-0-0.jpg";
+    return {
+      id: "dz_art_126335112",
+      name: "ROSÉ",
+      coverUrl: `/api/artist-image?name=${encodeURIComponent("ROSÉ")}&url=${encodeURIComponent(roseKrPic)}`
+    };
+  }
+  const safePic =
+    rawPic && !String(rawPic).includes("3acf41d6308b7e44fdbbe929d3ef0aef")
+      ? String(rawPic)
+      : "";
+  return {
+    id: rawId ? `dz_art_${rawId}` : `art_${normalizeArtistDistinctKey(nfc).replace(/\s+/g, "_")}`,
+    name: nfc,
+    coverUrl: safePic
+      ? `/api/artist-image?name=${encodeURIComponent(nfc)}&url=${encodeURIComponent(safePic)}`
+      : `/api/artist-image?name=${encodeURIComponent(nfc)}`
+  };
+}
+
 async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
   const [
     dzGlobalChart,
@@ -155,14 +217,18 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
     dzGlobalTopPlaylist,
     dzEditorialReleases,
     appleGlobalSongs,
-    appleBrSongs
+    appleBrSongs,
+    itunesGlobalRss,
+    itunesBrRss
   ] = await Promise.all([
-    fetchJsonSafe("https://api.deezer.com/chart/0?limit=100", 5000),
-    fetchJsonSafe("https://api.deezer.com/playlist/1111141961/tracks?limit=60", 5000),
-    fetchJsonSafe("https://api.deezer.com/playlist/3155776842/tracks?limit=100", 5000),
-    fetchJsonSafe("https://api.deezer.com/editorial/0/releases?limit=30", 5000),
-    fetchJsonSafe("https://rss.applemarketingtools.com/api/v2/us/music/most-played/50/songs.json", 4500),
-    fetchJsonSafe("https://rss.applemarketingtools.com/api/v2/br/music/most-played/50/songs.json", 4500)
+    fetchJsonSafe("https://api.deezer.com/chart/0?limit=100", 6000),
+    fetchJsonSafe("https://api.deezer.com/playlist/1111141961/tracks?limit=60", 6000),
+    fetchJsonSafe("https://api.deezer.com/playlist/3155776842/tracks?limit=100", 6000),
+    fetchJsonSafe("https://api.deezer.com/editorial/0/releases?limit=30", 6000),
+    fetchJsonSafe("https://rss.marketingtools.apple.com/api/v2/us/music/most-played/25/songs.json", 5500),
+    fetchJsonSafe("https://rss.marketingtools.apple.com/api/v2/br/music/most-played/25/songs.json", 5500),
+    fetchJsonSafe("https://itunes.apple.com/us/rss/topsongs/limit=50/json", 6000),
+    fetchJsonSafe("https://itunes.apple.com/br/rss/topsongs/limit=50/json", 6000)
   ]);
 
   const brRaw: ChartTrackItem[] = [];
@@ -194,7 +260,13 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
       });
     });
   }
-  const trendingBrazil = deduplicateCanonicalTracks(brRaw).slice(0, 50);
+  if (Array.isArray(itunesBrRss?.feed?.entry)) {
+    itunesBrRss.feed.entry.forEach((entry: any, idx: number) => {
+      const mapped = mapItunesRssEntry(entry, idx, "it_br");
+      if (mapped) brRaw.push(mapped);
+    });
+  }
+  const trendingBrazil = deduplicateCanonicalTracks(brRaw).slice(0, 60);
 
   const globalRaw: ChartTrackItem[] = [];
   const globalChartTracks = dzGlobalChart?.tracks?.data || [];
@@ -225,7 +297,19 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
       });
     });
   }
-  globalRaw.push(...buildGlobalFallbackTracks());
+  if (Array.isArray(itunesGlobalRss?.feed?.entry)) {
+    itunesGlobalRss.feed.entry.forEach((entry: any, idx: number) => {
+      const mapped = mapItunesRssEntry(entry, idx, "it_glb");
+      if (mapped) globalRaw.push(mapped);
+    });
+  }
+
+  // Only use fallback tracks if ALL live global and Brazil sources failed
+  if (globalRaw.length === 0 && trendingBrazil.length === 0) {
+    globalRaw.push(...buildGlobalFallbackTracks());
+  } else if (globalRaw.length < 15 && trendingBrazil.length > 0) {
+    globalRaw.push(...trendingBrazil.slice(0, 30));
+  }
   const globalTop100 = deduplicateCanonicalTracks(globalRaw).slice(0, 100);
 
   const newReleases: ChartAlbumItem[] = [];
@@ -237,10 +321,10 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
   for (const alb of rawAlbums) {
     if (!alb?.title || !alb?.artist?.name) continue;
     if (!isCanonicalStudioTrack(alb.title, alb.artist.name, alb.title, 200)) continue;
-    const key = `${normalizeCatalogText(alb.title)}::${normalizeCatalogText(alb.artist.name)}`;
+    const key = `${normalizeCatalogText(alb.title)}::${normalizeArtistDistinctKey(alb.artist.name)}`;
     if (seenAlbKeys.has(key)) continue;
     seenAlbKeys.add(key);
-    const year = alb.release_date ? Number(String(alb.release_date).slice(0, 4)) || 2025 : 2025;
+    const year = alb.release_date ? Number(String(alb.release_date).slice(0, 4)) || 2026 : 2026;
     newReleases.push({
       id: `dz_alb_${alb.id}`,
       dzAlbumId: alb.id,
@@ -262,16 +346,19 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
   const rawArtists = Array.isArray(dzGlobalChart?.artists?.data) ? dzGlobalChart.artists.data : [];
   for (const art of rawArtists) {
     if (!art?.name) continue;
-    const norm = normalizeCatalogText(art.name);
+    const norm = normalizeArtistDistinctKey(art.name);
     if (!norm || seenArtists.has(norm)) continue;
     seenArtists.add(norm);
+    const resolved = resolveCanonicalArtistChartEntry(
+      art.name,
+      art.id,
+      art.picture_xl || art.picture_big || ""
+    );
     topArtists100.push({
-      id: art.id ? `dz_art_${art.id}` : `art_${topArtists100.length + 1}`,
-      name: art.name,
+      id: resolved.id,
+      name: resolved.name,
       role: `Top #${topArtists100.length + 1} Global`,
-      coverUrl: `/api/artist-image?name=${encodeURIComponent(art.name)}&url=${encodeURIComponent(
-        art.picture_xl || art.picture_big || ""
-      )}`,
+      coverUrl: resolved.coverUrl,
       rank: topArtists100.length + 1
     });
   }
@@ -281,14 +368,15 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
     const primaryName = String(tr.artist || "")
       .split(/\s*(?:,|&|\bfeat\.?\b|\bft\.?\b)\s*/i)[0]
       .trim();
-    const norm = normalizeCatalogText(primaryName);
+    const norm = normalizeArtistDistinctKey(primaryName);
     if (!norm || seenArtists.has(norm)) continue;
     seenArtists.add(norm);
+    const resolved = resolveCanonicalArtistChartEntry(primaryName, tr.artistId);
     topArtists100.push({
-      id: tr.artistId ? `dz_art_${tr.artistId}` : `art_${topArtists100.length + 1}`,
-      name: primaryName,
+      id: resolved.id,
+      name: resolved.name,
       role: `Em Alta - #${topArtists100.length + 1}`,
-      coverUrl: `/api/artist-image?name=${encodeURIComponent(primaryName)}`,
+      coverUrl: resolved.coverUrl,
       rank: topArtists100.length + 1
     });
   }
@@ -303,61 +391,70 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
   };
 }
 
+function isPayloadContaminatedWithFallback(payload?: RealTimeChartsPayload | null): boolean {
+  if (!payload) return true;
+  const g = payload.globalTop100;
+  if (!Array.isArray(g) || g.length < 10) return true;
+  if (g.slice(0, 10).some((t) => String(t?.id || "").startsWith("glb_hit_"))) return true;
+  if (
+    g[0]?.title === "Die With A Smile" &&
+    g[1]?.title === "BIRDS OF A FEATHER" &&
+    g[2]?.title === "Espresso"
+  ) {
+    return true;
+  }
+  if (!Array.isArray(payload.topArtists100) || payload.topArtists100.length < 15) return true;
+  return false;
+}
+
 export async function getRealTimeCharts(forceRefresh = false): Promise<RealTimeChartsPayload> {
   const now = Date.now();
   const state = chartsStore.get();
   const cached = state.entry;
 
-  const canForce = forceRefresh && now - lastForcedRefreshAt >= 5 * 60_000;
+  const canForce = forceRefresh && now - lastForcedRefreshAt >= 15_000;
   if (canForce) {
     lastForcedRefreshAt = now;
   }
 
-  const isFresh = cached && now < cached.expiresAt;
+  const isFresh = Boolean(cached && now < cached.expiresAt);
+  const isContaminated = isPayloadContaminatedWithFallback(cached?.payload);
 
-  if (cached && !canForce) {
-    if (!Array.isArray(cached.payload.globalTop100) || cached.payload.globalTop100.length < 15) {
-      cached.payload.globalTop100 = deduplicateCanonicalTracks([
-        ...(cached.payload.globalTop100 || []),
-        ...buildGlobalFallbackTracks()
-      ]).slice(0, 100);
-    }
-    if (!isFresh && !isRevalidating) {
-      isRevalidating = true;
-      fetchFreshCharts()
-        .then((fresh) => {
-          if (fresh.globalTop100.length > 0 || fresh.trendingBrazil.length > 0) {
-            const ts = Date.now();
-            return chartsStore.update((draft) => {
-              draft.entry = {
-                payload: fresh,
-                fetchedAt: ts,
-                expiresAt: ts + CHARTS_TTL_MS
-              };
-            });
-          }
-        })
-        .catch(() => { })
-        .finally(() => {
-          isRevalidating = false;
-        });
-    }
+  if (cached && isFresh && !canForce && !isContaminated) {
     return cached.payload;
   }
 
-  const fresh = await fetchFreshCharts();
-  if (fresh.globalTop100.length > 0 || fresh.trendingBrazil.length > 0 || !cached) {
-    await chartsStore
-      .update((draft) => {
-        draft.entry = {
-          payload: fresh,
-          fetchedAt: now,
-          expiresAt: now + CHARTS_TTL_MS
-        };
-      })
-      .catch(() => { });
-    return fresh;
+  // If expired, forced, or contaminated with 2025 fallback tracks, fetch live charts synchronously
+  if (!isRevalidating) {
+    isRevalidating = true;
+    try {
+      const fresh = await fetchFreshCharts();
+      const freshContaminated = isPayloadContaminatedWithFallback(fresh);
+      if (
+        (fresh.globalTop100.length > 0 || fresh.trendingBrazil.length > 0) &&
+        (!freshContaminated || !cached || isContaminated)
+      ) {
+        await chartsStore
+          .update((draft) => {
+            draft.entry = {
+              payload: fresh,
+              fetchedAt: now,
+              expiresAt: now + CHARTS_TTL_MS
+            };
+          })
+          .catch(() => {});
+        return fresh;
+      }
+    } catch {
+      // fall through to cached if available
+    } finally {
+      isRevalidating = false;
+    }
   }
 
-  return cached.payload;
+  if (cached?.payload) {
+    return cached.payload;
+  }
+
+  return await fetchFreshCharts();
 }

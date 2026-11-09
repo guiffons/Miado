@@ -260,6 +260,11 @@ export function initMiadoClient() {
         if (!art) return "/api/artist-image?name=Artista";
         const rawName = typeof art === "string" ? art : (art.name || "");
         const name = typeof extractPrimaryArtistClient === "function" ? extractPrimaryArtistClient(rawName) : rawName;
+        const nfcLower = String(name || "").normalize("NFC").trim().toLowerCase();
+        if (nfcLower === "rosé") {
+          const roseKrUrl = "https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0e44c0/1000x1000-000000-80-0-0.jpg";
+          return `/api/artist-image?name=${encodeURIComponent("ROSÉ")}&url=${encodeURIComponent(roseKrUrl)}`;
+        }
         let rawCover = typeof art === "object" ? (art.coverUrl || art.pictureUrl || "") : "";
         if (rawCover && rawCover.startsWith("http://")) {
           rawCover = "https://" + rawCover.slice(7);
@@ -1343,7 +1348,32 @@ export function initMiadoClient() {
         return splitCollaboratingArtistsClient(clean).length > 1;
       }
 
+      function hasHomonymAccentConflictClient(candidateArtist, targetArtist) {
+        const candTokens = splitCollaboratingArtistsClient(candidateArtist)
+          .map(p => String(p || "").normalize("NFC").replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim().toLowerCase())
+          .filter(Boolean);
+        const targTokens = splitCollaboratingArtistsClient(targetArtist)
+          .map(p => String(p || "").normalize("NFC").replace(/\s*-\s*topic/i, "").replace(/vevo/i, "").trim().toLowerCase())
+          .filter(Boolean);
+
+        const targetHasRoseKr = targTokens.some(t => t === "rosé" || t === "roseanne park");
+        const targetHasRosePlain = targTokens.some(t => t === "rose" || t === "rose.");
+
+        if (targetHasRoseKr) {
+          const candHasRoseKr = candTokens.some(c => c === "rosé" || c === "roseanne park");
+          const candHasRosePlain = candTokens.some(c => c === "rose" || c === "rose.");
+          if (candHasRosePlain && !candHasRoseKr) return true;
+        }
+        if (targetHasRosePlain) {
+          const candHasRoseKr = candTokens.some(c => c === "rosé" || c === "roseanne park");
+          const candHasRosePlain = candTokens.some(c => c === "rose" || c === "rose.");
+          if (candHasRoseKr && !candHasRosePlain) return true;
+        }
+        return false;
+      }
+
       function artistMatchesClient(candidateArtist, targetArtist) {
+        if (hasHomonymAccentConflictClient(candidateArtist, targetArtist)) return false;
         const candNorm = normalizeTextKey(candidateArtist);
         const targNorm = normalizeTextKey(targetArtist);
         if (!candNorm || !targNorm) return false;
@@ -1364,6 +1394,7 @@ export function initMiadoClient() {
       }
 
       function albumBelongsToArtistClient(candidateArtist, targetArtist) {
+        if (hasHomonymAccentConflictClient(candidateArtist, targetArtist)) return false;
         const candNorm = normalizeTextKey(candidateArtist);
         const targNorm = normalizeTextKey(targetArtist);
         if (!candNorm || !targNorm) return false;
@@ -1391,6 +1422,13 @@ export function initMiadoClient() {
         const rawNbFan = typeof artistObjOrName === "object" && artistObjOrName
           ? Number(artistObjOrName.nbFan || artistObjOrName.listeners || 0)
           : 0;
+        const nfcLower = String(name || "").normalize("NFC").trim().toLowerCase();
+        if (nfcLower === "rosé") {
+          return Math.max(68400000, isFinite(rawNbFan) ? rawNbFan : 0);
+        }
+        if (nfcLower === "rose") {
+          return isFinite(rawNbFan) && rawNbFan >= 1000 ? Math.round(rawNbFan) : 55509;
+        }
         const norm = normalizeTextKey(name);
         if (norm && KNOWN_ARTIST_LISTENERS_CLIENT[norm]) {
           return Math.max(KNOWN_ARTIST_LISTENERS_CLIENT[norm], isFinite(rawNbFan) ? rawNbFan : 0);
@@ -1495,6 +1533,7 @@ export function initMiadoClient() {
         { name: "Ed Sheeran", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Ed%20Sheeran" },
         { name: "Selena Gomez", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Selena%20Gomez" },
         { name: "Tate McRae", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=Tate%20McRae" },
+        { name: "ROSÉ", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=ROS%C3%89&url=https%3A%2F%2Fcdn-images.dzcdn.net%2Fimages%2Fartist%2Feefd9b0fc6d1cb51405e29009c0e44c0%2F1000x1000-000000-80-0-0.jpg" },
 
         // Rock & Metal
         { name: "Ghost", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Ghost" },
@@ -1689,14 +1728,42 @@ export function initMiadoClient() {
           this.fetchCommunityProfiles();
           this.fetchRecommendations();
           this.fetchCharts();
+          this._chartsSyncInterval = setInterval(() => {
+            this.fetchCharts(true);
+          }, 10 * 60 * 1000);
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+              const lastUpd = this._lastChartsFetchedAt || 0;
+              if (Date.now() - lastUpd > 3 * 60 * 1000) {
+                this.fetchCharts(true);
+              }
+            }
+          });
         }
 
-        async fetchCharts() {
+        async fetchCharts(forceRefresh = false) {
+          if (this._isFetchingCharts) return;
+          this._isFetchingCharts = true;
           try {
-            const res = await fetch("/api/charts");
-            if (!res.ok) return;
-            const data = await res.json();
+            const url = forceRefresh
+              ? `/api/charts?force=1&_t=${Date.now()}`
+              : `/api/charts?_t=${Date.now()}`;
+            const res = await fetch(url, { cache: "no-store" });
+            if (!res.ok) throw new Error("charts_http_error");
+            let data = await res.json();
+            const topCand = data?.topSongs || data?.globalTop100 || [];
+            const isContaminated =
+              Array.isArray(topCand) &&
+              (topCand.slice(0, 5).some(t => String(t?.id || "").startsWith("glb_hit_")) ||
+                (topCand[0]?.title === "Die With A Smile" && topCand[1]?.title === "BIRDS OF A FEATHER"));
+            if (isContaminated && !forceRefresh) {
+              const retryRes = await fetch(`/api/charts?force=1&_t=${Date.now()}`, { cache: "no-store" });
+              if (retryRes.ok) {
+                data = await retryRes.json();
+              }
+            }
             if (data && (data.ok || data.topArtists100 || data.trendingBrazil || data.newReleases)) {
+              this._lastChartsFetchedAt = Date.now();
               this.charts = {
                 ...data,
                 top100Artists: (data.top100Artists || data.topArtists100 || []).map(a => ({
@@ -1715,7 +1782,16 @@ export function initMiadoClient() {
                 }
               }
             }
-          } catch (e) {}
+          } catch (e) {
+            if (!this._chartsRetryTimer) {
+              this._chartsRetryTimer = setTimeout(() => {
+                this._chartsRetryTimer = null;
+                this.fetchCharts(true);
+              }, 2500);
+            }
+          } finally {
+            this._isFetchingCharts = false;
+          }
         }
 
         loadCustomAlbumCovers() {
@@ -9246,6 +9322,10 @@ export function initMiadoClient() {
             ? state.charts.topSongs
             : [];
 
+          if (chartSongs.length === 0 && !state._isFetchingCharts) {
+            state.fetchCharts();
+          }
+
           const globalTopTracks = [];
           [...chartSongs, ...(this.extraDiscoveredSongs || [])].forEach(tr => {
             if (tr && tr.title && !globalTopTracks.some(x => normalizeTrackKey(x) === normalizeTrackKey(tr))) {
@@ -9256,25 +9336,14 @@ export function initMiadoClient() {
               });
             }
           });
-          baseCatalogWithoutHardcoded.slice(0, 8).forEach(alb => {
-            if (alb.tracks && alb.tracks[0] && globalTopTracks.length < 16) {
-              const tr0 = alb.tracks[0];
-              if (!globalTopTracks.some(x => normalizeTrackKey(x) === normalizeTrackKey(tr0))) {
-                globalTopTracks.push({
-                  ...tr0,
-                  coverUrl: ensureTrackCoverUrl(tr0, tr0.title, tr0.artist, alb.coverUrl),
-                  albumObj: alb
-                });
-              }
-            }
-          });
 
           // "Artistas do Momento" baseados nos Charts Reais Top 100 + Descobertas Infinitas
+          const liveChartArtists = (state.charts && Array.isArray(state.charts.top100Artists) && state.charts.top100Artists.length > 0)
+            ? state.charts.top100Artists
+            : [];
           const chartArtistsRaw = [
-            ...((state.charts && Array.isArray(state.charts.top100Artists) && state.charts.top100Artists.length > 0)
-              ? state.charts.top100Artists
-              : []),
-            ...POPULAR_ARTISTS_DIRECTORY.filter(a => a.name.toLowerCase() !== "yung lixo"),
+            ...liveChartArtists,
+            ...(liveChartArtists.length >= 15 ? [] : POPULAR_ARTISTS_DIRECTORY.filter(a => a.name.toLowerCase() !== "yung lixo")),
             ...(this.extraDiscoveredArtists || [])
           ];
           const seenChartNames = new Set();
@@ -9284,13 +9353,14 @@ export function initMiadoClient() {
             const parts = splitCollaboratingArtistsClient(art.name);
             parts.forEach((individualName, idx) => {
               if (!individualName || isCollaborationArtistClient(individualName)) return;
-              const key = individualName.toLowerCase().trim();
+              const nfcName = String(individualName).normalize("NFC").trim();
+              const key = nfcName.toLowerCase();
               if (key === "yung lixo" || seenChartNames.has(key)) return;
               seenChartNames.add(key);
-              const candidateObj = idx === 0 && parts.length === 1 ? art : { name: individualName };
+              const candidateObj = idx === 0 && parts.length === 1 ? art : { name: nfcName };
               const listeners = getArtistListenersCount(candidateObj);
               homeArtistsList.push({
-                name: individualName,
+                name: nfcName,
                 role: formatArtistListeners(listeners),
                 nbFan: listeners,
                 coverUrl: ensureArtistAvatarUrl(candidateObj)
