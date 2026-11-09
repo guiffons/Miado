@@ -127,8 +127,15 @@ export function mountOnboarding(
           rawName.length >= 1
       );
       const hasCompletedArtists = Boolean(
-        (userData && userData.onboardingCompleted === true && Array.isArray(userData.favoriteArtists) && userData.favoriteArtists.length >= 3) ||
-        (stateHasEmail && stateUser?.onboardingCompleted === true && Array.isArray(stateUser?.favoriteArtists) && stateUser.favoriteArtists.length >= 3)
+        (userData && userData.onboardingCompleted === true) ||
+          (userData && Array.isArray(userData.favoriteArtists) && userData.favoriteArtists.length > 0) ||
+          (profileData && Array.isArray(profileData.favoriteArtists) && profileData.favoriteArtists.length > 0) ||
+          (profileSnap && profileSnap.exists() && hasProfile) ||
+          (stateHasEmail &&
+            (stateUser?.onboardingCompleted === true ||
+              (Array.isArray(stateUser?.favoriteArtists) && stateUser.favoriteArtists.length > 0) ||
+              (Array.isArray(stateUser?.followedArtists) && stateUser.followedArtists.length > 0))) ||
+          (isExplicitLogin && hasProfile && localStorage.getItem("miado_user_onboarded_v1") === "true")
       );
       const onboardingCompleted = hasCompletedArtists;
 

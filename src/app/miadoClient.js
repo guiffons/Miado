@@ -43,6 +43,79 @@ export function initMiadoClient() {
         return `@${slug || "ouvinte"}`;
       }
 
+      function parseTrackDurationSeconds(track) {
+        if (!track || typeof track !== "object") return 0;
+        if (typeof track.durationSec === "number" && Number.isFinite(track.durationSec) && track.durationSec > 0) {
+          return Math.round(track.durationSec);
+        }
+        const raw = String(track.duration || "").trim();
+        if (raw.includes(":")) {
+          const parts = raw.split(":").map(n => parseInt(n, 10));
+          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            return parts[0] * 60 + parts[1];
+          }
+          if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+          }
+        }
+        return 210;
+      }
+
+      function formatPlaylistDuration(tracks) {
+        if (!Array.isArray(tracks) || tracks.length === 0) {
+          return "0 min";
+        }
+        const totalSec = tracks.reduce((acc, t) => acc + parseTrackDurationSeconds(t), 0);
+        const totalMin = Math.max(1, Math.round(totalSec / 60));
+        if (totalMin >= 60) {
+          const hrs = Math.floor(totalMin / 60);
+          const mins = totalMin % 60;
+          return mins > 0 ? `${hrs} h ${mins} min` : `${hrs} h`;
+        }
+        return `${totalMin} min`;
+      }
+
+      function getOrGeneratePlaylistShareCode(pl) {
+        if (!pl || typeof pl !== "object") return "MIA-000000";
+        if (typeof pl.shareCode === "string" && /^MIA-[A-Z0-9]{6}$/.test(pl.shareCode)) {
+          return pl.shareCode;
+        }
+        const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const seedStr = `${pl.id || ""}_${pl.name || "playlist"}`;
+        let h1 = 2166136261;
+        for (let i = 0; i < seedStr.length; i++) {
+          h1 ^= seedStr.charCodeAt(i);
+          h1 = Math.imul(h1, 16777619);
+        }
+        let suffix = "";
+        let val = Math.abs(h1);
+        for (let i = 0; i < 6; i++) {
+          suffix += alphabet[(val + i * 7) % alphabet.length];
+          val = Math.floor(val / 5) ^ (seedStr.charCodeAt(i % seedStr.length) || 13);
+        }
+        pl.shareCode = `MIA-${suffix}`;
+        return pl.shareCode;
+      }
+
+      function evaluatePasswordDetailed(password) {
+        const pwd = String(password || "");
+        const missing = [];
+        if (pwd.length < 6) {
+          missing.push(`mínimo de 6 caracteres (atual: ${pwd.length}/6)`);
+        }
+        if (!/[A-Z]/.test(pwd)) {
+          missing.push("1 letra maiúscula (A-Z)");
+        }
+        if (!/[^a-zA-Z0-9]/.test(pwd)) {
+          missing.push("1 caractere especial (ex: !@#$%&*)");
+        }
+        const valid = missing.length === 0;
+        const reason = valid
+          ? "Senha forte: todos os requisitos de segurança foram atendidos."
+          : `Senha fraca — falta: ${missing.join(", ")}.`;
+        return { valid, missing, reason };
+      }
+
       /**
        * 1. GALERIA DE AVATARES DE PERFIL
        */
@@ -5093,7 +5166,7 @@ export function initMiadoClient() {
           this.selectedCatPresetUrl = state.user.avatarUrl;
           this.historyStack = state.historyStack;
           this.historyIndex = state.historyIndex;
-          this.creatingCollaborativeMode = true;
+          this.creatingCollaborativeMode = false;
           this.currentOnboardingStep = 1;
           this.selectedFavoriteArtists = new Set(
             Array.isArray(state.user.favoriteArtists) ? state.user.favoriteArtists : []
@@ -5861,9 +5934,9 @@ export function initMiadoClient() {
           });
         }
 
-        openPlaylistCreatorModal(isCollaborative = true) {
+        openPlaylistCreatorModal(isCollaborative = false) {
           this.closeAllModals();
-          this.creatingCollaborativeMode = isCollaborative;
+          this.creatingCollaborativeMode = Boolean(isCollaborative);
           const modal = document.getElementById("modal-collab-playlist");
           if (!modal) return;
           const titleEl = modal.querySelector(".modal-title");
@@ -5875,12 +5948,12 @@ export function initMiadoClient() {
           const descEl = document.getElementById("collab-modal-description");
           if (descEl) {
             descEl.textContent = isCollaborative
-              ? "Crie uma playlist em grupo com amigos ou sincronize com um código compartilhado."
-              : "Dê um nome para a sua nova playlist e adicione uma capa personalizada.";
+              ? "Crie uma playlist em grupo com amigos ou importe usando um código curto (ex: MIA-7K9P2X)."
+              : "Dê um nome para a sua nova playlist pessoal e adicione uma capa personalizada.";
           }
           const importSec = document.getElementById("collab-import-section");
           if (importSec) {
-            importSec.style.display = isCollaborative ? "block" : "none";
+            importSec.style.display = "block";
           }
           const submitBtn = document.getElementById("btn-create-collab-submit");
           if (submitBtn) {
@@ -6738,7 +6811,18 @@ export function initMiadoClient() {
           const regFields = document.getElementById("auth-register-extra-fields") || document.getElementById("auth-register-extra");
           const submitBtn = document.getElementById("btn-auth-submit");
           const feedbackEl = document.getElementById("auth-feedback-msg");
+          const strengthMsgEl = document.getElementById("auth-password-strength-msg");
           if (feedbackEl) feedbackEl.style.display = "none";
+          if (strengthMsgEl) {
+            const passInput = document.getElementById("auth-input-password");
+            if (mode === "register" && passInput && passInput.value) {
+              const check = evaluatePasswordDetailed(passInput.value);
+              strengthMsgEl.style.display = "block";
+              strengthMsgEl.textContent = check.reason;
+            } else {
+              strengthMsgEl.style.display = "none";
+            }
+          }
           if (tabLogin) tabLogin.classList.toggle("active", mode === "login");
           if (tabReg) tabReg.classList.toggle("active", mode === "register");
           if (regFields) regFields.style.display = mode === "register" ? "grid" : "none";
@@ -6893,6 +6977,7 @@ export function initMiadoClient() {
             const nameInput = document.getElementById("auth-input-name");
             const handleInput = document.getElementById("auth-input-handle") || document.getElementById("auth-input-username");
             const feedbackEl = document.getElementById("auth-feedback-msg");
+            const strengthMsgEl = document.getElementById("auth-password-strength-msg");
 
             const email = (emailInput ? emailInput.value : "").trim().toLowerCase();
             const password = passInput ? passInput.value : "";
@@ -6908,7 +6993,21 @@ export function initMiadoClient() {
               feedbackEl.textContent = msg;
             };
 
-            if (mode === "register" && !rawName) {
+            const pwdCheck = evaluatePasswordDetailed(password);
+            const renderStrengthBox = (check) => {
+              if (!strengthMsgEl) return;
+              strengthMsgEl.style.display = "block";
+              strengthMsgEl.style.backgroundColor = check.valid
+                ? "rgba(16, 185, 129, 0.14)"
+                : "rgba(239, 68, 68, 0.14)";
+              strengthMsgEl.style.border = check.valid
+                ? "1px solid rgba(16, 185, 129, 0.4)"
+                : "1px solid rgba(239, 68, 68, 0.4)";
+              strengthMsgEl.style.color = check.valid ? "#6ee7b7" : "#fca5a5";
+              strengthMsgEl.textContent = check.reason;
+            };
+
+            if (mode === "register" && !rawName && !(state.user?.email && state.user.email.toLowerCase() === email)) {
               showAuthError("Informe seu nome para criar a conta.");
               return;
             }
@@ -6916,15 +7015,23 @@ export function initMiadoClient() {
               showAuthError("Digite um endereço de e-mail válido.");
               return;
             }
-            if (!password || password.length < 6) {
-              showAuthError("A senha deve ter no mínimo 6 caracteres.");
+            if (!password) {
+              renderStrengthBox(pwdCheck);
+              showAuthError(pwdCheck.reason);
               return;
             }
-            if (mode === "register") {
-              if (!/[A-Z]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) {
-                showAuthError("A senha deve ter no mínimo 6 caracteres, 1 letra maiúscula e 1 caractere especial.");
-                return;
-              }
+            const isLinkingToCurrentGoogleUser = Boolean(
+              state.user?.email && state.user.email.toLowerCase() === email
+            );
+            if ((mode === "register" || isLinkingToCurrentGoogleUser) && !pwdCheck.valid) {
+              renderStrengthBox(pwdCheck);
+              showAuthError(pwdCheck.reason);
+              return;
+            }
+            if (password.length < 6) {
+              renderStrengthBox(pwdCheck);
+              showAuthError(pwdCheck.reason);
+              return;
             }
 
             const cleanName = rawName || (state.user.name !== "Visitante" ? state.user.name : email.split("@")[0]);
@@ -6934,23 +7041,29 @@ export function initMiadoClient() {
             try {
               let firebaseProfile = null;
               let firebaseToken = "";
+              let fbResult = null;
               if (window.miadoFirestore) {
                 try {
                   if (mode === "register" && typeof window.miadoFirestore.registerWithEmail === "function") {
-                    const fbRes = await window.miadoFirestore.registerWithEmail(email, password, {
+                    fbResult = await window.miadoFirestore.registerWithEmail(email, password, {
                       name: cleanName,
                       handle: cleanUsername,
                       avatarUrl: state.user.avatarUrl || "/api/cat-avatar?id=cat_1"
                     });
-                    firebaseProfile = fbRes && fbRes.profile ? fbRes.profile : null;
-                    firebaseToken = fbRes && fbRes.token ? fbRes.token : "";
+                    firebaseProfile = fbResult && fbResult.profile ? fbResult.profile : null;
+                    firebaseToken = fbResult && fbResult.token ? fbResult.token : "";
                   } else if (mode === "login" && typeof window.miadoFirestore.loginWithEmail === "function") {
-                    const fbRes = await window.miadoFirestore.loginWithEmail(email, password);
-                    firebaseProfile = fbRes && fbRes.profile ? fbRes.profile : null;
-                    firebaseToken = fbRes && fbRes.token ? fbRes.token : "";
+                    fbResult = await window.miadoFirestore.loginWithEmail(email, password);
+                    firebaseProfile = fbResult && fbResult.profile ? fbResult.profile : null;
+                    firebaseToken = fbResult && fbResult.token ? fbResult.token : "";
                   }
                 } catch (fbErr) {
                   const errMsg = String(fbErr && fbErr.message ? fbErr.message : "");
+                  if (errMsg.includes("weak-password")) {
+                    renderStrengthBox(pwdCheck);
+                    showAuthError(pwdCheck.reason);
+                    return;
+                  }
                   if (errMsg.includes("já está em uso") || errMsg.includes("email-already-in-use")) {
                     showAuthError(errMsg.includes("já está em uso") ? errMsg : "Este e-mail já está cadastrado. Use a aba Entrar.");
                     return;
@@ -6977,7 +7090,7 @@ export function initMiadoClient() {
                 })
               });
               const data = await res.json().catch(() => ({}));
-              if ((!res.ok || !data.ok) && !firebaseProfile) {
+              if ((!res.ok || !data.ok) && !firebaseProfile && !(fbResult && fbResult.ok)) {
                 showAuthError(data.error || "Não foi possível autenticar sua conta.");
                 return;
               }
@@ -6989,7 +7102,12 @@ export function initMiadoClient() {
                 state.hydrateFromFirestore(firebaseProfile);
               }
 
-              if (mode === "register") {
+              const wasLinkedToGoogle = Boolean(
+                (fbResult && (fbResult.linkedToGoogleAccount || fbResult.isExistingAccount)) ||
+                (data && data.linkedToGoogleAccount)
+              );
+
+              if (mode === "register" && !wasLinkedToGoogle) {
                 state.user.name = (firebaseProfile && firebaseProfile.name) || cleanName;
                 state.user.username = (firebaseProfile && firebaseProfile.handle) || cleanUsername;
                 state.user.handle = state.user.username;
@@ -7001,11 +7119,18 @@ export function initMiadoClient() {
                 showToast(`Conta criada como ${state.user.username}! Escolha sua foto e artistas.`);
                 this.setOnboardingStep(2);
               } else {
+                state.user.onboardingCompleted = true;
+                localStorage.setItem("miado_user_onboarded_v1", "true");
+                state.saveUser();
                 const welcomeEl = document.getElementById("miado-welcome-screen");
                 if (welcomeEl) welcomeEl.classList.remove("active", "closing");
                 document.getElementById("modal-auth")?.classList.remove("active");
                 this.syncAccountStateAcrossApp();
-                showToast(`Bem-vindo de volta, ${state.user.name} (${state.user.username})!`);
+                if (wasLinkedToGoogle) {
+                  showToast("Senha associada à sua conta Google! Agora você pode entrar com Google ou E-mail e Senha.");
+                } else {
+                  showToast(`Bem-vindo de volta, ${state.user.name} (${state.user.username})!`);
+                }
               }
             } catch (err) {
               showAuthError("Erro de conexão ao acessar o servidor.");
@@ -7016,6 +7141,32 @@ export function initMiadoClient() {
           if (btnAuthSubmit) btnAuthSubmit.addEventListener("click", submitAuthAction);
           const passInputEl = document.getElementById("auth-input-password");
           if (passInputEl) {
+            passInputEl.addEventListener("input", () => {
+              const strengthMsgEl = document.getElementById("auth-password-strength-msg");
+              const feedbackEl = document.getElementById("auth-feedback-msg");
+              if (feedbackEl) feedbackEl.style.display = "none";
+              if (!strengthMsgEl) return;
+              const val = passInputEl.value;
+              const isReg = (this.authModalMode || "login") === "register";
+              if (!val && !isReg) {
+                strengthMsgEl.style.display = "none";
+                return;
+              }
+              const check = evaluatePasswordDetailed(val);
+              if (isReg || !check.valid) {
+                strengthMsgEl.style.display = "block";
+                strengthMsgEl.style.backgroundColor = check.valid
+                  ? "rgba(16, 185, 129, 0.14)"
+                  : "rgba(239, 68, 68, 0.14)";
+                strengthMsgEl.style.border = check.valid
+                  ? "1px solid rgba(16, 185, 129, 0.4)"
+                  : "1px solid rgba(239, 68, 68, 0.4)";
+                strengthMsgEl.style.color = check.valid ? "#6ee7b7" : "#fca5a5";
+                strengthMsgEl.textContent = check.reason;
+              } else {
+                strengthMsgEl.style.display = "none";
+              }
+            });
             passInputEl.addEventListener("keydown", (e) => {
               if (e.key === "Enter") submitAuthAction();
             });
@@ -7036,57 +7187,39 @@ export function initMiadoClient() {
               try {
                 if (window.miadoFirestore && typeof window.miadoFirestore.loginWithGoogle === "function") {
                   showToast("Conectando com o Google...");
-                  const { user, token, profile } = await window.miadoFirestore.loginWithGoogle();
+                  const gRes = await window.miadoFirestore.loginWithGoogle();
+                  const { user, token, profile } = gRes || {};
                   if (token) localStorage.setItem("miado_auth_token", token);
-                  if (user) {
-                    localStorage.setItem("miado_user_uid", user.uid);
+                  if (user || (gRes && gRes.uid)) {
+                    const resolvedUid = (user && user.uid) || gRes.uid;
+                    localStorage.setItem("miado_user_uid", resolvedUid);
                     localStorage.setItem("miado_active_session_v1", "true");
-                    const cleanEmail = ((profile && profile.email) || user.email || "").toLowerCase();
-                    const cleanName = (profile && profile.name) || user.displayName || cleanEmail.split("@")[0] || "Ouvinte Miado";
+                    localStorage.setItem("miado_user_onboarded_v1", "true");
+                    const cleanEmail = ((profile && profile.email) || (user && user.email) || gRes.email || "").toLowerCase();
+                    const cleanName = (profile && profile.name) || (user && user.displayName) || gRes.name || cleanEmail.split("@")[0] || "Ouvinte Miado";
                     const resolvedHandle =
                       (profile && (profile.handle || profile.username)) ||
-                      (state.user.username && state.user.username.startsWith("@user") ? state.user.username : `@user${Math.floor(10000 + Math.random() * 90000)}`);
+                      (state.user.username && !["@visitante", "@novo_usuario"].includes(state.user.username)
+                        ? state.user.username
+                        : sanitizeCleanHandle(cleanName, cleanName));
 
-                    state.user.uid = user.uid;
+                    state.user.uid = resolvedUid;
                     state.user.name = cleanName;
                     state.user.username = resolvedHandle.startsWith("@") ? resolvedHandle : `@${resolvedHandle}`;
                     state.user.handle = state.user.username;
                     state.user.email = cleanEmail;
-                    state.user.avatarUrl = (profile && profile.avatarUrl) || user.photoURL || "/api/cat-avatar?id=cat_1";
+                    state.user.avatarUrl = (profile && profile.avatarUrl) || (user && user.photoURL) || gRes.photoURL || "/api/cat-avatar?id=cat_1";
+                    state.user.onboardingCompleted = true;
                     if (profile) {
-                      state.hydrateFromFirestore(profile);
+                      state.hydrateFromFirestore({ ...profile, onboardingCompleted: true });
                     }
                     state.saveUser();
-
-                    try {
-                      await fetch("/api/user/firestore-sync", {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                          ...(token ? { "Authorization": `Bearer ${token}` } : {})
-                        },
-                        body: JSON.stringify({
-                          uid: user.uid,
-                          email: cleanEmail,
-                          name: state.user.name,
-                          username: state.user.username,
-                          handle: state.user.username,
-                          bio: state.user.bio || "",
-                          avatarUrl: state.user.avatarUrl,
-                          bannerUrl: state.user.bannerUrl || "",
-                          favoriteArtists: state.user.favoriteArtists || [],
-                          likedTracks: state.user.likedTracks || [],
-                          playlists: state.playlists || [],
-                          recentHistory: state.recentHistory || []
-                        })
-                      });
-                    } catch (_syncErr) {}
                   }
                   document.getElementById("modal-auth")?.classList.remove("active");
                   const welcomeEl = document.getElementById("miado-welcome-screen");
                   if (welcomeEl) welcomeEl.classList.remove("active", "closing");
                   this.syncAccountStateAcrossApp();
-                  showToast(`Conectado como ${state.user.name} (${state.user.username})! Você pode editar seu @ no Perfil.`);
+                  showToast(`Conectado com o Google como ${state.user.name} (${state.user.username})!`);
                 }
               } catch (err) {
                 showGoogleAuthError(err?.message || "Não foi possível autenticar com o Google.");
@@ -7372,7 +7505,7 @@ export function initMiadoClient() {
               showToast("Digite um nome para a playlist.");
               return;
             }
-            const isCollab = this.creatingCollaborativeMode !== false;
+            const isCollab = Boolean(this.creatingCollaborativeMode === true);
             const customCover = this.pendingNewPlaylistCoverDataUrl || "";
             const newPl = {
               id: `pl_${Date.now()}`,
@@ -7384,6 +7517,7 @@ export function initMiadoClient() {
               coverUrl: customCover || undefined,
               tracks: []
             };
+            newPl.shareCode = getOrGeneratePlaylistShareCode(newPl);
             state.playlists.push(newPl);
             state.savePlaylists();
             input.value = "";
@@ -7404,27 +7538,40 @@ export function initMiadoClient() {
             if (e.key === "Enter") createPlaylistAction();
           });
 
-          const importPlaylistAction = () => {
+          const importPlaylistAction = async () => {
             const input = document.getElementById("input-import-collab-code");
             const raw = input.value.trim();
             if (!raw) return;
             try {
-              const clean = raw.replace("miado-sync:", "");
-              const decoded = JSON.parse(decodeURIComponent(escape(atob(clean))));
+              let decoded = null;
+              if (raw.startsWith("miado-sync:") || raw.length > 24) {
+                const clean = raw.replace(/^miado-sync:/i, "");
+                decoded = JSON.parse(decodeURIComponent(escape(atob(clean))));
+              } else {
+                const res = await fetch(`/api/playlists/share/${encodeURIComponent(raw)}`);
+                const data = await res.json().catch(() => null);
+                if (res.ok && data && data.ok && data.playlist) {
+                  decoded = data.playlist;
+                } else {
+                  showToast((data && data.error) || "Código de playlist não encontrado.");
+                  return;
+                }
+              }
               decoded.id = `pl_imp_${Date.now()}`;
               if (!decoded.collaborators) decoded.collaborators = [];
               if (!decoded.collaborators.includes(state.user.username)) {
                 decoded.collaborators.push(state.user.username);
               }
+              decoded.shareCode = getOrGeneratePlaylistShareCode(decoded);
               state.playlists.push(decoded);
               state.savePlaylists();
               input.value = "";
               this.renderSidebarPlaylists();
               document.getElementById("modal-collab-playlist").classList.remove("active");
               this.navigateTo("playlist", true, { playlistId: decoded.id });
-              showToast("Playlist conjunta importada com sucesso!");
+              showToast(`Playlist "${decoded.name}" importada com sucesso!`);
             } catch (e) {
-              showToast("Código Base64 inválido.");
+              showToast("Código de playlist inválido.");
             }
           };
 
@@ -7516,13 +7663,14 @@ export function initMiadoClient() {
               ${state.playlists.map(pl => {
                 const plCover = pl.customCoverUrl || pl.coverUrl || (pl.tracks && pl.tracks[0] && ensureTrackCoverUrl(pl.tracks[0])) || INITIAL_ALBUMS[0].coverUrl;
                 const alreadyIn = (pl.tracks || []).some(t => String(t.id) === String(cleanTrack.id) || normalizeTrackKey(t) === trackKey);
+                const durText = formatPlaylistDuration(pl.tracks || []);
                 return `
                   <div class="track-row" style="min-height:54px; padding:8px 12px; background:rgba(255,255,255,0.04); border:1px solid ${alreadyIn ? 'rgba(168,85,247,0.45)' : 'rgba(255,255,255,0.08)'}; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:12px;" data-target-pl="${pl.id}">
                     <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
                       <img src="${plCover}" alt="${pl.name}" style="width:40px; height:40px; border-radius:8px; object-fit:cover; flex-shrink:0;" referrerpolicy="no-referrer" onerror="window.handleImgError(this, '${pl.name.replace(/'/g, "")}', 'Playlist')" />
                       <div style="min-width:0; flex:1;">
                         <div style="font-weight:700; font-size:0.88rem; color:#ffffff;" class="text-truncate">${pl.name}</div>
-                        <div style="font-size:0.74rem; color:var(--text-secondary);">${pl.isCollaborative ? "Conjunta · " : ""}${pl.tracks.length} músicas</div>
+                        <div style="font-size:0.74rem; color:var(--text-secondary);">${pl.isCollaborative ? "Conjunta · " : ""}${(pl.tracks || []).length} músicas · ${durText}</div>
                       </div>
                     </div>
                     <button type="button" class="album-action-btn ${alreadyIn ? '' : 'primary'}" style="flex:0 0 auto !important; width:auto !important; min-width:116px; height:34px; padding:0 14px; font-size:0.78rem; white-space:nowrap;">
@@ -7613,8 +7761,8 @@ export function initMiadoClient() {
             const newPl = {
               id: `pl_${Date.now()}`,
               name,
-              description: `Playlist criada com "${cleanTrack.title}" no Miado`,
-              isCollaborative: true,
+              description: `Playlist pessoal criada com "${cleanTrack.title}" no Miado`,
+              isCollaborative: false,
               collaborators: [state.user.username],
               tracks: [
                 {
@@ -7623,6 +7771,7 @@ export function initMiadoClient() {
                 }
               ]
             };
+            newPl.shareCode = getOrGeneratePlaylistShareCode(newPl);
             state.playlists.unshift(newPl);
             state.savePlaylists();
             this.renderSidebarPlaylists();
@@ -8588,6 +8737,7 @@ export function initMiadoClient() {
                   <div class="cards-row-scroll">
                     ${userPlaylists.map(pl => {
                       const plCover = pl.customCoverUrl || pl.coverUrl || (pl.tracks && pl.tracks[0] && ensureTrackCoverUrl(pl.tracks[0])) || INITIAL_ALBUMS[0].coverUrl;
+                      const durText = formatPlaylistDuration(pl.tracks || []);
                       return `
                         <div class="album-card" data-prof-card-pl="${pl.id}" style="position:relative;">
                           <div class="album-cover-wrap">
@@ -8602,7 +8752,7 @@ export function initMiadoClient() {
                             </button>
                           </div>
                           <div class="album-card-title">${pl.name}</div>
-                          <div class="album-card-sub">${pl.isCollaborative ? "Conjunta · " : ""}${(pl.tracks || []).length} músicas</div>
+                          <div class="album-card-sub">${pl.isCollaborative ? "Conjunta · " : ""}${(pl.tracks || []).length} músicas · ${durText}</div>
                         </div>
                       `;
                     }).join("")}
@@ -9019,6 +9169,13 @@ export function initMiadoClient() {
           });
 
           // Playlists no Perfil
+          const btnCreateProfPl = document.getElementById("prof-btn-create-pl-sec");
+          if (btnCreateProfPl) {
+            btnCreateProfPl.addEventListener("click", () => {
+              this.openPlaylistCreatorModal(false);
+            });
+          }
+
           this.scrollContainer.querySelectorAll("[data-prof-card-pl]").forEach(card => {
             card.addEventListener("click", (e) => {
               if (e.target.closest("[data-prof-play-pl]") || e.target.closest("[data-prof-del-pl]")) return;
@@ -10435,8 +10592,16 @@ export function initMiadoClient() {
 
           this.scrollContainer.innerHTML = `
             <div style="max-width:960px; margin:0 auto;">
-              <h1 class="greeting-title" style="margin-bottom:6px;">Sua Biblioteca</h1>
-              <p class="greeting-sub" style="margin-bottom:24px;">Suas playlists salvas, músicas curtidas e histórico recente das últimas 50 músicas.</p>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
+                <div>
+                  <h1 class="greeting-title" style="margin-bottom:6px;">Sua Biblioteca</h1>
+                  <p class="greeting-sub" style="margin-bottom:0;">Suas playlists salvas, músicas curtidas e histórico recente das últimas 50 músicas.</p>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button type="button" class="album-action-btn primary" id="btn-lib-create-normal-pl" style="height:38px; padding:0 16px; font-size:0.82rem;">+ Criar Playlist</button>
+                  <button type="button" class="album-action-btn" id="btn-lib-create-collab-pl" style="height:38px; padding:0 14px; font-size:0.82rem;">+ Playlist Colaborativa</button>
+                </div>
+              </div>
 
               <div class="cards-row-scroll" style="grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); margin-bottom:38px;">
                 <div class="album-card" id="btn-lib-liked-card">
@@ -10444,11 +10609,12 @@ export function initMiadoClient() {
                     <svg width="52" height="52" viewBox="0 0 24 24" fill="#ffffff"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                   </div>
                   <div class="album-card-title">Músicas Curtidas</div>
-                  <div class="album-card-sub">${state.user.likedTracks.length} músicas salvas</div>
+                  <div class="album-card-sub">${state.user.likedTracks.length} músicas salvas · ${formatPlaylistDuration(state.user.likedTracks)}</div>
                 </div>
 
                 ${state.playlists.map(pl => {
                   const cover = pl.customCoverUrl || pl.coverUrl || (pl.tracks[0] && pl.tracks[0].coverUrl) || INITIAL_ALBUMS[0].coverUrl;
+                  const durText = formatPlaylistDuration(pl.tracks || []);
                   return `
                     <div class="album-card" data-lib-pl-id="${pl.id}" style="position:relative;">
                       <div class="album-cover-wrap">
@@ -10461,7 +10627,7 @@ export function initMiadoClient() {
                         </button>
                       </div>
                       <div class="album-card-title">${pl.name}</div>
-                      <div class="album-card-sub">${pl.isCollaborative ? "Conjunta · " : ""}${pl.tracks.length} músicas</div>
+                      <div class="album-card-sub">${pl.isCollaborative ? "Conjunta · " : ""}${pl.tracks.length} músicas · ${durText}</div>
                     </div>
                   `;
                 }).join("")}
@@ -10528,6 +10694,14 @@ export function initMiadoClient() {
           `;
 
           document.getElementById("btn-lib-liked-card").addEventListener("click", () => this.navigateTo("liked"));
+          const btnLibCreateNormal = document.getElementById("btn-lib-create-normal-pl");
+          if (btnLibCreateNormal) {
+            btnLibCreateNormal.addEventListener("click", () => this.openPlaylistCreatorModal(false));
+          }
+          const btnLibCreateCollab = document.getElementById("btn-lib-create-collab-pl");
+          if (btnLibCreateCollab) {
+            btnLibCreateCollab.addEventListener("click", () => this.openPlaylistCreatorModal(true));
+          }
           this.scrollContainer.querySelectorAll("[data-lib-pl-id]").forEach(card => {
             card.addEventListener("click", (e) => {
               if (e.target.closest("[data-lib-play-pl]") || e.target.closest("[data-lib-del-pl]")) return;
@@ -10990,7 +11164,7 @@ export function initMiadoClient() {
             });
           }
           document.getElementById("btn-social-open-collab").addEventListener("click", () => {
-            document.getElementById("modal-collab-playlist").classList.add("active");
+            this.openPlaylistCreatorModal(true);
           });
 
           const searchInp = document.getElementById("social-profile-search-input");
@@ -11194,7 +11368,8 @@ export function initMiadoClient() {
             this.renderLibraryView();
             return;
           }
-          const shareCode = `miado-sync:${btoa(unescape(encodeURIComponent(JSON.stringify(pl))))}`;
+          const shortCode = getOrGeneratePlaylistShareCode(pl);
+          const totalDurationStr = formatPlaylistDuration(pl.tracks || []);
           const coverHero = pl.customCoverUrl || pl.coverUrl || (pl.tracks[0] && ensureTrackCoverUrl(pl.tracks[0])) || INITIAL_ALBUMS[0].coverUrl;
 
           this.scrollContainer.innerHTML = `
@@ -11211,9 +11386,9 @@ export function initMiadoClient() {
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                     Capa da Galeria
                   </button>
-                  <button class="back-btn-pill" id="btn-copy-sync-code">
+                  <button class="back-btn-pill" id="btn-copy-sync-code" title="Copiar código curto de compartilhamento">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    Código Base64
+                    Código: ${shortCode}
                   </button>
                   <button class="back-btn-pill" id="btn-pl-delete" style="color:#f87171; border-color:rgba(248,113,113,0.45);">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
@@ -11232,7 +11407,7 @@ export function initMiadoClient() {
                 </div>
                 <h1 class="album-hero-title">${pl.name}</h1>
                 <div class="album-hero-artist">${pl.isCollaborative ? "Playlist Colaborativa Miau" : "Playlist Pessoal"}</div>
-                <div class="album-meta-line">${pl.tracks.length} FAIXAS · ${pl.collaborators ? pl.collaborators.join(", ") : state.user.username}</div>
+                <div class="album-meta-line">${pl.tracks.length} FAIXAS · ${totalDurationStr.toUpperCase()} · ${pl.collaborators ? pl.collaborators.join(", ") : state.user.username}</div>
 
                 <div class="album-action-buttons" style="flex-wrap:wrap; margin-top:14px;">
                   <button class="album-action-btn primary" id="btn-pl-play-all">
@@ -11324,11 +11499,25 @@ export function initMiadoClient() {
           `;
 
           document.getElementById("btn-pl-back").addEventListener("click", () => this.historyBack());
-          document.getElementById("btn-copy-sync-code").addEventListener("click", () => {
+          document.getElementById("btn-copy-sync-code").addEventListener("click", async () => {
+            let finalCode = shortCode;
+            try {
+              const res = await fetch("/api/playlists/share", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ playlist: pl })
+              });
+              const data = await res.json().catch(() => null);
+              if (res.ok && data && data.ok && data.code) {
+                finalCode = data.code;
+                pl.shareCode = finalCode;
+                state.savePlaylists();
+              }
+            } catch (_e) {}
             if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(shareCode).then(() => showToast("Código Base64 copiado para a área de transferência!"));
+              navigator.clipboard.writeText(finalCode).then(() => showToast(`Código curto ${finalCode} copiado para a área de transferência!`));
             } else {
-              showToast("Código gerado: " + shareCode.slice(0, 24) + "...");
+              showToast(`Código de compartilhamento: ${finalCode}`);
             }
           });
 
@@ -11950,9 +12139,14 @@ export function initMiadoClient() {
         renderSidebarPlaylists() {
           const container = document.getElementById("sidebar-playlists-container");
           if (!container) return;
-          container.innerHTML = state.playlists.map(pl => `
-            <div class="playlist-list-item ${state.currentView === 'playlist' && state.activePlaylistId === pl.id ? 'active' : ''}" data-sidebar-pl-id="${pl.id}">
-              <span class="text-truncate" style="flex:1;">${pl.name}</span>
+          container.innerHTML = state.playlists.map(pl => {
+            const durText = formatPlaylistDuration(pl.tracks || []);
+            return `
+            <div class="playlist-list-item ${state.currentView === 'playlist' && state.activePlaylistId === pl.id ? 'active' : ''}" data-sidebar-pl-id="${pl.id}" title="${pl.name} · ${(pl.tracks || []).length} músicas (${durText})">
+              <div style="flex:1; min-width:0; display:flex; flex-direction:column;">
+                <span class="text-truncate" style="font-weight:600;">${pl.name}</span>
+                <span style="font-size:0.68rem; color:var(--text-tertiary);">${(pl.tracks || []).length} músicas · ${durText}</span>
+              </div>
               <div style="display:flex; align-items:center; gap:6px; flex:0 0 auto;">
                 ${pl.isCollaborative ? `<span class="collab-tag">Conjunta</span>` : ""}
                 <button type="button" data-sidebar-del-pl="${pl.id}" title="Apagar playlist ${pl.name}" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:2px 4px; display:flex; align-items:center; justify-content:center; border-radius:6px;">
@@ -11960,7 +12154,8 @@ export function initMiadoClient() {
                 </button>
               </div>
             </div>
-          `).join("");
+          `;
+          }).join("");
 
           container.querySelectorAll("[data-sidebar-pl-id]").forEach(item => {
             item.addEventListener("click", (e) => {

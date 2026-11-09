@@ -336,32 +336,79 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
     const savedDraft = loadOnboardingDraft();
     const uid = opts.user.uid;
     const email = String(opts.user.email || w.miadoState?.user?.email || "").toLowerCase();
-    const cleanName = savedDraft.name || w.miadoState?.user?.name || opts.user.displayName || "Ouvinte";
-    const bareH = (savedDraft.handle || w.miadoState?.user?.username || "ouvinte").replace(/^@+/, "");
+    const cleanName = (savedDraft.name || w.miadoState?.user?.name || opts.user.displayName || "Ouvinte").slice(0, 80);
+    const bareH = (
+      savedDraft.handle ||
+      w.miadoState?.user?.username ||
+      w.miadoState?.user?.handle ||
+      "ouvinte"
+    )
+      .replace(/^@+/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9_.]/g, "")
+      .slice(0, 28) || "ouvinte";
     const displayH = `@${bareH}`;
-    const avatarUrl = savedDraft.avatarUrl || w.miadoState?.user?.avatarUrl || "/api/cat-avatar?id=cat_1";
-    const bio = (savedDraft.bio || w.miadoState?.user?.bio || "").slice(0, 100);
-    const privacy = savedDraft.privacy || "followers";
+    const catId =
+      typeof savedDraft.catId === "string" && /^cat_[1-8]$/.test(savedDraft.catId)
+        ? savedDraft.catId
+        : "cat_1";
+    const avatarUrl = savedDraft.avatarUrl || w.miadoState?.user?.avatarUrl || `/api/cat-avatar?id=${catId}`;
+    const bio = (savedDraft.bio || w.miadoState?.user?.bio || "").slice(0, 300);
+    const privacy =
+      savedDraft.privacy === "public" ||
+      savedDraft.privacy === "followers_only" ||
+      savedDraft.privacy === "private"
+        ? savedDraft.privacy
+        : "followers_only";
 
     try {
-      const userPayload = {
-        uid,
-        email,
-        name: cleanName,
-        handle: displayH,
-        username: displayH,
-        bio,
-        avatarUrl,
-        favoriteArtists: chosenNames,
-        followedArtists: chosenNames,
-        privacy: { presence: privacy, activity: privacy },
-        onboardingCompleted: true,
-        updatedAt: serverTimestamp(),
-      };
       await Promise.all([
-        setDoc(doc(db, "users", uid), userPayload, { merge: true }).catch(() => {}),
-        setDoc(doc(db, "profiles", uid), userPayload, { merge: true }).catch(() => {}),
-        setDoc(doc(db, "handles", bareH), { uid, handle: displayH, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {}),
+        updateDoc(doc(db, "users", uid), {
+          name: cleanName,
+          handle: bareH,
+          bio,
+          avatarUrl,
+          catId,
+          favoriteArtists: chosenNames,
+          followedArtists: chosenNames,
+          privacy: { presence: privacy, activity: privacy },
+          onboardingCompleted: true,
+          updatedAt: serverTimestamp(),
+        }).catch(() =>
+          setDoc(
+            doc(db, "users", uid),
+            {
+              uid,
+              email,
+              name: cleanName,
+              handle: bareH,
+              bio,
+              avatarUrl,
+              catId,
+              favoriteArtists: chosenNames,
+              followedArtists: chosenNames,
+              privacy: { presence: privacy, activity: privacy },
+              onboardingCompleted: true,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          ).catch(() => {})
+        ),
+        setDoc(
+          doc(db, "profiles", uid),
+          {
+            uid,
+            name: cleanName,
+            handle: bareH,
+            bio,
+            avatarUrl,
+            favoriteArtists: chosenNames,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {}),
+        setDoc(doc(db, "handles", bareH), { uid, createdAt: serverTimestamp() }).catch(() => {}),
       ]);
     } catch {}
 
@@ -415,6 +462,9 @@ export function createArtistsStep(opts: ArtistsStepOptions): ArtistsStepControll
             avatarUrl,
             favoriteArtists: chosenNames,
           });
+        }
+        if (w.miadoFirestore && typeof w.miadoFirestore.saveUserState === "function") {
+          void w.miadoFirestore.saveUserState(w.miadoState);
         }
       }
     } catch {}

@@ -30,6 +30,10 @@ import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
   GoogleAuthProvider,
+  EmailAuthProvider,
+  linkWithCredential,
+  linkWithPopup,
+  updatePassword,
   signInWithPopup,
   signOut,
   type User
@@ -347,6 +351,7 @@ export function initFirebaseClient(): void {
     user: User,
     opts?: {
       isGoogle?: boolean;
+      isExistingLogin?: boolean;
       preferredName?: string;
       preferredHandle?: string;
       forceCreateIfMissing?: boolean;
@@ -383,11 +388,18 @@ export function initFirebaseClient(): void {
     const profDocRef = doc(db, "profiles", user.uid);
     const likesQ = query(collection(db, "users", user.uid, "likes"), limit(200));
     const followsQ = query(collection(db, "follows"), where("followerId", "==", user.uid), limit(200));
-    const [snap, profSnap, likesSnap, followsSnap] = await Promise.all([
-      getDoc(userDocRef),
-      getDoc(profDocRef),
+    const playlistsQ = query(collection(db, "playlists"), where("ownerId", "==", user.uid), limit(50));
+    const [snap, profSnap, likesSnap, followsSnap, playlistsSnap, serverSyncRes] = await Promise.all([
+      getDoc(userDocRef).catch(() => null),
+      getDoc(profDocRef).catch(() => null),
       getDocs(likesQ).catch(() => null),
       getDocs(followsQ).catch(() => null),
+      getDocs(playlistsQ).catch(() => null),
+      fetch(`/api/user/firestore-sync?uid=${encodeURIComponent(user.uid)}`, {
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
     ]);
 
     const followingProfiles: any[] = [];
@@ -449,22 +461,57 @@ export function initFirebaseClient(): void {
       }
     }
 
-    if (snap.exists()) {
-      const data = snap.data();
-      const profData = profSnap.exists() ? profSnap.data() : null;
+    const serverUser = serverSyncRes?.user || null;
+    const serverFavs = Array.isArray(serverSyncRes?.favoriteArtists) ? serverSyncRes.favoriteArtists : [];
+    const serverFols = Array.isArray(serverSyncRes?.followedArtists) ? serverSyncRes.followedArtists : [];
+    const serverPlaylists = Array.isArray(serverSyncRes?.playlists) ? serverSyncRes.playlists : [];
+    const serverLikes = Array.isArray(serverSyncRes?.likedTracks) ? serverSyncRes.likedTracks : [];
+    const serverHistory = Array.isArray(serverSyncRes?.recentHistory) ? serverSyncRes.recentHistory : [];
+
+    const firestorePlaylists: any[] = [];
+    if (playlistsSnap && !playlistsSnap.empty) {
+      for (const pDoc of playlistsSnap.docs) {
+        const pd = pDoc.data() || {};
+        if (!pd.name) continue;
+        firestorePlaylists.push({
+          id: pDoc.id,
+          name: String(pd.name),
+          description: String(pd.description || ""),
+          isCollaborative: Array.isArray(pd.collaboratorIds) && pd.collaboratorIds.length > 0,
+          collaborators: Array.isArray(pd.collaboratorIds) ? pd.collaboratorIds : [],
+          coverUrl: pd.coverUrl || undefined,
+          tracks: [],
+        });
+      }
+    }
+    const mergedPlaylists =
+      serverPlaylists.length > 0
+        ? serverPlaylists
+        : firestorePlaylists.length > 0
+        ? firestorePlaylists
+        : undefined;
+
+    if ((snap && snap.exists()) || (profSnap && profSnap.exists()) || serverUser) {
+      const data = (snap && snap.exists() ? snap.data() : null) || {};
+      const profData = profSnap && profSnap.exists() ? profSnap.data() : null;
       const rawHandle =
         profData?.handle ||
         data.handle ||
         data.username ||
+        serverUser?.handle ||
+        serverUser?.username ||
         `user${Math.floor(10000 + Math.random() * 90000)}`;
       const bareH = normalizeBareHandle(String(rawHandle), "user");
       const displayHandle = `@${bareH}`;
-      const rawFavs = Array.isArray(data.favoriteArtists)
-        ? data.favoriteArtists
-        : Array.isArray(profData?.favoriteArtists)
-        ? profData.favoriteArtists
-        : [];
-      const rawFols = Array.isArray(data.followedArtists) ? data.followedArtists : [];
+      const rawFavs = [
+        ...(Array.isArray(data.favoriteArtists) ? data.favoriteArtists : []),
+        ...(Array.isArray(profData?.favoriteArtists) ? profData.favoriteArtists : []),
+        ...serverFavs,
+      ];
+      const rawFols = [
+        ...(Array.isArray(data.followedArtists) ? data.followedArtists : []),
+        ...serverFols,
+      ];
       const combinedArtistNames = Array.from(
         new Set(
           [...rawFols, ...rawFavs]
@@ -473,32 +520,74 @@ export function initFirebaseClient(): void {
         )
       );
 
-      if (!profSnap.exists()) {
+      // Se o usuário já tem conta existente (documento no Firestore ou no servidor) ou já tem artistas/onboardingCompleted,
+      // nunca obrigamos a refazer o onboarding ao logar com o Google ou e-mail!
+      const isOnboardingDone = Boolean(
+        data.onboardingCompleted === true ||
+          serverUser?.onboardingCompleted === true ||
+          combinedArtistNames.length > 0 ||
+          Boolean(snap && snap.exists()) ||
+          Boolean(profSnap && profSnap.exists())
+      );
+
+      if (isOnboardingDone) {
+        localStorage.setItem("miado_user_onboarded_v1", "true");
+      }
+
+      if (!profSnap || !profSnap.exists() || (snap && snap.exists() && data.onboardingCompleted !== true && isOnboardingDone)) {
         try {
           const safeAvatar = sanitizeImageForRules(
-            data.avatarUrl || user.photoURL,
+            profData?.avatarUrl || data.avatarUrl || serverUser?.avatarUrl || user.photoURL,
             100000,
             "/api/cat-avatar?id=cat_1"
           );
           const handleRef = doc(db, "handles", bareH);
-          const handleSnap = await getDoc(handleRef);
+          const handleSnap = await getDoc(handleRef).catch(() => null);
           const batch = writeBatch(db);
-          if (!handleSnap.exists()) {
+          if (!handleSnap || !handleSnap.exists()) {
             batch.set(handleRef, {
               uid: user.uid,
               createdAt: serverTimestamp(),
             });
           }
-          batch.set(profDocRef, {
-            uid: user.uid,
-            name: String(data.name || user.displayName || "Ouvinte Miado").slice(0, 80),
-            handle: bareH,
-            bio: String(data.bio || "").slice(0, 300),
-            avatarUrl: safeAvatar,
-            bannerUrl: "",
-            favoriteArtists: combinedArtistNames.slice(0, 60),
-            updatedAt: serverTimestamp(),
-          });
+          if (!profSnap || !profSnap.exists()) {
+            batch.set(profDocRef, {
+              uid: user.uid,
+              name: String(profData?.name || data.name || serverUser?.name || user.displayName || "Ouvinte Miado").slice(0, 80),
+              handle: bareH,
+              bio: String(profData?.bio ?? data.bio ?? serverUser?.bio ?? "").slice(0, 300),
+              avatarUrl: safeAvatar,
+              bannerUrl: "",
+              favoriteArtists: combinedArtistNames.slice(0, 60),
+              updatedAt: serverTimestamp(),
+            });
+          }
+          if (snap && snap.exists() && data.onboardingCompleted !== true && isOnboardingDone) {
+            const cleanEmail = String(data.email || user.email || "").toLowerCase();
+            const privacyObj =
+              data.privacy &&
+              typeof data.privacy.presence === "string" &&
+              typeof data.privacy.activity === "string"
+                ? data.privacy
+                : { presence: "public", activity: "public" };
+            batch.set(userDocRef, {
+              uid: user.uid,
+              email: cleanEmail,
+              name: String(data.name || profData?.name || user.displayName || "Ouvinte Miado").slice(0, 80),
+              handle: bareH,
+              bio: String(data.bio || profData?.bio || "").slice(0, 300),
+              catId: String(data.catId || "cat_1").slice(0, 40),
+              avatarUrl: safeAvatar,
+              bannerUrl: sanitizeImageForRules(data.bannerUrl, 150000, ""),
+              favoriteArtists: combinedArtistNames.slice(0, 60),
+              favoriteGenres: Array.isArray(data.favoriteGenres) ? data.favoriteGenres.slice(0, 30) : [],
+              followedArtists: combinedArtistNames.slice(0, 200),
+              privacy: privacyObj,
+              onboardingCompleted: true,
+              createdAt: data.createdAt || serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+          }
           await batch.commit();
         } catch {}
       }
@@ -510,21 +599,25 @@ export function initFirebaseClient(): void {
           ? data.privacy
           : { presence: "public", activity: "public" };
 
+      const combinedLikes = firestoreLikes.length > 0 ? firestoreLikes : serverLikes;
+
       const hydrated: Record<string, any> = {
         ...data,
         uid: user.uid,
-        email: (data.email || user.email || "").toLowerCase(),
-        name: profData?.name || data.name || user.displayName || "Ouvinte Miado",
-        bio: profData?.bio ?? data.bio ?? "",
-        avatarUrl: profData?.avatarUrl || data.avatarUrl || "/api/cat-avatar?id=cat_1",
+        email: (data.email || user.email || serverUser?.email || "").toLowerCase(),
+        name: profData?.name || data.name || serverUser?.name || user.displayName || "Ouvinte Miado",
+        bio: profData?.bio ?? data.bio ?? serverUser?.bio ?? "",
+        avatarUrl: profData?.avatarUrl || data.avatarUrl || serverUser?.avatarUrl || "/api/cat-avatar?id=cat_1",
         handle: displayHandle,
         username: displayHandle,
         favoriteArtists: combinedArtistNames.slice(0, 60),
         followedArtists: combinedArtistNames,
-        ...(firestoreLikes.length > 0 ? { likedTracks: firestoreLikes } : {}),
+        ...(combinedLikes.length > 0 ? { likedTracks: combinedLikes } : {}),
+        ...(mergedPlaylists ? { playlists: mergedPlaylists } : {}),
+        ...(serverHistory.length > 0 ? { recentHistory: serverHistory } : {}),
         ...(followingProfiles.length > 0 ? { followingProfiles } : {}),
         privacy: resolvedPrivacy,
-        onboardingCompleted: Boolean(data.onboardingCompleted),
+        onboardingCompleted: isOnboardingDone,
       };
       if (w.miadoState) {
         w.miadoState.hydrateFromFirestore(hydrated);
@@ -694,36 +787,212 @@ export function initFirebaseClient(): void {
       },
 
       async loginWithEmail(email: string, password: string) {
-        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        const token = await cred.user.getIdToken();
-        localStorage.setItem("miado_auth_token", token);
-        const profile = await ensureAndHydrateUser(cred.user, {
-          isGoogle: false,
-          forceCreateIfMissing: true,
-        });
-        this.subscribeLiveCommunity();
-        return { user: cred.user, token, profile };
+        const cleanEmail = email.trim().toLowerCase();
+        // Caso 1: Usuário já está autenticado no Google com este mesmo e-mail e quer entrar/vincular senha
+        if (
+          auth.currentUser &&
+          auth.currentUser.email &&
+          auth.currentUser.email.toLowerCase() === cleanEmail
+        ) {
+          const hasPasswordProvider = auth.currentUser.providerData?.some(
+            (p) => p.providerId === "password"
+          );
+          if (!hasPasswordProvider) {
+            try {
+              const credential = EmailAuthProvider.credential(cleanEmail, password);
+              await linkWithCredential(auth.currentUser, credential);
+            } catch (linkErr: any) {
+              const lCode = String(linkErr?.code || "").toLowerCase();
+              if (lCode.includes("provider-already-linked")) {
+                await updatePassword(auth.currentUser, password).catch(() => {});
+              }
+            }
+            const token = await auth.currentUser.getIdToken();
+            localStorage.setItem("miado_auth_token", token);
+            await fetch("/api/auth/link-password", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ email: cleanEmail, password }),
+            }).catch(() => {});
+            const profile = await ensureAndHydrateUser(auth.currentUser, {
+              isGoogle: true,
+              isExistingLogin: true,
+              forceCreateIfMissing: true,
+            });
+            this.subscribeLiveCommunity();
+            return { user: auth.currentUser, token, profile, linkedToGoogleAccount: true };
+          }
+        }
+
+        try {
+          const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+          const token = await cred.user.getIdToken();
+          localStorage.setItem("miado_auth_token", token);
+          const profile = await ensureAndHydrateUser(cred.user, {
+            isGoogle: false,
+            isExistingLogin: true,
+            forceCreateIfMissing: true,
+          });
+          this.subscribeLiveCommunity();
+          return { user: cred.user, token, profile, linkedToGoogleAccount: false };
+        } catch (err: any) {
+          const code = String(err?.code || "").toLowerCase();
+          // Caso 2: A conta foi criada com Google (ainda sem senha no Firebase Auth) e o usuário digitou o Gmail + senha
+          if (
+            code.includes("invalid-credential") ||
+            code.includes("wrong-password") ||
+            code.includes("user-not-found") ||
+            code.includes("invalid-login-credentials")
+          ) {
+            // Verifica no servidor se é uma conta Google existente ou vincula via popup Google se for Gmail
+            try {
+              const srvRes = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: cleanEmail, password }),
+              });
+              const srvData = await srvRes.json().catch(() => null);
+              if (srvData && srvData.ok && srvData.linkedToGoogleAccount) {
+                const provider = new GoogleAuthProvider();
+                provider.setCustomParameters({ login_hint: cleanEmail });
+                const googleCred = await signInWithPopup(auth, provider);
+                if (googleCred.user.email?.toLowerCase() === cleanEmail) {
+                  try {
+                    await linkWithCredential(
+                      googleCred.user,
+                      EmailAuthProvider.credential(cleanEmail, password)
+                    );
+                  } catch {}
+                }
+                const token = await googleCred.user.getIdToken();
+                localStorage.setItem("miado_auth_token", token);
+                const profile = await ensureAndHydrateUser(googleCred.user, {
+                  isGoogle: true,
+                  isExistingLogin: true,
+                  forceCreateIfMissing: true,
+                });
+                this.subscribeLiveCommunity();
+                return { user: googleCred.user, token, profile, linkedToGoogleAccount: true };
+              }
+            } catch {}
+          }
+          throw err;
+        }
       },
 
       async registerWithEmail(
         email: string,
         password: string,
-        meta?: { name?: string; handle?: string }
+        meta?: { name?: string; handle?: string; avatarUrl?: string }
       ) {
-        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const cleanEmail = email.trim().toLowerCase();
+        // Se já estiver logado com Google no mesmo e-mail, apenas associa a senha à conta Google existente!
+        if (
+          auth.currentUser &&
+          auth.currentUser.email &&
+          auth.currentUser.email.toLowerCase() === cleanEmail
+        ) {
+          try {
+            await linkWithCredential(
+              auth.currentUser,
+              EmailAuthProvider.credential(cleanEmail, password)
+            );
+          } catch (linkErr: any) {
+            const lCode = String(linkErr?.code || "").toLowerCase();
+            if (lCode.includes("provider-already-linked")) {
+              await updatePassword(auth.currentUser, password).catch(() => {});
+            } else {
+              throw linkErr;
+            }
+          }
+          const token = await auth.currentUser.getIdToken();
+          localStorage.setItem("miado_auth_token", token);
+          await fetch("/api/auth/link-password", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ email: cleanEmail, password }),
+          }).catch(() => {});
+          const profile = await ensureAndHydrateUser(auth.currentUser, {
+            isGoogle: true,
+            isExistingLogin: true,
+            preferredName: meta?.name,
+            preferredHandle: meta?.handle,
+            forceCreateIfMissing: true,
+          });
+          this.subscribeLiveCommunity();
+          return { user: auth.currentUser, token, profile, linkedToGoogleAccount: true };
+        }
+
         try {
-          await sendEmailVerification(cred.user);
-        } catch {}
-        const token = await cred.user.getIdToken();
-        localStorage.setItem("miado_auth_token", token);
-        const profile = await ensureAndHydrateUser(cred.user, {
-          isGoogle: false,
-          preferredName: meta?.name,
-          preferredHandle: meta?.handle,
-          forceCreateIfMissing: true,
-        });
-        this.subscribeLiveCommunity();
-        return { user: cred.user, token, profile };
+          const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          try {
+            await sendEmailVerification(cred.user);
+          } catch {}
+          const token = await cred.user.getIdToken();
+          localStorage.setItem("miado_auth_token", token);
+          const profile = await ensureAndHydrateUser(cred.user, {
+            isGoogle: false,
+            preferredName: meta?.name,
+            preferredHandle: meta?.handle,
+            forceCreateIfMissing: true,
+          });
+          this.subscribeLiveCommunity();
+          return { user: cred.user, token, profile, linkedToGoogleAccount: false };
+        } catch (regErr: any) {
+          const regCode = String(regErr?.code || "").toLowerCase();
+          if (regCode.includes("email-already-in-use")) {
+            // Tenta entrar direto com e-mail e senha caso já tenha senha
+            try {
+              const loginCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+              const token = await loginCred.user.getIdToken();
+              localStorage.setItem("miado_auth_token", token);
+              const profile = await ensureAndHydrateUser(loginCred.user, {
+                isGoogle: false,
+                isExistingLogin: true,
+                forceCreateIfMissing: true,
+              });
+              this.subscribeLiveCommunity();
+              return { user: loginCred.user, token, profile, linkedToGoogleAccount: false, isExistingAccount: true };
+            } catch {
+              // Conta existe pelo Google sem senha: autentica com Google e associa a senha automaticamente!
+              const provider = new GoogleAuthProvider();
+              provider.setCustomParameters({ login_hint: cleanEmail });
+              const googleCred = await signInWithPopup(auth, provider);
+              if (googleCred.user.email?.toLowerCase() === cleanEmail) {
+                try {
+                  await linkWithCredential(
+                    googleCred.user,
+                    EmailAuthProvider.credential(cleanEmail, password)
+                  );
+                } catch {}
+              }
+              const token = await googleCred.user.getIdToken();
+              localStorage.setItem("miado_auth_token", token);
+              await fetch("/api/auth/link-password", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ email: cleanEmail, password }),
+              }).catch(() => {});
+              const profile = await ensureAndHydrateUser(googleCred.user, {
+                isGoogle: true,
+                isExistingLogin: true,
+                forceCreateIfMissing: true,
+              });
+              this.subscribeLiveCommunity();
+              return { user: googleCred.user, token, profile, linkedToGoogleAccount: true, isExistingAccount: true };
+            }
+          }
+          throw regErr;
+        }
       },
 
       async resendVerificationEmail() {
@@ -734,15 +1003,58 @@ export function initFirebaseClient(): void {
 
       async loginWithGoogle() {
         const provider = new GoogleAuthProvider();
-        const cred = await signInWithPopup(auth, provider);
+        let cred;
+        if (
+          auth.currentUser &&
+          !auth.currentUser.isAnonymous &&
+          !auth.currentUser.providerData?.some((p) => p.providerId === "google.com")
+        ) {
+          try {
+            cred = await linkWithPopup(auth.currentUser, provider);
+          } catch {
+            cred = await signInWithPopup(auth, provider);
+          }
+        } else {
+          cred = await signInWithPopup(auth, provider);
+        }
         const token = await cred.user.getIdToken();
         localStorage.setItem("miado_auth_token", token);
+        localStorage.setItem("miado_user_uid", cred.user.uid);
+        localStorage.setItem("miado_active_session_v1", "true");
+
+        let backendGoogle: any = null;
+        try {
+          const gRes = await fetch("/api/auth/google", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              uid: cred.user.uid,
+              email: cred.user.email || "",
+              name: cred.user.displayName || "",
+              avatarUrl: cred.user.photoURL || "",
+            }),
+          });
+          backendGoogle = await gRes.json().catch(() => null);
+          if (backendGoogle && backendGoogle.ok && w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
+            w.miadoState.applyAccountPayload(backendGoogle);
+          }
+        } catch {}
+
         const profile = await ensureAndHydrateUser(cred.user, {
           isGoogle: true,
+          isExistingLogin: Boolean(backendGoogle?.isExistingAccount),
           forceCreateIfMissing: true,
         });
         this.subscribeLiveCommunity();
-        return { user: cred.user, token, profile };
+        return {
+          user: cred.user,
+          token,
+          profile,
+          isExistingAccount: Boolean(backendGoogle?.isExistingAccount || profile?.onboardingCompleted),
+        };
       },
 
       async logout() {
@@ -1025,6 +1337,36 @@ export function initFirebaseClient(): void {
             const tKey = buildTrackKey(String(tr.title), String(tr.artist)).slice(0, 150);
             if (!tKey || syncedLikesInSession.has(`${uid}:${tKey}`)) continue;
             void this.syncTrackLike(tr, true);
+          }
+
+          // 4. Persist user playlists to /playlists/{playlistId} in Firestore
+          const playlistsList = Array.isArray(stateObj.playlists)
+            ? stateObj.playlists.slice(0, 40)
+            : [];
+          for (const pl of playlistsList) {
+            if (!pl || !pl.id || !pl.name) continue;
+            const pid = String(pl.id).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40);
+            if (!pid) continue;
+            try {
+              const plRef = doc(db, "playlists", pid);
+              const plSnap = await getDoc(plRef).catch(() => null);
+              const safePlCover = sanitizeImageForRules(
+                pl.customCoverUrl || pl.coverUrl,
+                2000,
+                ""
+              );
+              const plPayload: Record<string, any> = {
+                ownerId: uid,
+                collaboratorIds: [],
+                visibility: "public",
+                name: String(pl.name).trim().slice(0, 80) || "Minha Playlist",
+                description: String(pl.description || "").trim().slice(0, 300),
+                ...(safePlCover ? { coverUrl: safePlCover } : {}),
+                createdAt: plSnap && plSnap.exists() && plSnap.data()?.createdAt ? plSnap.data()?.createdAt : serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              };
+              await setDoc(plRef, plPayload);
+            } catch {}
           }
         } catch (e) {
           console.warn("Firestore saveUserState warning:", e);

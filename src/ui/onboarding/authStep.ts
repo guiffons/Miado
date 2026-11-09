@@ -111,8 +111,15 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     h("span", { class: "ob-strength-seg" }),
   ];
 
+  const strengthReasonEl = h("div", {
+    class: "ob-strength-reason",
+    style:
+      "margin-top:6px; font-size:0.76rem; line-height:1.4; font-weight:600; color:rgba(255,255,255,0.78);",
+    "aria-live": "polite",
+  });
+
   const strengthTrack = h("div", { class: "ob-strength-track", "aria-hidden": "true" }, ...strengthBars);
-  const strengthInner = h("div", { class: "ob-strength-inner" }, strengthTrack);
+  const strengthInner = h("div", { class: "ob-strength-inner" }, strengthTrack, strengthReasonEl);
   const strengthCollapse = h("div", { class: "ob-strength-collapse" }, strengthInner);
 
   const updateStrengthMeter = (pwd: string) => {
@@ -121,6 +128,12 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       seg.classList.toggle("is-filled", idx < res.score);
       seg.dataset.level = String(res.score);
     });
+    strengthReasonEl.textContent = res.reason;
+    strengthReasonEl.style.color = !pwd
+      ? "rgba(255,255,255,0.68)"
+      : res.valid
+        ? "#4ade80"
+        : "#fca5a5";
   };
 
   const emailField = createField({
@@ -154,7 +167,7 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       passwordField.clearError();
       globalErrorEl.className = "ob-form-error";
       globalErrorEl.textContent = "";
-      if (currentMode === "register") {
+      if (currentMode === "register" || strengthCollapse.classList.contains("is-expanded")) {
         updateStrengthMeter(val);
       }
     },
@@ -260,12 +273,15 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       passwordField.setError(OB_TEXT.errors.required);
       return;
     }
-    if (currentMode === "register") {
-      const strength = evaluatePasswordStrength(password);
-      if (!strength.valid) {
-        passwordField.setError(OB_TEXT.errors.weakPassword);
-        return;
-      }
+    const strength = evaluatePasswordStrength(password);
+    if (currentMode === "register" && !strength.valid) {
+      strengthCollapse.classList.add("is-expanded");
+      updateStrengthMeter(password);
+      passwordField.setError(strength.reason);
+      globalErrorEl.className = "ob-form-error is-visible";
+      globalErrorEl.textContent = strength.reason;
+      shake(cardEl);
+      return;
     }
 
     isSubmitting = true;
@@ -273,16 +289,48 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     globalErrorEl.className = "ob-form-error";
     globalErrorEl.textContent = "";
 
+    const w = window as any;
+
     try {
       if (currentMode === "register") {
+        if (w.miadoFirestore && typeof w.miadoFirestore.registerWithEmail === "function") {
+          const fbRes = await w.miadoFirestore.registerWithEmail(
+            email,
+            password,
+            email.split("@")[0] || "Ouvinte",
+            `@${(email.split("@")[0] || "ouvinte").replace(/[^a-z0-9_.]/g, "")}`
+          );
+          if (fbRes && fbRes.ok) {
+            const backendData = await syncBackendAuthSession("register", email, password, auth.currentUser);
+            const isExisting = Boolean(
+              fbRes.linkedToGoogleAccount ||
+                fbRes.isExistingAccount ||
+                backendData?.linkedToGoogleAccount
+            );
+            const activeUser =
+              auth.currentUser ||
+              ({
+                uid: String(fbRes.uid || backendData?.account?.uid || `usr_${Date.now()}`),
+                email,
+                displayName: String(backendData?.user?.name || email.split("@")[0]),
+                emailVerified: true,
+                photoURL: String(backendData?.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+                providerData: [],
+                getIdToken: async () => String(fbRes.token || backendData?.token || ""),
+              } as unknown as User);
+            setButtonState("success");
+            opts.onAuthenticated(activeUser, !isExisting);
+            return;
+          }
+        }
         try {
           const cred = await createUserWithEmailAndPassword(auth, email, password);
           try {
             await sendEmailVerification(cred.user);
           } catch {}
-          await syncBackendAuthSession("register", email, password, cred.user);
+          const backendData = await syncBackendAuthSession("register", email, password, cred.user);
           setButtonState("success");
-          opts.onAuthenticated(cred.user, true);
+          opts.onAuthenticated(cred.user, !backendData?.linkedToGoogleAccount);
           return;
         } catch (regErr: any) {
           const regCode = String(regErr?.code || "").toLowerCase();
@@ -310,13 +358,52 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
                 getIdToken: async () => String(backendReg.token || ""),
               } as unknown as User;
               setButtonState("success");
-              opts.onAuthenticated(fakeUser, true);
+              opts.onAuthenticated(fakeUser, !backendReg.linkedToGoogleAccount);
               return;
             }
           }
           throw regErr;
         }
       } else {
+        // LOGIN MODE: If the user is already signed in via Google with this email and types a weak password to link, warn clearly
+        if (
+          auth.currentUser &&
+          auth.currentUser.email &&
+          auth.currentUser.email.toLowerCase() === email &&
+          !strength.valid
+        ) {
+          strengthCollapse.classList.add("is-expanded");
+          updateStrengthMeter(password);
+          passwordField.setError(strength.reason);
+          globalErrorEl.className = "ob-form-error is-visible";
+          globalErrorEl.textContent = strength.reason;
+          isSubmitting = false;
+          setButtonState("idle");
+          shake(cardEl);
+          return;
+        }
+
+        if (w.miadoFirestore && typeof w.miadoFirestore.loginWithEmail === "function") {
+          const fbRes = await w.miadoFirestore.loginWithEmail(email, password);
+          if (fbRes && fbRes.ok) {
+            const backendData = await syncBackendAuthSession("login", email, password, auth.currentUser);
+            const activeUser =
+              auth.currentUser ||
+              ({
+                uid: String(fbRes.uid || backendData?.account?.uid || `usr_${Date.now()}`),
+                email,
+                displayName: String(backendData?.user?.name || email.split("@")[0]),
+                emailVerified: true,
+                photoURL: String(backendData?.user?.avatarUrl || "/api/cat-avatar?id=cat_1"),
+                providerData: [],
+                getIdToken: async () => String(fbRes.token || backendData?.token || ""),
+              } as unknown as User);
+            setButtonState("success");
+            opts.onAuthenticated(activeUser, false);
+            return;
+          }
+        }
+
         try {
           const cred = await signInWithEmailAndPassword(auth, email, password);
           await syncBackendAuthSession("login", email, password, cred.user);
@@ -362,7 +449,9 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
     } catch (err) {
       isSubmitting = false;
       setButtonState("idle");
-      const msg = mapFirebaseError(err);
+      const msg = !strength.valid && String((err as any)?.code || "").includes("weak-password")
+        ? strength.reason
+        : mapFirebaseError(err);
       globalErrorEl.className = "ob-form-error is-visible";
       globalErrorEl.textContent = msg;
       shake(cardEl);
@@ -390,6 +479,28 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
       globalErrorEl.className = "ob-form-error";
       globalErrorEl.textContent = "";
 
+      const w = window as any;
+      if (w.miadoFirestore && typeof w.miadoFirestore.loginWithGoogle === "function") {
+        try {
+          const gRes = await w.miadoFirestore.loginWithGoogle();
+          if (gRes && gRes.ok) {
+            const activeUser =
+              auth.currentUser ||
+              ({
+                uid: String(gRes.uid || `usr_${Date.now()}`),
+                email: String(gRes.email || ""),
+                displayName: String(gRes.name || "Ouvinte"),
+                emailVerified: true,
+                photoURL: String(gRes.photoURL || "/api/cat-avatar?id=cat_1"),
+                providerData: [],
+                getIdToken: async () => String(gRes.token || ""),
+              } as unknown as User);
+            opts.onAuthenticated(activeUser, false);
+            return;
+          }
+        } catch {}
+      }
+
       const provider = new GoogleAuthProvider();
       try {
         const cred = await signInWithPopup(auth, provider);
@@ -398,7 +509,26 @@ export function createAuthStep(opts: AuthStepOptions): AuthStepController {
           localStorage.setItem("miado_auth_token", idToken);
           localStorage.setItem("miado_user_uid", cred.user.uid);
           localStorage.setItem("miado_active_session_v1", "true");
-          await syncBackendAuthSession("login", cred.user.email || "", "", cred.user);
+          await fetch("/api/auth/google", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              uid: cred.user.uid,
+              email: cred.user.email || "",
+              name: cred.user.displayName || "Ouvinte",
+              avatarUrl: cred.user.photoURL || "/api/cat-avatar?id=cat_1",
+            }),
+          })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d && d.ok && w.miadoState && typeof w.miadoState.applyAccountPayload === "function") {
+                w.miadoState.applyAccountPayload(d);
+              }
+            })
+            .catch(() => {});
         } catch {}
         opts.onAuthenticated(cred.user, false);
       } catch (err: any) {

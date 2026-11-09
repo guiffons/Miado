@@ -366,7 +366,7 @@
         <div id="collab-import-section" style="border-top:1px solid var(--glass-border); padding-top:14px; margin-top:4px;">
           <label style="font-weight:700; font-size:0.8rem; color:#ffffff; display:block; margin-bottom:6px;">Importar Código de Playlist Compartilhada</label>
           <div style="display:flex; gap:8px;">
-            <input type="text" id="input-import-collab-code" placeholder="Cole o código miado-sync:..." style="flex:1; border-radius:12px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); padding:10px 14px; color:#fff;" />
+            <input type="text" id="input-import-collab-code" placeholder="Cole o código curto (ex: MIA-7K9P2X)..." style="flex:1; border-radius:12px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); padding:10px 14px; color:#fff;" />
             <button class="btn-modal-confirm" id="btn-import-collab-submit" style="white-space:nowrap; padding:0 18px;">Importar</button>
           </div>
         </div>
@@ -572,6 +572,7 @@
           <div>
             <label id="auth-label-password" style="font-size:0.76rem; font-weight:700; color:var(--text-secondary); display:block; margin-bottom:4px;">Senha (mín. 6 caracteres, 1 maiúscula e 1 caractere especial)</label>
             <input type="password" id="auth-input-password" placeholder="••••••••" style="width:100%;" autocomplete="current-password" />
+            <div id="auth-password-strength-msg" style="display:none; margin-top:6px; padding:8px 10px; border-radius:8px; font-size:0.76rem; font-weight:600; line-height:1.4;"></div>
           </div>
 
           <div id="auth-feedback-msg" style="display:none; padding:8px 12px; border-radius:10px; font-size:0.8rem; font-weight:600;"></div>

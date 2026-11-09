@@ -113,6 +113,7 @@ interface DbSchema {
   volume?: number;
   accounts?: Record<string, AccountRecord>;
   profiles?: Record<string, CommunityProfile>;
+  sharedPlaylists?: Record<string, any>;
   activeAccountEmail?: string;
 }
 
@@ -2907,6 +2908,52 @@ export async function createMiadoApp() {
       const db = readDb();
       const accounts = db.accounts || {};
       if (accounts[cleanEmail]) {
+        const existingRecord = accounts[cleanEmail];
+        // Se a conta já existe pelo Google (sem senha definida ainda), associa a senha à conta Google existente!
+        if (!existingRecord.passwordHash) {
+          const salt = crypto.randomBytes(16).toString("hex");
+          const passwordHash = hashPassword(rawPassword, salt);
+          existingRecord.salt = salt;
+          existingRecord.passwordHash = passwordHash;
+          existingRecord.updatedAt = new Date().toISOString();
+          accounts[cleanEmail] = existingRecord;
+          writeDb({ accounts });
+          const sessionToken = createSessionToken(existingRecord.uid, existingRecord.email);
+          res.setHeader(
+            "Set-Cookie",
+            `miado_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 30}`
+          );
+          res.json({
+            ok: true,
+            linkedToGoogleAccount: true,
+            isExistingAccount: true,
+            token: sessionToken,
+            user: existingRecord.user,
+            playlists: existingRecord.playlists || [],
+            likedTracks: existingRecord.likedTracks || [],
+            recentHistory: existingRecord.recentHistory || [],
+            account: {
+              uid: existingRecord.uid,
+              email: existingRecord.email,
+              createdAt: existingRecord.createdAt,
+              user: existingRecord.user,
+              favoriteArtists: existingRecord.favoriteArtists || [],
+              followedArtists: existingRecord.followedArtists || [],
+              followingProfiles: existingRecord.followingProfiles || [],
+              onboardingCompleted: Boolean(
+                existingRecord.onboardingCompleted ||
+                  (Array.isArray(existingRecord.favoriteArtists) && existingRecord.favoriteArtists.length > 0) ||
+                  true
+              ),
+              likedTracks: existingRecord.likedTracks || [],
+              playlists: existingRecord.playlists || [],
+              recentHistory: existingRecord.recentHistory || [],
+              feedPosts: existingRecord.feedPosts || [],
+              volume: existingRecord.volume
+            }
+          });
+          return;
+        }
         res.status(409).json({ ok: false, error: "email_already_registered", requestId: req.requestId });
         return;
       }
@@ -3068,7 +3115,22 @@ export async function createMiadoApp() {
       const db = readDb();
       const accounts = db.accounts || {};
       const record = accounts[cleanEmail];
-      if (!record || !verifyPasswordTimingSafe(rawPassword, record.salt, record.passwordHash)) {
+      if (!record) {
+        res.status(401).json({ ok: false, error: "invalid_credentials", requestId: req.requestId });
+        return;
+      }
+      let linkedToGoogleAccount = false;
+      if (!record.passwordHash) {
+        if (rawPassword.length < 6) {
+          res.status(400).json({ ok: false, error: "password_too_short", requestId: req.requestId });
+          return;
+        }
+        const salt = crypto.randomBytes(16).toString("hex");
+        record.salt = salt;
+        record.passwordHash = hashPassword(rawPassword, salt);
+        record.updatedAt = new Date().toISOString();
+        linkedToGoogleAccount = true;
+      } else if (!verifyPasswordTimingSafe(rawPassword, record.salt, record.passwordHash)) {
         res.status(401).json({ ok: false, error: "invalid_credentials", requestId: req.requestId });
         return;
       }
@@ -3123,6 +3185,7 @@ export async function createMiadoApp() {
 
       res.json({
         ok: true,
+        linkedToGoogleAccount,
         token: sessionToken,
         user: record.user,
         playlists: record.playlists,
@@ -3149,13 +3212,277 @@ export async function createMiadoApp() {
     }
   });
 
+  app.post("/api/auth/google", async (req: Request, res: Response) => {
+    try {
+      const authUser = await resolveAuthenticatedUser(req);
+      const { email, uid, name, avatarUrl, handle, username } = req.body || {};
+      const cleanEmail = sanitizeText(authUser?.email || email || "", 120).toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes("@")) {
+        res.status(400).json({ ok: false, error: "invalid_email", requestId: req.requestId });
+        return;
+      }
+      const db = readDb();
+      const accounts = db.accounts || {};
+      const existing = accounts[cleanEmail];
+      const now = new Date().toISOString();
+
+      if (existing) {
+        const resolvedUid = authUser?.uid || sanitizeText(uid, 64) || existing.uid;
+        const resolvedFavs = Array.isArray(existing.favoriteArtists) ? existing.favoriteArtists : [];
+        const resolvedFollowed = Array.isArray(existing.followedArtists) ? existing.followedArtists : resolvedFavs;
+        const hasDoneOnboarding = Boolean(
+          existing.onboardingCompleted === true ||
+            existing.user?.onboardingCompleted === true ||
+            resolvedFavs.length > 0 ||
+            resolvedFollowed.length > 0 ||
+            existing.user?.handle
+        );
+        existing.uid = resolvedUid;
+        existing.onboardingCompleted = hasDoneOnboarding;
+        existing.user = {
+          ...existing.user,
+          uid: resolvedUid,
+          email: cleanEmail,
+          onboardingCompleted: hasDoneOnboarding
+        };
+        existing.updatedAt = now;
+        accounts[cleanEmail] = existing;
+        writeDb({ accounts });
+
+        const sessionToken = createSessionToken(existing.uid, existing.email);
+        res.setHeader(
+          "Set-Cookie",
+          `miado_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 30}`
+        );
+        res.json({
+          ok: true,
+          isExistingAccount: true,
+          hasPasswordLinked: Boolean(existing.passwordHash),
+          token: sessionToken,
+          user: existing.user,
+          playlists: existing.playlists || [],
+          likedTracks: existing.likedTracks || [],
+          recentHistory: existing.recentHistory || [],
+          account: {
+            uid: existing.uid,
+            email: existing.email,
+            createdAt: existing.createdAt,
+            user: existing.user,
+            favoriteArtists: resolvedFavs,
+            followedArtists: resolvedFollowed,
+            followingProfiles: existing.followingProfiles || [],
+            onboardingCompleted: hasDoneOnboarding,
+            likedTracks: existing.likedTracks || [],
+            playlists: existing.playlists || [],
+            recentHistory: existing.recentHistory || [],
+            feedPosts: existing.feedPosts || [],
+            volume: existing.volume
+          }
+        });
+        return;
+      }
+
+      const resolvedUid = authUser?.uid || sanitizeText(uid, 64) || `usr_${crypto.randomBytes(8).toString("hex")}`;
+      const displayName = sanitizeText(name || cleanEmail.split("@")[0] || "Ouvinte", 60);
+      const rawSlug = String(handle || username || displayName || cleanEmail.split("@")[0])
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/^@+/, "")
+        .replace(/[^a-z0-9_.]/g, "")
+        .slice(0, 20) || "user";
+      const cleanHandle = `@${rawSlug}`;
+      const safeAvatar = isSafeImageUrl(avatarUrl) ? String(avatarUrl) : "/api/cat-avatar?id=cat_1";
+
+      const newUserProfile = {
+        uid: resolvedUid,
+        email: cleanEmail,
+        name: displayName,
+        username: cleanHandle,
+        handle: cleanHandle,
+        bio: "",
+        catId: "cat_1",
+        avatarUrl: safeAvatar,
+        favoriteArtists: [],
+        followedArtists: [],
+        followingProfiles: [],
+        onboardingCompleted: false,
+        createdAt: now
+      };
+      const newRecord: AccountRecord = {
+        uid: resolvedUid,
+        email: cleanEmail,
+        passwordHash: "",
+        salt: "",
+        createdAt: now,
+        updatedAt: now,
+        user: newUserProfile,
+        favoriteArtists: [],
+        followedArtists: [],
+        followingProfiles: [],
+        onboardingCompleted: false,
+        likedTracks: [],
+        playlists: [],
+        recentHistory: [],
+        feedPosts: [],
+        volume: 0.85
+      };
+      accounts[cleanEmail] = newRecord;
+      writeDb({ accounts });
+
+      const sessionToken = createSessionToken(newRecord.uid, newRecord.email);
+      res.setHeader(
+        "Set-Cookie",
+        `miado_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${60 * 60 * 24 * 30}`
+      );
+      res.json({
+        ok: true,
+        isExistingAccount: false,
+        hasPasswordLinked: false,
+        token: sessionToken,
+        user: newRecord.user,
+        playlists: [],
+        likedTracks: [],
+        recentHistory: [],
+        account: {
+          uid: newRecord.uid,
+          email: newRecord.email,
+          createdAt: newRecord.createdAt,
+          user: newRecord.user,
+          favoriteArtists: [],
+          followedArtists: [],
+          followingProfiles: [],
+          onboardingCompleted: false,
+          likedTracks: [],
+          playlists: [],
+          recentHistory: [],
+          feedPosts: [],
+          volume: 0.85
+        }
+      });
+    } catch (_err: any) {
+      res.status(500).json({ ok: false, error: "google_auth_failed", requestId: req.requestId });
+    }
+  });
+
+  app.post("/api/auth/link-password", async (req: Request, res: Response) => {
+    try {
+      const authUser = await resolveAuthenticatedUser(req);
+      const { email, password } = req.body || {};
+      const cleanEmail = sanitizeText(authUser?.email || email || "", 120).toLowerCase();
+      const rawPassword = String(password || "");
+      if (!cleanEmail || !cleanEmail.includes("@")) {
+        res.status(400).json({ ok: false, error: "invalid_email", requestId: req.requestId });
+        return;
+      }
+      if (rawPassword.length < 6) {
+        res.status(400).json({ ok: false, error: "password_too_short", requestId: req.requestId });
+        return;
+      }
+      const db = readDb();
+      const accounts = db.accounts || {};
+      const record = accounts[cleanEmail];
+      if (!record) {
+        res.status(404).json({ ok: false, error: "account_not_found", requestId: req.requestId });
+        return;
+      }
+      const salt = crypto.randomBytes(16).toString("hex");
+      record.salt = salt;
+      record.passwordHash = hashPassword(rawPassword, salt);
+      record.updatedAt = new Date().toISOString();
+      accounts[cleanEmail] = record;
+      writeDb({ accounts });
+      res.json({ ok: true, linked: true, email: cleanEmail });
+    } catch (_err: any) {
+      res.status(500).json({ ok: false, error: "link_password_failed", requestId: req.requestId });
+    }
+  });
+
+  // Endpoints de código curto de compartilhamento de playlists (Ex: MIA-7K9P2X)
+  app.post("/api/playlists/share", (req: Request, res: Response) => {
+    try {
+      const { playlist } = req.body || {};
+      if (!playlist || typeof playlist !== "object" || !playlist.name) {
+        res.status(400).json({ ok: false, error: "invalid_playlist" });
+        return;
+      }
+      const db = readDb();
+      const sharedPlaylists = { ...(db.sharedPlaylists || {}) };
+      const rawId = String(playlist.id || playlist.name || Date.now());
+      const hashHex = crypto.createHash("sha256").update(rawId).digest("hex").toUpperCase();
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let shortToken = "";
+      for (let i = 0; i < 6; i++) {
+        const byteVal = parseInt(hashHex.slice(i * 2, i * 2 + 2), 16) || i;
+        shortToken += chars[byteVal % chars.length];
+      }
+      const code = playlist.shareCode && /^MIA-[A-Z0-9]{6}$/i.test(String(playlist.shareCode))
+        ? String(playlist.shareCode).toUpperCase()
+        : `MIA-${shortToken}`;
+
+      const cleanSnapshot = {
+        id: String(playlist.id || `pl_${Date.now()}`),
+        shareCode: code,
+        name: sanitizeText(playlist.name, 80) || "Playlist Miau",
+        description: sanitizeText(playlist.description || "Playlist compartilhada no Miado", 240),
+        isCollaborative: Boolean(playlist.isCollaborative),
+        collaborators: Array.isArray(playlist.collaborators) ? playlist.collaborators.slice(0, 20) : [],
+        coverUrl: typeof playlist.coverUrl === "string" && playlist.coverUrl.length <= 150000 ? playlist.coverUrl : undefined,
+        customCoverUrl: typeof playlist.customCoverUrl === "string" && playlist.customCoverUrl.length <= 150000 ? playlist.customCoverUrl : undefined,
+        tracks: Array.isArray(playlist.tracks) ? playlist.tracks.slice(0, 200) : [],
+        updatedAt: new Date().toISOString()
+      };
+      sharedPlaylists[code] = cleanSnapshot;
+      writeDb({ sharedPlaylists });
+      res.json({ ok: true, code, playlist: cleanSnapshot });
+    } catch (_err: any) {
+      res.status(500).json({ ok: false, error: "share_failed" });
+    }
+  });
+
+  app.get("/api/playlists/share/:code", (req: Request, res: Response) => {
+    try {
+      const rawCode = String(req.params.code || "").trim().toUpperCase();
+      const cleanToken = rawCode.replace(/^(MIADO-SYNC:|MIADO:|MIA-)/i, "").replace(/[^A-Z0-9]/g, "");
+      if (!cleanToken) {
+        res.status(400).json({ ok: false, error: "invalid_code" });
+        return;
+      }
+      const lookupKey = `MIA-${cleanToken}`;
+      const db = readDb();
+      const sharedPlaylists = db.sharedPlaylists || {};
+      let found = sharedPlaylists[lookupKey] || sharedPlaylists[rawCode] || sharedPlaylists[cleanToken];
+      if (!found && db.accounts) {
+        for (const acc of Object.values(db.accounts)) {
+          const pls = Array.isArray(acc?.playlists) ? acc.playlists : [];
+          for (const p of pls as any[]) {
+            if (!p) continue;
+            const pCode = String(p.shareCode || "").toUpperCase();
+            if (pCode === lookupKey || pCode === cleanToken || String(p.id || "").toUpperCase() === rawCode) {
+              found = p;
+              break;
+            }
+          }
+          if (found) break;
+        }
+      }
+      if (!found) {
+        res.status(404).json({ ok: false, error: "playlist_not_found" });
+        return;
+      }
+      res.json({ ok: true, code: lookupKey, playlist: found });
+    } catch (_err: any) {
+      res.status(500).json({ ok: false, error: "lookup_failed" });
+    }
+  });
+
   app.post("/api/auth/logout", (_req: Request, res: Response) => {
     res.setHeader("Set-Cookie", "miado_session=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0");
     res.json({ ok: true });
   });
 
   // 2c. Endpoint Rápido para Salvar Preferências de Perfil + Artistas Favoritos (/api/user/preferences)
-  app.post("/api/user/preferences", async (req: Request, res: Response) => {
+  const handleUserPreferencesUpdate = async (req: Request, res: Response) => {
     try {
       const authUser = await resolveAuthenticatedUser(req);
       if (!authUser || !authUser.email) {
@@ -3269,7 +3596,9 @@ export async function createMiadoApp() {
     } catch (_err: any) {
       res.status(500).json({ ok: false, error: "preferences_update_failed", requestId: req.requestId });
     }
-  });
+  };
+  app.post("/api/user/preferences", handleUserPreferencesUpdate);
+  app.put("/api/user/preferences", handleUserPreferencesUpdate);
 
   // 2d. Algoritmo de Recomendação Estilo Spotify (/api/recommendations)
   // Baseado nos artistas favoritos escolhidos pelo usuário + histórico de reprodução + grafo de afinidade musical

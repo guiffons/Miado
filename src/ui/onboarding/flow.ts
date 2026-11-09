@@ -119,16 +119,40 @@ export function isValidEmail(email: string): boolean {
 export interface PasswordStrengthResult {
   score: 0 | 1 | 2 | 3 | 4;
   valid: boolean;
+  missing: string[];
+  reason: string;
 }
 
 export function evaluatePasswordStrength(password: string): PasswordStrengthResult {
   const pwd = String(password ?? "");
-  if (!pwd) return { score: 0, valid: false };
+  if (!pwd) {
+    return {
+      score: 0,
+      valid: false,
+      missing: [
+        "mínimo de 6 caracteres",
+        "1 letra maiúscula (A-Z)",
+        "1 caractere especial (ex: !@#$%&*)",
+      ],
+      reason: "Digite uma senha com mínimo de 6 caracteres, 1 letra maiúscula (A-Z) e 1 caractere especial (ex: !@#$%&*).",
+    };
+  }
 
   const hasLower = /[a-z]/.test(pwd);
   const hasUpper = /[A-Z]/.test(pwd);
   const hasDigit = /[0-9]/.test(pwd);
   const hasSpecial = /[^a-zA-Z0-9]/.test(pwd);
+
+  const missing: string[] = [];
+  if (pwd.length < 6) {
+    missing.push(`mínimo de 6 caracteres (atual: ${pwd.length}/6)`);
+  }
+  if (!hasUpper) {
+    missing.push("1 letra maiúscula (A-Z)");
+  }
+  if (!hasSpecial) {
+    missing.push("1 caractere especial (ex: !@#$%&*)");
+  }
 
   let classes = 0;
   if (hasLower) classes++;
@@ -137,16 +161,20 @@ export function evaluatePasswordStrength(password: string): PasswordStrengthResu
   if (hasSpecial) classes++;
 
   const valid = pwd.length >= 6 && hasUpper && hasSpecial;
+  const reason = valid
+    ? "Senha forte: todos os requisitos de segurança foram atendidos."
+    : `Senha fraca — falta: ${missing.join(", ")}.`;
+
   if (pwd.length < 6) {
-    return { score: 1, valid: false };
+    return { score: 1, valid: false, missing, reason };
   }
   if (!valid) {
-    return { score: 2, valid: false };
+    return { score: 2, valid: false, missing, reason };
   }
   if (pwd.length >= 10 && classes >= 3) {
-    return { score: 4, valid: true };
+    return { score: 4, valid: true, missing: [], reason };
   }
-  return { score: 3, valid: true };
+  return { score: 3, valid: true, missing: [], reason };
 }
 
 export function mapFirebaseError(err: unknown): string {
