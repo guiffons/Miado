@@ -908,7 +908,9 @@ const ARTIST_ALIASES: Record<string, string[]> = {
   "simone simaria": ["simone simaria", "simone e simaria"],
   "simone e simaria": ["simone simaria", "simone e simaria"],
   "victor leo": ["victor leo", "victor e leo"],
-  "victor e leo": ["victor leo", "victor e leo"]
+  "victor e leo": ["victor leo", "victor e leo"],
+  "bom gosto": ["bom gosto", "grupo bom gosto"],
+  "grupo bom gosto": ["bom gosto", "grupo bom gosto"]
 };
 
 interface CanonicalArtistIdentity {
@@ -1327,7 +1329,8 @@ const HARD_REJECT_WORDS = [
   "originally performed", "originally perfomed", "in the style of",
   "8d audio", "hardstyle", "bootleg", "mashup", "parodia", "paródia", "tribute", "ringtone", "preview",
   "type beat", "acapella", "acapela", "piano karaoke", "soul version", "1950s", "techno",
-  "tribute version", "instrumental karaoke", "melody karaoke", "cover version", "orchestral cover"
+  "tribute version", "instrumental karaoke", "melody karaoke", "cover version", "orchestral cover",
+  "cover", "tributo", "playback", "playbacks", "pot-pourri", "potpourri", "medley"
 ];
 
 /**
@@ -2319,6 +2322,21 @@ async function resolveFullLengthTrackUrl(
         if (activeRejectWords.some(w => rawLower.includes(w) && !tNorm.includes(w))) continue;
         if (/\b(flip|edit|bootleg|mashup|zouk|forro|brega|mtk|dj\s|club\s+mix|extended\s+mix|type\s+beat|vaporwave)\b/i.test(rawLower)) continue;
 
+        // Rejeita medleys com barra "/", pot-pourris e mashups que tocam outra música antes
+        if (!tNorm.includes("/") && (rawTitle.includes("/") || /\b(medley|pot-pourri|potpourri)\b/i.test(rawLower))) {
+          continue;
+        }
+
+        // Rejeita estritamente covers quando a faixa original foi solicitada
+        if (!tNorm.includes("cover") && /\bcover\b/i.test(rawLower)) {
+          continue;
+        }
+
+        // Rejeita playbacks, bases e versões karaokê não oficiais
+        if (!tNorm.includes("playback") && /\b(vs\s-|playback|playbacks|karaoke|karaokê|tributo)\b/i.test(rawLower)) {
+          continue;
+        }
+
         const rawTitleKey = normalizeSongTitleKey(rawTitle);
         const titleMatches =
           rawTitleKey === tNorm ||
@@ -2344,8 +2362,12 @@ async function resolveFullLengthTrackUrl(
         let sc = 100 - Math.abs(durSec - expectedSec);
         if (t.user?.verified) sc += 40;
         if (t.publisher_metadata?.isrc) sc += 35;
-        if (rawTitleKey === tNorm || rawTitleKey === baseTNorm) sc += 25;
-        if (artistMatchesTarget(uploader, effectiveArtist)) sc += 30;
+        if (rawTitleKey === tNorm || rawTitleKey === baseTNorm) {
+          sc += 65;
+        } else if (rawTitleKey.includes(tNorm) || (baseTNorm.length >= 4 && rawTitleKey.includes(baseTNorm))) {
+          sc += 20;
+        }
+        if (artistMatchesTarget(uploader, effectiveArtist)) sc += 35;
         if (hasProgressive) sc += 35;
         candidates.push({ t, durSec, score: sc });
       }
@@ -3359,6 +3381,7 @@ export async function createMiadoApp() {
       accounts[cleanEmail] = record;
       const profiles = { ...(db.profiles || {}) };
       profiles[cleanHandle] = {
+        uid: record.uid,
         id: `prof_${cleanSlug}`,
         name: displayName,
         username: cleanHandle,
@@ -3366,6 +3389,7 @@ export async function createMiadoApp() {
         avatarUrl: userProfile.avatarUrl,
         bannerUrl: "",
         currentTrack: "",
+        trackObj: null,
         albumId: "billie_hmhas",
         favoriteArtists: favList,
         followersCount: 0,
@@ -6398,12 +6422,35 @@ export async function createMiadoApp() {
         }
         const key = rawUser.startsWith("@") ? rawUser : `@${rawUser}`;
         const existing = profiles[key];
-        // Se a conta já existe localmente no servidor, não permite que o sync-community de terceiros sobrescreva presença ou artistas
+        const isItemOnline = Boolean(item.online);
+        const incomingTrack = isItemOnline && typeof item.currentTrack === "string" && item.currentTrack !== "Silencioso no momento" && item.currentTrack !== "Ouvindo no Miado"
+          ? sanitizeText(item.currentTrack, 160)
+          : "";
+
+        // Se a conta já existe localmente no servidor, atualiza a presença e faixa em tempo real
+        // sem sobrescrever dados confidenciais do usuário local
         const hasServerAccount = Object.values(accounts).some(a => {
           const h = String(a?.user?.username || a?.user?.handle || "").toLowerCase().trim();
           return (h.startsWith("@") ? h : `@${h}`) === key;
         });
         if (existing && hasServerAccount) {
+          let changed = false;
+          if (incomingTrack && existing.currentTrack !== incomingTrack) {
+            existing.currentTrack = incomingTrack;
+            existing.trackObj = item.trackObj || existing.trackObj || null;
+            existing.online = true;
+            existing.updatedAt = new Date().toISOString();
+            changed = true;
+          } else if (!incomingTrack && existing.online !== isItemOnline) {
+            existing.online = isItemOnline;
+            if (!isItemOnline) {
+              existing.currentTrack = "";
+              existing.trackObj = null;
+            }
+            existing.updatedAt = new Date().toISOString();
+            changed = true;
+          }
+          if (changed) synced += 1;
           continue;
         }
         const candidateAv = String(item.avatarUrl || item.avatar || "").trim();
@@ -6424,10 +6471,6 @@ export async function createMiadoApp() {
             : existingBan && isSafeImageUrl(existingBan)
             ? existingBan
             : "";
-        const isItemOnline = Boolean(item.online);
-        const incomingTrack = isItemOnline && typeof item.currentTrack === "string" && item.currentTrack !== "Silencioso no momento" && item.currentTrack !== "Ouvindo no Miado"
-          ? sanitizeText(item.currentTrack, 160)
-          : "";
         const itemUid = sanitizeText(item.uid || (existing as any)?.uid || "", 128);
 
         profiles[key] = {
@@ -6446,8 +6489,8 @@ export async function createMiadoApp() {
             : existing?.favoriteArtists || [],
           followersCount: existing?.followersCount || 0,
           followingCount: existing?.followingCount || 0,
-          online: Boolean(incomingTrack && isItemOnline),
-          updatedAt: incomingTrack && isItemOnline ? new Date().toISOString() : (existing?.updatedAt || new Date(0).toISOString())
+          online: isItemOnline,
+          updatedAt: isItemOnline ? new Date().toISOString() : (existing?.updatedAt || new Date(0).toISOString())
         } as CommunityProfile;
         synced += 1;
       }
@@ -6527,6 +6570,7 @@ export async function createMiadoApp() {
       }
 
       const profileRecord: CommunityProfile = {
+        uid: authUser.uid,
         id: `prof_${safeSlug}`,
         name: cleanName,
         username: cleanHandle,

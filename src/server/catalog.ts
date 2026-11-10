@@ -72,7 +72,9 @@ const KNOWN_ARTIST_ALIASES: Record<string, string[]> = {
   "simone simaria": ["simone simaria", "simone e simaria"],
   "simone e simaria": ["simone simaria", "simone e simaria"],
   "victor leo": ["victor leo", "victor e leo"],
-  "victor e leo": ["victor leo", "victor e leo"]
+  "victor e leo": ["victor leo", "victor e leo"],
+  "bom gosto": ["bom gosto", "grupo bom gosto"],
+  "grupo bom gosto": ["bom gosto", "grupo bom gosto"]
 };
 
 const LIVE_ACOUSTIC_CATALOG_ARTIST_KEYS = new Set<string>([
@@ -123,9 +125,10 @@ const LIVE_ACOUSTIC_CATALOG_ARTIST_KEYS = new Set<string>([
   "joao bosco vinicius",
   "joao bosco e vinicius",
   "edson hudson",
-  "edson e hudson",
   "rick renner",
-  "rick e renner"
+  "rick e renner",
+  "bom gosto",
+  "grupo bom gosto"
 ]);
 
 export function isLiveAcousticCatalogArtist(artistOrText: string): boolean {

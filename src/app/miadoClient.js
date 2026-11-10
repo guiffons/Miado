@@ -12953,6 +12953,33 @@ export function initMiadoClient() {
 
         renderFriendsActivity() {
           const container = document.getElementById("right-sidebar-body");
+          if (!container) return;
+
+          const myHandle = String((state.user && (state.user.username || state.user.handle)) || "").toLowerCase().trim();
+          const myUid = String((state.user && state.user.uid) || localStorage.getItem("miado_user_uid") || "").trim();
+
+          const communityListeners = (state.communityProfiles || []).filter(p => {
+            if (!p || !p.username || MiadoState.isLegacyFakeHandle(p.username)) return false;
+            const h = String(p.username).toLowerCase().trim();
+            if (h === "@visitante" || h === "@novo_usuario" || h === "visitante" || h === "novo_usuario") return false;
+            const isMe = Boolean(
+              (myUid && p.uid && String(p.uid).trim() === myUid) ||
+              (!myUid && myHandle && h === myHandle)
+            );
+            return !isMe;
+          });
+
+          // Ordena: ouvintes ativos com música tocando no topo, seguidos por perfis online
+          communityListeners.sort((a, b) => {
+            const aTrack = a.online && a.currentTrack && a.currentTrack !== "Silencioso no momento" && a.currentTrack !== "Ouvindo no Miado";
+            const bTrack = b.online && b.currentTrack && b.currentTrack !== "Silencioso no momento" && b.currentTrack !== "Ouvindo no Miado";
+            if (aTrack && !bTrack) return -1;
+            if (!aTrack && bTrack) return 1;
+            if (a.online && !b.online) return -1;
+            if (!a.online && b.online) return 1;
+            return 0;
+          });
+
           container.innerHTML = `
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
               <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:700;">Amigos Seguidos (${state.friends.length})</div>
@@ -12960,16 +12987,17 @@ export function initMiadoClient() {
             </div>
             ${state.friends.length === 0 ? `
               <div class="friend-activity-card" style="padding:12px; text-align:center;">
-                <div style="font-size:0.8rem; font-weight:700; color:#ffffff;">Nenhum perfil falso!</div>
-                <div style="font-size:0.73rem; color:var(--text-secondary); margin-top:4px;">Busque ou crie o perfil dos seus amigos reais no Feed Miau para segui-los.</div>
+                <div style="font-size:0.8rem; font-weight:700; color:#ffffff;">Nenhum amigo seguido ainda</div>
+                <div style="font-size:0.73rem; color:var(--text-secondary); margin-top:4px;">Siga os ouvintes na comunidade abaixo para vê-los aqui com prioridade.</div>
                 <button type="button" class="album-action-btn primary" id="btn-sidebar-open-social" style="width:100%; height:32px; font-size:0.75rem; margin-top:10px;">
-                  Encontrar / Criar Perfis
+                  Feed da Comunidade
                 </button>
               </div>
             ` : state.friends.map((f, idx) => {
               const liveSidebarTrack = f.online && f.currentTrack && f.currentTrack !== "Ouvindo no Miado"
                 ? f.currentTrack
                 : "Silencioso no momento";
+              const isPlaying = f.online && liveSidebarTrack !== "Silencioso no momento";
               return `
               <div class="friend-activity-card">
                 <div class="friend-top-row" data-sidebar-open-friend="${idx}" style="cursor:pointer;" title="Ver perfil de ${escapeHtml(f.name)}">
@@ -12982,8 +13010,18 @@ export function initMiadoClient() {
                     <div class="friend-handle">${escapeHtml(f.username)}</div>
                   </div>
                 </div>
-                <div class="friend-track-pill" data-sidebar-open-friend-track="${idx}" style="cursor:${liveSidebarTrack !== 'Silencioso no momento' ? 'pointer' : 'default'};" title="Clique para tocar e ir ao álbum desta música">
-                  <div class="friend-status" title="${escapeHtml(liveSidebarTrack)}" style="text-decoration:${liveSidebarTrack !== 'Silencioso no momento' ? 'underline' : 'none'};">${escapeHtml(liveSidebarTrack)}</div>
+                <div class="friend-track-pill" data-sidebar-open-friend-track="${idx}" style="cursor:${isPlaying ? 'pointer' : 'default'};" title="${isPlaying ? 'Clique para ouvir junto esta música' : ''}">
+                  <div style="display:flex; align-items:center; gap:6px; flex:1; min-width:0;">
+                    ${isPlaying ? `
+                      <div class="sound-wave-badge" title="Tocando agora" style="margin-right:2px;">
+                        <span class="sw-bar"></span>
+                        <span class="sw-bar"></span>
+                        <span class="sw-bar"></span>
+                        <span class="sw-bar"></span>
+                      </div>
+                    ` : `<span style="font-size:0.75rem;">🎧</span>`}
+                    <div class="friend-status" title="${escapeHtml(liveSidebarTrack)}" style="text-decoration:${isPlaying ? 'underline' : 'none'};">${escapeHtml(liveSidebarTrack)}</div>
+                  </div>
                   <div style="display:flex; align-items:center; gap:4px;">
                     <button class="track-icon-btn" style="width:28px; height:28px; color:var(--accent-hover);" data-sidebar-play-friend="${idx}" title="Tocar essa música">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
@@ -12995,6 +13033,63 @@ export function initMiadoClient() {
                 </div>
               </div>
             `;
+            }).join("")}
+
+            <!-- Ouvindo Agora na Comunidade (Ao Vivo / Galerinha do Miado) -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin:20px 0 10px;">
+              <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:700;">
+                Ouvindo na Comunidade (${communityListeners.length})
+              </div>
+              <span style="font-size:0.7rem; color:#1ed760; font-weight:700; display:flex; align-items:center; gap:4px;">
+                <span style="width:7px; height:7px; border-radius:50%; background:#1ed760; display:inline-block; box-shadow:0 0 6px #1ed760;"></span> Ao Vivo
+              </span>
+            </div>
+            ${communityListeners.length === 0 ? `
+              <div class="friend-activity-card" style="padding:12px; text-align:center;">
+                <div style="font-size:0.8rem; font-weight:700; color:#ffffff;">Aguardando Ouvintes</div>
+                <div style="font-size:0.73rem; color:var(--text-secondary); margin-top:4px;">Conforme outros usuários conectam e dão play, suas músicas aparecem aqui ao vivo!</div>
+              </div>
+            ` : communityListeners.slice(0, 10).map((p, cIdx) => {
+              const hasLiveTrack = Boolean(p.online && p.currentTrack && p.currentTrack !== "Silencioso no momento" && p.currentTrack !== "Ouvindo no Miado");
+              const trackLabel = hasLiveTrack ? p.currentTrack : (p.online ? "Navegando no Miado" : "Silencioso no momento");
+              const isFollowing = state.isProfileFollowed(p.uid || p.username);
+              return `
+                <div class="friend-activity-card" style="margin-bottom:8px;">
+                  <div class="friend-top-row" data-sidebar-open-comm="${cIdx}" style="cursor:pointer;" title="Ver perfil de ${escapeHtml(p.name)}">
+                    <img class="friend-avatar" src="${escapeHtml(safeImgUrl(p.avatar || p.avatarUrl))}" referrerpolicy="no-referrer" alt="${escapeHtml(p.name)}" style="cursor:pointer;" onerror="window.handleCatAvatarError(this)" />
+                    <div class="friend-info">
+                      <div class="friend-name-row">
+                        <span class="friend-name">${escapeHtml(p.name)}</span>
+                        ${p.online ? `<span class="friend-online-badge">ON</span>` : ""}
+                      </div>
+                      <div class="friend-handle">${escapeHtml(p.username)}</div>
+                    </div>
+                  </div>
+                  <div class="friend-track-pill" data-sidebar-comm-track="${cIdx}" style="cursor:${hasLiveTrack ? 'pointer' : 'default'}; margin-top:6px;" title="${hasLiveTrack ? 'Clique para ouvir junto esta música' : ''}">
+                    <div style="display:flex; align-items:center; gap:6px; flex:1; min-width:0;">
+                      ${hasLiveTrack ? `
+                        <div class="sound-wave-badge" title="Tocando agora" style="margin-right:2px;">
+                          <span class="sw-bar"></span>
+                          <span class="sw-bar"></span>
+                          <span class="sw-bar"></span>
+                          <span class="sw-bar"></span>
+                        </div>
+                      ` : `<span style="font-size:0.75rem;">🎧</span>`}
+                      <div class="friend-status" style="text-decoration:${hasLiveTrack ? 'underline' : 'none'};">${escapeHtml(trackLabel)}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                      ${hasLiveTrack ? `
+                        <button class="track-icon-btn" style="width:28px; height:28px; color:var(--accent-hover);" data-sidebar-play-comm="${cIdx}" title="Dar play e ouvir junto">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+                        </button>
+                      ` : ""}
+                      <button class="track-icon-btn ${isFollowing ? 'liked' : ''}" style="width:28px; height:28px;" data-sidebar-toggle-follow-comm="${cIdx}" title="${isFollowing ? 'Seguindo' : 'Seguir amigo'}">
+                        ${isFollowing ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>` : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              `;
             }).join("")}
 
             <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:700; margin:18px 0 10px;">Artistas Seguidos (${state.followedArtists.length})</div>
@@ -13082,6 +13177,44 @@ export function initMiadoClient() {
               f.likedByMe = !f.likedByMe;
               state.saveFriends();
               showToast(f.likedByMe ? `Curtiu ${f.username}` : "Curtida removida");
+              this.renderFriendsActivity();
+            });
+          });
+
+          container.querySelectorAll("[data-sidebar-open-comm]").forEach(row => {
+            row.addEventListener("click", () => {
+              const p = communityListeners[parseInt(row.dataset.sidebarOpenComm)];
+              if (!p) return;
+              this.setActiveNav("profile");
+              this.navigateTo("profile", true, { targetUser: p });
+            });
+          });
+
+          container.querySelectorAll("[data-sidebar-comm-track]").forEach(pill => {
+            pill.addEventListener("click", async (e) => {
+              if (e.target.closest("[data-sidebar-play-comm]") || e.target.closest("[data-sidebar-toggle-follow-comm]")) return;
+              const p = communityListeners[parseInt(pill.dataset.sidebarCommTrack)];
+              if (!p) return;
+              await this.playOrOpenFriendTrack(p, true, true);
+            });
+          });
+
+          container.querySelectorAll("[data-sidebar-play-comm]").forEach(btn => {
+            btn.addEventListener("click", async (e) => {
+              e.stopPropagation();
+              const p = communityListeners[parseInt(btn.dataset.sidebarPlayComm)];
+              if (!p) return;
+              await this.playOrOpenFriendTrack(p, false, true);
+            });
+          });
+
+          container.querySelectorAll("[data-sidebar-toggle-follow-comm]").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const p = communityListeners[parseInt(btn.dataset.sidebarToggleFollowComm)];
+              if (!p) return;
+              const nowFollowing = state.toggleFollowProfile(p);
+              showToast(nowFollowing ? `Você agora segue ${p.username}!` : `Deixou de seguir ${p.username}.`);
               this.renderFriendsActivity();
             });
           });
