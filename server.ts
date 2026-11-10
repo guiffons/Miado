@@ -112,6 +112,7 @@ interface CommunityProfile {
   followersCount?: number;
   followingCount?: number;
   online?: boolean;
+  privacy?: { presence?: string; activity?: string };
   updatedAt: string;
 }
 
@@ -6435,13 +6436,21 @@ export async function createMiadoApp() {
         });
         if (existing && hasServerAccount) {
           let changed = false;
+          const existingUpdatedMs = existing.updatedAt ? Date.parse(String(existing.updatedAt)) : 0;
+          const isExistingFreshlyPlaying = Boolean(
+            existing.online &&
+            existing.currentTrack &&
+            existing.currentTrack !== "Silencioso no momento" &&
+            existingUpdatedMs > 0 &&
+            Date.now() - existingUpdatedMs < 120_000
+          );
           if (incomingTrack && existing.currentTrack !== incomingTrack) {
             existing.currentTrack = incomingTrack;
             existing.trackObj = item.trackObj || existing.trackObj || null;
             existing.online = true;
             existing.updatedAt = new Date().toISOString();
             changed = true;
-          } else if (!incomingTrack && existing.online !== isItemOnline) {
+          } else if (!incomingTrack && existing.online !== isItemOnline && !isExistingFreshlyPlaying) {
             existing.online = isItemOnline;
             if (!isItemOnline) {
               existing.currentTrack = "";
@@ -6472,6 +6481,15 @@ export async function createMiadoApp() {
             ? existingBan
             : "";
         const itemUid = sanitizeText(item.uid || (existing as any)?.uid || "", 128);
+        const existingMs = existing?.updatedAt ? Date.parse(String(existing.updatedAt)) : 0;
+        const keepExistingLive = Boolean(
+          !incomingTrack &&
+          existing?.online &&
+          existing?.currentTrack &&
+          existing.currentTrack !== "Silencioso no momento" &&
+          existingMs > 0 &&
+          Date.now() - existingMs < 120_000
+        );
 
         profiles[key] = {
           ...(itemUid ? { uid: itemUid } : {}),
@@ -6481,15 +6499,18 @@ export async function createMiadoApp() {
           bio: sanitizeText(item.bio ?? existing?.bio ?? "", 240),
           avatarUrl: resolvedAv,
           bannerUrl: resolvedBan,
-          currentTrack: incomingTrack,
-          trackObj: incomingTrack ? (item.trackObj || null) : null,
+          currentTrack: keepExistingLive ? (existing?.currentTrack || "") : incomingTrack,
+          trackObj: keepExistingLive ? (existing?.trackObj || null) : (incomingTrack ? (item.trackObj || null) : null),
           albumId: sanitizeText(item.albumId || existing?.albumId || "billie_hmhas", 80),
           favoriteArtists: Array.isArray(item.favoriteArtists)
             ? item.favoriteArtists.slice(0, 20).map((a: unknown) => sanitizeText(a, 60))
             : existing?.favoriteArtists || [],
           followersCount: existing?.followersCount || 0,
           followingCount: existing?.followingCount || 0,
-          online: isItemOnline,
+          online: keepExistingLive ? true : isItemOnline,
+          privacy: item.privacy && typeof item.privacy === "object"
+            ? item.privacy
+            : (existing?.privacy || { presence: "public", activity: "public" }),
           updatedAt: isItemOnline ? new Date().toISOString() : (existing?.updatedAt || new Date(0).toISOString())
         } as CommunityProfile;
         synced += 1;
@@ -6512,7 +6533,7 @@ export async function createMiadoApp() {
         return;
       }
 
-      const { name, username, bio, avatarUrl, bannerUrl, currentTrack, trackObj, albumId, favoriteArtists, online } = req.body || {};
+      const { name, username, bio, avatarUrl, bannerUrl, currentTrack, trackObj, albumId, favoriteArtists, online, privacy, explicitPlayback } = req.body || {};
       const cleanName = sanitizeText(name || "", 60);
       const rawUser = sanitizeText(username || "", 40).toLowerCase().replace(/\s+/g, "");
       if (!cleanName || !rawUser || cleanName === "Visitante" || rawUser === "@visitante" || rawUser === "visitante" || rawUser === "@novo_usuario" || rawUser === "novo_usuario") {
@@ -6545,15 +6566,29 @@ export async function createMiadoApp() {
         ? String(bannerUrl || existing?.bannerUrl || "")
         : existing?.bannerUrl || "";
 
-      const resolvedTrackStr = sanitizeText(
-        currentTrack !== undefined ? currentTrack : existing?.currentTrack || "",
-        140
+      const existingUpdatedMs = existing?.updatedAt ? Date.parse(String(existing.updatedAt)) : 0;
+      const hasFreshActiveSessionInAnotherTab = Boolean(
+        !explicitPlayback &&
+        online === false &&
+        existing?.online &&
+        existing?.currentTrack &&
+        existing.currentTrack !== "Silencioso no momento" &&
+        existingUpdatedMs > 0 &&
+        Date.now() - existingUpdatedMs < 120_000
       );
-      const isActivelyPlaying =
-        online !== false &&
-        Boolean(resolvedTrackStr) &&
-        resolvedTrackStr !== "Silencioso no momento" &&
-        resolvedTrackStr !== "Ouvindo no Miado";
+
+      const resolvedTrackStr = hasFreshActiveSessionInAnotherTab
+        ? String(existing?.currentTrack || "")
+        : sanitizeText(
+            currentTrack !== undefined ? currentTrack : existing?.currentTrack || "",
+            140
+          );
+      const isActivelyPlaying = hasFreshActiveSessionInAnotherTab
+        ? true
+        : online !== false &&
+          Boolean(resolvedTrackStr) &&
+          resolvedTrackStr !== "Silencioso no momento" &&
+          resolvedTrackStr !== "Ouvindo no Miado";
 
       let cleanTrackObj: Record<string, unknown> | null = isActivelyPlaying ? (existing?.trackObj || null) : null;
       if (isActivelyPlaying && trackObj && typeof trackObj === "object" && (trackObj as any).title) {
@@ -6585,8 +6620,14 @@ export async function createMiadoApp() {
           : existing?.favoriteArtists || [],
         followersCount: Number(existing?.followersCount || 0),
         followingCount: Number(existing?.followingCount || 0),
-        online: online !== undefined ? Boolean(online) : true,
-        updatedAt: new Date().toISOString()
+        online: isActivelyPlaying ? true : (online !== undefined ? Boolean(online) : true),
+        privacy: privacy && typeof privacy === "object"
+          ? {
+              presence: sanitizeText((privacy as any).presence || "public", 20),
+              activity: sanitizeText((privacy as any).activity || "public", 20)
+            }
+          : (existing?.privacy || { presence: "public", activity: "public" }),
+        updatedAt: hasFreshActiveSessionInAnotherTab && existing?.updatedAt ? existing.updatedAt : new Date().toISOString()
       };
 
       profiles[cleanHandle] = profileRecord;

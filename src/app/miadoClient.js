@@ -2277,18 +2277,47 @@ export function initMiadoClient() {
             // If incoming is not from live Firestore and prev already has a live Firestore track, don't let stale /api/profiles wipe it
             const keepPrevLive = Boolean(!inc._fromFirestore && !incHasLiveTrack && prev._fromFirestore && prevHasLiveTrack);
 
+            const selfCrossTab = isSelfProfile ? this.getCrossTabSelfPresence() : null;
+            const selfExplicitlyPausedRecently = Boolean(
+              selfCrossTab &&
+                selfCrossTab.isPlaying === false &&
+                Date.now() - Number(selfCrossTab.updatedAt || 0) < 25000
+            );
+            const selfRemotePlaying = Boolean(
+              isSelfProfile &&
+                !this.isPlaying &&
+                ((selfCrossTab && selfCrossTab.isPlaying && selfCrossTab.currentTrack) ||
+                  (!selfExplicitlyPausedRecently && (incHasLiveTrack || keepPrevLive)))
+            );
+
             const isOnlineNow = isSelfProfile
-              ? Boolean(this.isPlaying && myTrackTitle)
+              ? Boolean((this.isPlaying && myTrackTitle) || selfRemotePlaying)
               : incHasLiveTrack || keepPrevLive;
             const nextTrackStr = isSelfProfile
-              ? (this.isPlaying && myTrackTitle ? myTrackTitle : "")
+              ? this.isPlaying && myTrackTitle
+                ? myTrackTitle
+                : selfCrossTab && selfCrossTab.isPlaying && selfCrossTab.currentTrack
+                ? String(selfCrossTab.currentTrack).trim()
+                : !selfExplicitlyPausedRecently && incHasLiveTrack
+                ? String(inc.currentTrack).trim()
+                : !selfExplicitlyPausedRecently && keepPrevLive
+                ? String(prev.currentTrack).trim()
+                : ""
               : incHasLiveTrack
               ? String(inc.currentTrack).trim()
               : keepPrevLive
               ? String(prev.currentTrack).trim()
               : "";
             const nextTrackObj = isSelfProfile
-              ? (this.isPlaying && this.currentTrack ? this.currentTrack : null)
+              ? this.isPlaying && this.currentTrack
+                ? this.currentTrack
+                : selfCrossTab && selfCrossTab.isPlaying && selfCrossTab.trackObj
+                ? selfCrossTab.trackObj
+                : !selfExplicitlyPausedRecently && incHasLiveTrack
+                ? inc.trackObj || prev.trackObj || null
+                : !selfExplicitlyPausedRecently && keepPrevLive
+                ? prev.trackObj || null
+                : null
               : incHasLiveTrack
               ? inc.trackObj || prev.trackObj || null
               : keepPrevLive
@@ -2327,6 +2356,7 @@ export function initMiadoClient() {
               trackObj: nextTrackObj,
               avatarUrl: bestAvatar,
               bannerUrl: bestBanner,
+              privacy: inc.privacy || prev.privacy || { presence: "public", activity: "public" },
               favoriteArtists: mergedFavs,
               followedArtists:
                 Array.isArray(inc.followedArtists) && inc.followedArtists.length > 0
@@ -2459,7 +2489,7 @@ export function initMiadoClient() {
                 window.miadoUI.renderSocialView();
                 if (scrollWrap) scrollWrap.scrollTop = prevScroll;
               }
-            } else if (this.activeView === "profile") {
+            } else if (this.currentView === "profile") {
               const activeEl = document.activeElement;
               const isTypingInProfile =
                 activeEl &&
@@ -2467,17 +2497,398 @@ export function initMiadoClient() {
               if (!isTypingInProfile) {
                 const scrollWrap = document.getElementById("main-content-scroll");
                 const prevScroll = scrollWrap ? scrollWrap.scrollTop : 0;
-                window.miadoUI.renderProfileView(this.viewingTargetProfile);
+                window.miadoUI.renderProfileView(this.currentProfileTarget || null);
                 if (scrollWrap) scrollWrap.scrollTop = prevScroll;
               }
             }
           }
         }
 
+        getCrossTabSelfPresence() {
+          try {
+            const myUid = String(
+              (this.user && this.user.uid) || localStorage.getItem("miado_user_uid") || ""
+            ).trim();
+            const myHandle = String((this.user && (this.user.username || this.user.handle)) || "")
+              .trim()
+              .toLowerCase();
+            const raw = localStorage.getItem("miado_live_presence_state_v1");
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") return null;
+            const ageMs = Date.now() - Number(parsed.updatedAt || 0);
+            if (ageMs > 180000) return null;
+            const pUid = String(parsed.uid || "").trim();
+            const pHandle = String(parsed.username || "").trim().toLowerCase();
+            const sameUser =
+              (myUid && pUid && myUid === pUid) ||
+              (myHandle && pHandle && myHandle === pHandle);
+            if (!sameUser) return null;
+            return parsed;
+          } catch (_e) {
+            return null;
+          }
+        }
+
+        getUnifiedListeningState(targetUser = null) {
+          const myUid = String(
+            (this.user && this.user.uid) || localStorage.getItem("miado_user_uid") || ""
+          ).trim();
+          const myHandle = String((this.user && (this.user.username || this.user.handle)) || "")
+            .trim()
+            .toLowerCase();
+          const targetUid = String((targetUser && targetUser.uid) || "").trim();
+          const targetHandleRaw = String(
+            (targetUser && (targetUser.username || targetUser.handle)) || ""
+          )
+            .trim()
+            .toLowerCase();
+          const targetHandle = targetHandleRaw
+            ? targetHandleRaw.startsWith("@")
+              ? targetHandleRaw
+              : `@${targetHandleRaw}`
+            : "";
+
+          const isMe = Boolean(
+            !targetUser ||
+              (myUid && targetUid && targetUid === myUid) ||
+              (myHandle && targetHandle && targetHandle === myHandle)
+          );
+
+          const buildTrackObjFromStr = (str, fallbackObj = null) => {
+            if (
+              fallbackObj &&
+              typeof fallbackObj === "object" &&
+              fallbackObj.title &&
+              fallbackObj.title !== "Silencioso no momento"
+            ) {
+              return {
+                ...fallbackObj,
+                title: String(fallbackObj.title).trim(),
+                artist: String(fallbackObj.artist || "Artista").trim(),
+                coverUrl: ensureTrackCoverUrl(
+                  fallbackObj,
+                  fallbackObj.title,
+                  fallbackObj.artist || "Artista"
+                )
+              };
+            }
+            const clean = String(str || "").trim();
+            if (clean && clean !== "Silencioso no momento" && clean !== "Ouvindo no Miado") {
+              const parts = clean.split(" - ");
+              const title = String(parts[0] || clean).trim();
+              const artist = String(parts.slice(1).join(" - ") || "Artista").trim();
+              const obj = { title, artist };
+              obj.coverUrl = ensureTrackCoverUrl(obj, title, artist);
+              return obj;
+            }
+            return {
+              title: "Silencioso no momento",
+              artist: "Nenhuma música tocando agora",
+              coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
+            };
+          };
+
+          if (isMe) {
+            if (
+              this.isPlaying &&
+              this.currentTrack &&
+              this.currentTrack.title &&
+              this.currentTrack.title !== "Silencioso no momento"
+            ) {
+              const tObj = buildTrackObjFromStr(
+                `${this.currentTrack.title} - ${this.currentTrack.artist || "Artista"}`,
+                this.currentTrack
+              );
+              return {
+                isMe: true,
+                isPlaying: true,
+                canView: true,
+                trackObj: tObj,
+                trackLabel: `${tObj.title} - ${tObj.artist}`,
+                subtitle: tObj.artist
+              };
+            }
+
+            const crossTab = this.getCrossTabSelfPresence();
+            if (
+              crossTab &&
+              crossTab.isPlaying &&
+              crossTab.currentTrack &&
+              crossTab.currentTrack !== "Silencioso no momento"
+            ) {
+              const tObj = buildTrackObjFromStr(crossTab.currentTrack, crossTab.trackObj);
+              return {
+                isMe: true,
+                isPlaying: true,
+                canView: true,
+                trackObj: tObj,
+                trackLabel: `${tObj.title} - ${tObj.artist}`,
+                subtitle: tObj.artist
+              };
+            }
+
+            const explicitlyPausedRecently = Boolean(
+              crossTab &&
+                crossTab.isPlaying === false &&
+                Date.now() - Number(crossTab.updatedAt || 0) < 25000
+            );
+            if (!explicitlyPausedRecently) {
+              const selfComm = (this.communityProfiles || []).find(
+                p =>
+                  p &&
+                  (p.isSelf ||
+                    (myUid && p.uid && String(p.uid).trim() === myUid) ||
+                    (myHandle && String(p.username || "").trim().toLowerCase() === myHandle))
+              );
+              if (
+                selfComm &&
+                selfComm.online &&
+                selfComm.currentTrack &&
+                selfComm.currentTrack !== "Silencioso no momento" &&
+                selfComm.currentTrack !== "Ouvindo no Miado"
+              ) {
+                const tObj = buildTrackObjFromStr(selfComm.currentTrack, selfComm.trackObj);
+                return {
+                  isMe: true,
+                  isPlaying: true,
+                  canView: true,
+                  trackObj: tObj,
+                  trackLabel: `${tObj.title} - ${tObj.artist}`,
+                  subtitle: tObj.artist
+                };
+              }
+            }
+
+            return {
+              isMe: true,
+              isPlaying: false,
+              canView: true,
+              trackObj: {
+                title: "Silencioso no momento",
+                artist: "Nenhuma música tocando agora",
+                coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
+              },
+              trackLabel: "Silencioso no momento",
+              subtitle: "Nenhuma música tocando agora"
+            };
+          }
+
+          const liveComm = (this.communityProfiles || []).find(
+            p =>
+              p &&
+              ((targetUid && p.uid && String(p.uid).trim() === targetUid) ||
+                (targetHandle && String(p.username || "").trim().toLowerCase() === targetHandle))
+          );
+          const liveFriend = (this.friends || []).find(
+            f =>
+              f &&
+              ((targetUid && f.uid && String(f.uid).trim() === targetUid) ||
+                (targetHandle && String(f.username || "").trim().toLowerCase() === targetHandle))
+          );
+          const merged = {
+            ...(targetUser || {}),
+            ...(liveFriend || {}),
+            ...(liveComm || {})
+          };
+
+          const presencePrivacy =
+            (merged.privacy && merged.privacy.presence) ||
+            merged.presenceVisibility ||
+            merged.visibility ||
+            "public";
+          const isFollower =
+            (typeof this.isProfileFollowed === "function" &&
+              this.isProfileFollowed(merged.uid || merged.username)) ||
+            Boolean(liveFriend);
+
+          if (presencePrivacy === "private") {
+            return {
+              isMe: false,
+              isPlaying: false,
+              canView: false,
+              trackObj: {
+                title: "Silencioso no momento",
+                artist: "Atividade privada",
+                coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
+              },
+              trackLabel: "Atividade privada",
+              subtitle: "Atividade privada"
+            };
+          }
+          if (presencePrivacy === "followers_only" && !isFollower) {
+            return {
+              isMe: false,
+              isPlaying: false,
+              canView: false,
+              trackObj: {
+                title: "Silencioso no momento",
+                artist: "Disponível apenas para seguidores",
+                coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
+              },
+              trackLabel: "Disponível apenas para seguidores",
+              subtitle: "Disponível apenas para seguidores"
+            };
+          }
+
+          const hasLive = Boolean(
+            merged.online &&
+              typeof merged.currentTrack === "string" &&
+              merged.currentTrack.trim() !== "" &&
+              merged.currentTrack !== "Silencioso no momento" &&
+              merged.currentTrack !== "Ouvindo no Miado"
+          );
+          if (hasLive) {
+            const tObj = buildTrackObjFromStr(merged.currentTrack, merged.trackObj);
+            return {
+              isMe: false,
+              isPlaying: true,
+              canView: true,
+              trackObj: tObj,
+              trackLabel: `${tObj.title} - ${tObj.artist}`,
+              subtitle: tObj.artist
+            };
+          }
+
+          return {
+            isMe: false,
+            isPlaying: false,
+            canView: true,
+            trackObj: {
+              title: "Silencioso no momento",
+              artist: "Nenhuma música tocando agora",
+              coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
+            },
+            trackLabel: "Silencioso no momento",
+            subtitle: "Nenhuma música tocando agora"
+          };
+        }
+
+        setupCrossTabPresenceSync() {
+          if (this._crossTabSyncInitialized) return;
+          this._crossTabSyncInitialized = true;
+          this._tabInstanceId = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+          const handleIncomingCrossTabPayload = payload => {
+            if (!payload || payload.tabId === this._tabInstanceId) return;
+            const myUid = String(
+              (this.user && this.user.uid) || localStorage.getItem("miado_user_uid") || ""
+            ).trim();
+            const myHandle = String((this.user && (this.user.username || this.user.handle)) || "")
+              .trim()
+              .toLowerCase();
+            const pUid = String(payload.uid || "").trim();
+            const pHandle = String(payload.username || "").trim().toLowerCase();
+            if (
+              !(
+                (myUid && pUid && myUid === pUid) ||
+                (myHandle && pHandle && myHandle === pHandle)
+              )
+            ) {
+              return;
+            }
+            this.remoteSelfPlayback = payload;
+            for (const prof of this.communityProfiles || []) {
+              if (!prof) continue;
+              const isSelf =
+                prof.isSelf ||
+                (myUid && prof.uid && String(prof.uid).trim() === myUid) ||
+                (myHandle && String(prof.username || "").trim().toLowerCase() === myHandle);
+              if (isSelf && !this.isPlaying) {
+                prof.online = Boolean(payload.isPlaying && payload.currentTrack);
+                prof.currentTrack = payload.isPlaying ? String(payload.currentTrack || "") : "";
+                prof.trackObj = payload.isPlaying ? payload.trackObj || null : null;
+              }
+            }
+            if (window.miadoUI) {
+              window.miadoUI.renderRightSidebarBodyOnly();
+              if (this.currentView === "profile") {
+                const scrollWrap = document.getElementById("main-content-scroll");
+                const prevScroll = scrollWrap ? scrollWrap.scrollTop : 0;
+                window.miadoUI.renderProfileView(this.currentProfileTarget || null);
+                if (scrollWrap) scrollWrap.scrollTop = prevScroll;
+              } else if (this.currentView === "social") {
+                const activeEl = document.activeElement;
+                const isTyping =
+                  activeEl &&
+                  (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA");
+                if (!isTyping) {
+                  const scrollWrap = document.getElementById("main-content-scroll");
+                  const prevScroll = scrollWrap ? scrollWrap.scrollTop : 0;
+                  window.miadoUI.renderSocialView();
+                  if (scrollWrap) scrollWrap.scrollTop = prevScroll;
+                }
+              }
+            }
+          };
+
+          try {
+            if (typeof BroadcastChannel !== "undefined") {
+              this._presenceChannel = new BroadcastChannel("miado_live_presence_sync_v1");
+              this._presenceChannel.onmessage = ev => {
+                if (ev && ev.data) handleIncomingCrossTabPayload(ev.data);
+              };
+            }
+          } catch (_e) {}
+
+          window.addEventListener("storage", ev => {
+            if (ev.key === "miado_live_presence_state_v1" && ev.newValue) {
+              try {
+                const parsed = JSON.parse(ev.newValue);
+                handleIncomingCrossTabPayload(parsed);
+              } catch (_e) {}
+            }
+          });
+        }
+
         broadcastLivePlaybackState(track = this.currentTrack, isPlaying = this.isPlaying) {
           try {
+            this.setupCrossTabPresenceSync();
             const activeTrack = track || this.currentTrack;
             const uid = (this.user && this.user.uid) || localStorage.getItem("miado_user_uid");
+            const hasValidTrack = Boolean(
+              isPlaying &&
+                activeTrack &&
+                activeTrack.title &&
+                activeTrack.title !== "Silencioso no momento"
+            );
+            const serializedTrackObj = hasValidTrack
+              ? {
+                  id: activeTrack.id,
+                  title: activeTrack.title,
+                  artist: activeTrack.artist || "Artista",
+                  albumTitle: activeTrack.albumTitle || "",
+                  duration: activeTrack.duration || "3:30",
+                  durationSec: activeTrack.durationSec || 180,
+                  coverUrl: activeTrack.coverUrl || ""
+                }
+              : null;
+            const trackLabelStr = hasValidTrack
+              ? `${activeTrack.title} - ${activeTrack.artist || "Artista"}`
+              : "Silencioso no momento";
+
+            const crossTabPayload = {
+              tabId: this._tabInstanceId || "tab_main",
+              uid: uid || "",
+              username: (this.user && this.user.username) || "",
+              isPlaying: hasValidTrack,
+              currentTrack: hasValidTrack ? trackLabelStr : "",
+              trackObj: serializedTrackObj,
+              updatedAt: Date.now()
+            };
+            this.remoteSelfPlayback = crossTabPayload;
+            try {
+              localStorage.setItem(
+                "miado_live_presence_state_v1",
+                JSON.stringify(crossTabPayload)
+              );
+            } catch (_e) {}
+            try {
+              if (this._presenceChannel) {
+                this._presenceChannel.postMessage(crossTabPayload);
+              }
+            } catch (_e) {}
+
             if (
               this.isAuthenticatedAccount() &&
               this.user &&
@@ -2494,24 +2905,12 @@ export function initMiadoClient() {
                   avatarUrl: this.user.avatarUrl,
                   bannerUrl: this.user.bannerUrl || "",
                   favoriteArtists: this.user.favoriteArtists || [],
-                  currentTrack:
-                    isPlaying && activeTrack && activeTrack.title
-                      ? `${activeTrack.title} - ${activeTrack.artist || "Artista"}`
-                      : "Silencioso no momento",
-                  trackObj:
-                    isPlaying && activeTrack && activeTrack.title
-                      ? {
-                          id: activeTrack.id,
-                          title: activeTrack.title,
-                          artist: activeTrack.artist,
-                          albumTitle: activeTrack.albumTitle || "",
-                          duration: activeTrack.duration || "3:30",
-                          durationSec: activeTrack.durationSec || 180,
-                          coverUrl: activeTrack.coverUrl || ""
-                        }
-                      : null,
+                  privacy: this.user.privacy || { presence: "public", activity: "public" },
+                  currentTrack: trackLabelStr,
+                  trackObj: serializedTrackObj,
                   albumId: (this.currentAlbum && this.currentAlbum.id) || "billie_hmhas",
-                  online: Boolean(isPlaying),
+                  online: hasValidTrack,
+                  explicitPlayback: true,
                   isSelf: true
                 })
               }).catch(() => {});
@@ -2523,7 +2922,7 @@ export function initMiadoClient() {
               uid &&
               uid !== "usr_guest"
             ) {
-              if (isPlaying && activeTrack && activeTrack.title) {
+              if (hasValidTrack) {
                 window.miadoFirestore.updatePresence("playing", {
                   title: String(activeTrack.title || ""),
                   artist: String(activeTrack.artist || ""),
@@ -2538,9 +2937,10 @@ export function initMiadoClient() {
         }
 
         startLiveCommunitySyncLoop() {
+          this.setupCrossTabPresenceSync();
           if (this._liveSyncInterval) clearInterval(this._liveSyncInterval);
           this._liveSyncInterval = setInterval(() => {
-            if (document.hidden) return;
+            if (document.hidden && !this.isPlaying) return;
             this.fetchCommunityProfiles();
             if (this.isPlaying && this.currentTrack) {
               this.broadcastLivePlaybackState(this.currentTrack, true);
@@ -3199,10 +3599,16 @@ export function initMiadoClient() {
             }).catch(() => {});
           } catch (e) {}
 
-          // Sincroniza o perfil público do usuário autenticado na comunidade Miau APENAS com o estado real de reprodução
+          // Sincroniza o perfil público do usuário autenticado na comunidade Miau APENAS com o estado real de reprodução (preservando abas ativas)
           try {
-            const isActivelyPlaying = Boolean(this.isPlaying && this.currentTrack && this.currentTrack.title);
-            const curTrack = isActivelyPlaying ? this.currentTrack : null;
+            const unifiedSelf = this.getUnifiedListeningState(this.user);
+            const isLocalTabPlaying = Boolean(
+              this.isPlaying &&
+                this.currentTrack &&
+                this.currentTrack.title &&
+                this.currentTrack.title !== "Silencioso no momento"
+            );
+            const curTrack = unifiedSelf.isPlaying ? unifiedSelf.trackObj : null;
             fetch("/api/profiles", {
               method: "POST",
               headers: getAuthHeaders(),
@@ -3213,10 +3619,12 @@ export function initMiadoClient() {
                 avatarUrl: this.user.avatarUrl,
                 bannerUrl: this.user.bannerUrl,
                 favoriteArtists: this.user.favoriteArtists || [],
+                privacy: this.user.privacy || { presence: "public", activity: "public" },
                 currentTrack: curTrack ? `${curTrack.title} - ${curTrack.artist}` : "",
                 trackObj: curTrack,
                 albumId: (this.currentAlbum && this.currentAlbum.id) || "billie_hmhas",
-                online: isActivelyPlaying,
+                online: Boolean(unifiedSelf.isPlaying),
+                explicitPlayback: isLocalTabPlaying,
                 isSelf: true
               })
             }).catch(() => {});
@@ -9090,7 +9498,17 @@ export function initMiadoClient() {
         // COM SEÇÕES CLICÁVEIS: ARTISTAS SEGUIDOS, SEGUIDORES, SEGUINDO, CURTIDAS E PLAYLISTS
         // ----------------------------------------------------------------------
         renderProfileView(targetUser = null) {
-          const isMe = !targetUser || String(targetUser.username || "").toLowerCase() === String(state.user.username || "").toLowerCase();
+          this.currentProfileTarget = targetUser;
+          state.currentProfileTarget = targetUser;
+          this.currentView = "profile";
+          state.currentView = "profile";
+
+          const myHandle = String(state.user?.username || "").toLowerCase().trim();
+          const myUid = String(state.user?.uid || localStorage.getItem("miado_user_uid") || "").trim();
+          const targetHandle = String(targetUser?.username || "").toLowerCase().trim();
+          const targetUid = String(targetUser?.uid || "").trim();
+          const isMe = !targetUser || (targetHandle && targetHandle === myHandle) || (myUid && targetUid && targetUid === myUid);
+
           let activeUser = isMe ? state.user : targetUser;
           if (!isMe && activeUser && activeUser.username) {
             const targetKey = String(activeUser.username).toLowerCase().trim();
@@ -9108,36 +9526,9 @@ export function initMiadoClient() {
           }
           const userAvatar = (isMe ? state.user.avatarUrl : (activeUser.avatar || activeUser.avatarUrl)) || CAT_AVATAR_PRESETS[0].url;
           const bannerImg = activeUser.bannerUrl || (isMe ? (state.user.bannerUrl || INITIAL_ALBUMS[0].coverUrl) : INITIAL_ALBUMS[1].coverUrl);
-          const isUserOnline = isMe ? true : Boolean(activeUser.online);
-
-          let currentTrack = null;
-          if (isMe) {
-            currentTrack = state.currentTrack || {
-              title: "Silencioso no momento",
-              artist: "Nenhuma música tocando agora",
-              coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
-            };
-          } else if (isUserOnline && activeUser.trackObj && activeUser.trackObj.title && activeUser.trackObj.title !== "Silencioso no momento") {
-            currentTrack = activeUser.trackObj;
-          } else if (
-            isUserOnline &&
-            activeUser.currentTrack &&
-            activeUser.currentTrack !== "Silencioso no momento" &&
-            activeUser.currentTrack !== "Ouvindo no Miado" &&
-            activeUser.currentTrack.includes(" - ")
-          ) {
-            const parts = activeUser.currentTrack.split(" - ");
-            currentTrack = {
-              title: parts[0].trim(),
-              artist: parts.slice(1).join(" - ").trim() || "Artista"
-            };
-          } else {
-            currentTrack = {
-              title: "Silencioso no momento",
-              artist: "Nenhuma música tocando agora",
-              coverUrl: createSolidAlbumSvg("Miado", "Silencioso")
-            };
-          }
+          const unifiedListening = state.getUnifiedListeningState(isMe ? state.user : activeUser);
+          const isUserOnline = isMe ? true : Boolean(activeUser.online || unifiedListening.isPlaying);
+          const currentTrack = unifiedListening.trackObj;
           const currentTrackCover =
             currentTrack.title === "Silencioso no momento"
               ? createSolidAlbumSvg("Miado", "Silencioso")
@@ -9254,7 +9645,7 @@ export function initMiadoClient() {
                         <div style="font-size:0.85rem; font-weight:700; color:#ffffff; margin-top:1px;" class="text-truncate">${currentTrack.title}</div>
                         <div style="font-size:0.74rem; color:var(--text-secondary);" class="text-truncate">${currentTrack.artist}</div>
                       </div>
-                      <button class="btn-main-play" id="prof-btn-play-status" style="width:34px; height:34px; flex:0 0 auto;" title="Tocar música e abrir álbum">
+                      <button class="btn-main-play" id="prof-btn-play-status" style="width:34px; height:34px; flex:0 0 auto; display:${currentTrack.title !== 'Silencioso no momento' ? 'flex' : 'none'};" title="Tocar música e abrir álbum">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
                       </button>
                     </div>
@@ -11542,6 +11933,9 @@ export function initMiadoClient() {
           const myUid = String(
             (state.user && state.user.uid) || localStorage.getItem("miado_user_uid") || ""
           ).trim();
+          const activeSocialTab = this._activeSocialTab || "all";
+          const selfListening = state.getUnifiedListeningState(state.user);
+
           const communityList = (state.communityProfiles || []).filter(p => {
             if (!p || !p.username) return false;
             if (!qLower) return true;
@@ -11552,34 +11946,160 @@ export function initMiadoClient() {
             );
           });
 
+          const showCommunity = activeSocialTab === "all" || activeSocialTab === "community";
+          const showFriends = activeSocialTab === "all" || activeSocialTab === "friends";
+          const showArtists = activeSocialTab === "all" || activeSocialTab === "artists";
+          const showPosts = activeSocialTab === "all" || activeSocialTab === "posts";
+
           this.scrollContainer.innerHTML = `
             <div style="max-width:960px; margin:0 auto;">
-              <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:24px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
                 <div>
-                  <h1 class="greeting-title">Comunidade & Feed Miau</h1>
-                  <p class="greeting-sub">Zero perfis falsos · Encontre ou cadastre perfis reais dos seus amigos, siga artistas e compartilhe músicas.</p>
+                  <h1 class="greeting-title">Feed Social Miau</h1>
+                  <p class="greeting-sub">Status de escuta sincronizado em tempo real · Acompanhe amigos, comunidade e compartilhe músicas.</p>
                 </div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                  <button class="album-action-btn" id="btn-social-share-now" style="flex:0 0 auto; height:42px; padding:0 16px;">
+                  <button class="album-action-btn" id="btn-social-share-now" style="flex:0 0 auto; height:40px; padding:0 16px;">
                     Publicar Música Atual
                   </button>
-                  <button class="album-action-btn" id="btn-social-edit-cat" style="flex:0 0 auto; height:42px; padding:0 16px;">
-                    Editar Meu Perfil (${state.user.username})
+                  <button class="album-action-btn" id="btn-social-edit-cat" style="flex:0 0 auto; height:40px; padding:0 16px;">
+                    Meu Perfil (${escapeHtml(state.user.username)})
                   </button>
-                  <button class="album-action-btn primary" id="btn-social-open-collab" style="flex:0 0 auto; height:42px; padding:0 18px;">
+                  <button class="album-action-btn primary" id="btn-social-open-collab" style="flex:0 0 auto; height:40px; padding:0 18px;">
                     + Playlist Colaborativa
                   </button>
                 </div>
               </div>
 
-              <!-- Seção 0: BUSCAR PERFIS REAIS & CADASTRAR AMIGOS -->
-              <div class="showcase-section">
+              <!-- BARRA UNIFICADA DO SEU STATUS EM TEMPO REAL + ABAS FLUIDAS -->
+              <div class="album-card" style="padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; cursor:default;">
+                <div style="display:flex; align-items:center; gap:12px; min-width:240px; flex:1;">
+                  <img src="${escapeHtml(safeImgUrl(state.user.avatarUrl))}" referrerpolicy="no-referrer" style="width:44px; height:44px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover);" alt="${escapeHtml(state.user.name)}" onerror="window.handleCatAvatarError(this)" />
+                  <div style="min-width:0; flex:1;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                      <span style="font-size:0.68rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent-hover);">Seu Status Sincronizado</span>
+                      ${selfListening.isPlaying ? `
+                        <div class="sound-wave-badge" style="height:12px; padding:1px 3px;">
+                          <span class="sw-bar"></span>
+                          <span class="sw-bar"></span>
+                          <span class="sw-bar"></span>
+                        </div>
+                      ` : ""}
+                    </div>
+                    <div style="font-size:0.88rem; font-weight:700; color:#ffffff; margin-top:2px;" class="text-truncate">
+                      ${escapeHtml(selfListening.isPlaying ? selfListening.trackLabel : "Silencioso no momento")}
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;" role="tablist" aria-label="Filtro do Feed Social Miau">
+                  <button type="button" class="category-pill ${activeSocialTab === 'all' ? 'active' : ''}" data-social-subtab="all" style="height:34px; padding:0 14px; font-size:0.78rem;">
+                    Visão Geral
+                  </button>
+                  <button type="button" class="category-pill ${activeSocialTab === 'friends' ? 'active' : ''}" data-social-subtab="friends" style="height:34px; padding:0 14px; font-size:0.78rem;">
+                    Amigos (${state.friends.length})
+                  </button>
+                  <button type="button" class="category-pill ${activeSocialTab === 'community' ? 'active' : ''}" data-social-subtab="community" style="height:34px; padding:0 14px; font-size:0.78rem;">
+                    Comunidade (${communityList.length})
+                  </button>
+                  <button type="button" class="category-pill ${activeSocialTab === 'artists' ? 'active' : ''}" data-social-subtab="artists" style="height:34px; padding:0 14px; font-size:0.78rem;">
+                    Artistas (${state.followedArtists.length})
+                  </button>
+                  <button type="button" class="category-pill ${activeSocialTab === 'posts' ? 'active' : ''}" data-social-subtab="posts" style="height:34px; padding:0 14px; font-size:0.78rem;">
+                    Publicações (${state.feedPosts.length})
+                  </button>
+                </div>
+              </div>
+
+              <!-- Seção 1: Status dos Seus Amigos Seguidos -->
+              <div class="showcase-section" style="display:${showFriends ? 'block' : 'none'};">
+                <div class="section-head">
+                  <div>
+                    <h2 class="section-title">Amigos Seguidos (${state.friends.length})</h2>
+                    <p style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">
+                      Status de escuta sincronizado em tempo real respeitando as configurações de privacidade.
+                    </p>
+                  </div>
+                </div>
+                ${state.friends.length === 0 ? `
+                  <div class="album-editorial-card" style="text-align:center; padding:26px;">
+                    <div style="font-weight:800; color:#ffffff; font-size:0.98rem;">Você ainda não segue nenhum amigo</div>
+                    <div style="font-size:0.83rem; color:var(--text-secondary); margin-top:6px;">
+                      Use a seção <strong>Comunidade</strong> abaixo para seguir perfis reais e ver o que estão ouvindo em tempo real.
+                    </div>
+                  </div>
+                ` : `
+                  <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); gap:14px;">
+                    ${state.friends.map((f, fIdx) => {
+                      const unifiedFriend = state.getUnifiedListeningState(f);
+                      const isPlayingNow = unifiedFriend.isPlaying;
+                      const liveFriendTrack = unifiedFriend.trackLabel;
+                      const friendTrackCover = isPlayingNow
+                        ? ensureTrackCoverUrl(unifiedFriend.trackObj, unifiedFriend.trackObj.title, unifiedFriend.trackObj.artist)
+                        : "";
+                      return `
+                      <div class="album-card" style="padding:16px; cursor:default;">
+                        <div data-open-friend-prof="${fIdx}" style="display:flex; align-items:center; gap:12px; margin-bottom:12px; cursor:pointer;" title="Ver perfil de ${escapeHtml(f.name)}">
+                          <img src="${escapeHtml(safeImgUrl(f.avatar || f.avatarUrl))}" referrerpolicy="no-referrer" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover); cursor:pointer;" alt="${escapeHtml(f.name)}" onerror="window.handleCatAvatarError(this)" />
+                          <div style="flex:1; min-width:0;">
+                            <div style="display:flex; align-items:center; gap:6px;">
+                              <div style="font-weight:700; font-size:0.95rem; color:#fff;" class="text-truncate">${escapeHtml(f.name)}</div>
+                              ${isPlayingNow ? `<span class="friend-online-badge">OUVINDO</span>` : f.online ? `<span class="friend-online-badge">ON</span>` : ""}
+                            </div>
+                            <div style="font-size:0.78rem; color:var(--accent-hover);">${escapeHtml(f.username)}</div>
+                          </div>
+                          <button type="button" class="track-icon-btn" data-unfollow-friend-idx="${fIdx}" title="Deixar de seguir ${escapeHtml(f.username)}" style="width:28px; height:28px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          </button>
+                        </div>
+                        <div data-open-friend-track-idx="${fIdx}" style="background:rgba(24,18,38,0.78); border:1px solid rgba(192,132,252,0.22); padding:10px 12px; border-radius:12px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:${isPlayingNow ? 'pointer' : 'default'};" title="${isPlayingNow ? 'Clique para tocar e abrir o álbum desta música' : escapeHtml(liveFriendTrack)}">
+                          ${isPlayingNow ? `
+                            <div style="position:relative; width:40px; height:40px; border-radius:8px; overflow:hidden; flex-shrink:0;">
+                              <img src="${escapeHtml(friendTrackCover)}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;" alt="Capa" onerror="window.handleImgError(this, '${escapeHtml(unifiedFriend.trackObj.title)}', '${escapeHtml(unifiedFriend.trackObj.artist)}')" />
+                            </div>
+                          ` : ""}
+                          <div style="overflow:hidden; flex:1;">
+                            <div style="display:flex; align-items:center; gap:6px;">
+                              <div style="font-size:0.68rem; color:var(--accent-hover); text-transform:uppercase; font-weight:700;">${isPlayingNow ? "Ouvindo Agora" : "Status"}</div>
+                              ${isPlayingNow ? `
+                                <div class="sound-wave-badge" style="height:12px; padding:1px 3px;">
+                                  <span class="sw-bar"></span>
+                                  <span class="sw-bar"></span>
+                                  <span class="sw-bar"></span>
+                                </div>
+                              ` : ""}
+                            </div>
+                            <div style="font-size:0.85rem; font-weight:600; color:#fff; margin-top:2px; text-decoration:${isPlayingNow ? 'underline' : 'none'};" class="text-truncate">${escapeHtml(liveFriendTrack)}</div>
+                          </div>
+                          <button class="track-icon-btn ${f.likedByMe ? 'liked' : ''}" data-like-friend-idx="${fIdx}" title="Curtir atividade do amigo">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="${f.likedByMe ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                          </button>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                          ${isPlayingNow ? `
+                            <button class="album-action-btn primary" style="flex:1; height:36px; font-size:0.82rem;" data-play-friend-idx="${fIdx}">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+                              Ouvir Junto
+                            </button>
+                          ` : ""}
+                          <button class="album-action-btn" style="flex:1; height:36px; font-size:0.82rem;" data-open-friend-prof-btn="${fIdx}">
+                            Ver Perfil
+                          </button>
+                        </div>
+                      </div>
+                    `;
+                    }).join("")}
+                  </div>
+                `}
+              </div>
+
+              <!-- Seção 0: BUSCAR PERFIS REAIS & COMUNIDADE -->
+              <div class="showcase-section" style="display:${showCommunity ? 'block' : 'none'};">
                 <div class="album-card" style="padding:20px; cursor:default;">
                   <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
                     <div>
-                      <h2 class="section-title" style="font-size:1.15rem;">Encontrar Perfis & Seguir Amigos</h2>
+                      <h2 class="section-title" style="font-size:1.15rem;">Encontrar Perfis da Comunidade (${communityList.length})</h2>
                       <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:2px;">
-                        Busque pelo @username ou nome de qualquer perfil real da comunidade no Miado para seguir seus amigos.
+                        Clique em qualquer perfil para abrir ou siga seus amigos para acompanhar o que estão ouvindo.
                       </p>
                     </div>
                   </div>
@@ -11606,9 +12126,8 @@ export function initMiadoClient() {
                       );
                       const isFollowing = state.isProfileFollowed(prof.uid || prof.username);
                       const profAvatar = safeImgUrl(prof.avatar || prof.avatarUrl || CAT_AVATAR_PRESETS[0].url);
-                      const liveTrackLabel = prof.online && prof.currentTrack && prof.currentTrack.trim() !== "" && prof.currentTrack !== "Ouvindo no Miado"
-                        ? prof.currentTrack
-                        : "Silencioso no momento";
+                      const unifiedProf = state.getUnifiedListeningState(isMe ? state.user : prof);
+                      const liveTrackLabel = unifiedProf.trackLabel;
                       return `
                         <div class="album-card" data-open-community-prof="${pIdx}" style="padding:14px; cursor:pointer; background-color:var(--bg-base);">
                           <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
@@ -11616,7 +12135,7 @@ export function initMiadoClient() {
                             <div style="flex:1; min-width:0;">
                               <div style="display:flex; align-items:center; gap:6px;">
                                 <div style="font-weight:800; font-size:0.92rem; color:#fff;" class="text-truncate">${escapeHtml(prof.name)}</div>
-                                ${isMe ? `<span class="friend-online-badge">VOCÊ</span>` : prof.online ? `<span class="friend-online-badge">ON</span>` : ""}
+                                ${isMe ? `<span class="friend-online-badge">VOCÊ</span>` : unifiedProf.isPlaying ? `<span class="friend-online-badge">OUVINDO</span>` : prof.online ? `<span class="friend-online-badge">ON</span>` : ""}
                               </div>
                               <div style="font-size:0.78rem; color:var(--accent-hover); font-weight:700;">${escapeHtml(prof.username)}</div>
                             </div>
@@ -11624,10 +12143,9 @@ export function initMiadoClient() {
                           <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px; min-height:20px;" class="text-truncate">
                             ${escapeHtml(prof.bio || "Perfil oficial no Miado.")}
                           </div>
-                          <div data-community-track-prof="${pIdx}" style="display:flex; align-items:center; gap:8px; font-size:0.73rem; color:var(--accent-hover); margin-bottom:10px; cursor:pointer; text-decoration:${liveTrackLabel !== 'Silencioso no momento' ? 'underline' : 'none'};" class="text-truncate" title="Clique para tocar e ver o álbum desta música">
-                            ${prof.online && liveTrackLabel !== 'Silencioso no momento' ? `
+                          <div data-community-track-prof="${pIdx}" style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:${unifiedProf.isPlaying ? '#e9d5ff' : 'var(--text-secondary)'}; margin-bottom:12px; cursor:${unifiedProf.isPlaying ? 'pointer' : 'default'}; text-decoration:${unifiedProf.isPlaying ? 'underline' : 'none'};" class="text-truncate" title="${unifiedProf.isPlaying ? 'Clique para tocar e ver o álbum desta música' : escapeHtml(liveTrackLabel)}">
+                            ${unifiedProf.isPlaying ? `
                               <div class="sound-wave-badge" title="Tocando agora">
-                                <span class="sw-bar"></span>
                                 <span class="sw-bar"></span>
                                 <span class="sw-bar"></span>
                                 <span class="sw-bar"></span>
@@ -11638,12 +12156,9 @@ export function initMiadoClient() {
                           <div style="display:flex; gap:8px;">
                             ${isMe ? `
                               <button type="button" class="album-action-btn" id="btn-open-my-prof-card" style="flex:1; height:34px; font-size:0.78rem;">
-                                Editar Meu Perfil
+                                Meu Perfil
                               </button>
                             ` : `
-                              <button type="button" class="album-action-btn" data-view-community-prof="${pIdx}" style="flex:0 0 auto; height:34px; padding:0 12px; font-size:0.76rem;">
-                                Ver Perfil
-                              </button>
                               <button type="button" class="album-action-btn ${isFollowing ? '' : 'primary'}" data-toggle-follow-prof="${pIdx}" style="flex:1; height:34px; font-size:0.78rem;">
                                 ${isFollowing ? `${ICON_CHECK_SVG}Seguindo` : "+ Seguir Amigo"}
                               </button>
@@ -11656,97 +12171,8 @@ export function initMiadoClient() {
                 </div>
               </div>
 
-              <!-- Seção 1: Status dos Seus Amigos Seguidos -->
-              <div class="showcase-section">
-                <div class="section-head">
-                  <div>
-                    <h2 class="section-title">Amigos que Você Segue (${state.friends.length})</h2>
-                    <p style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">
-                      Clique no avatar ou nome do amigo para abrir o perfil dele, ou clique na música para ir direto ao álbum e ouvir.
-                    </p>
-                  </div>
-                </div>
-                ${state.friends.length === 0 ? `
-                  <div class="album-editorial-card" style="text-align:center; padding:28px;">
-                    <div style="font-weight:800; color:#ffffff; font-size:1rem;">Sua lista de amigos está zerada e pronta para você!</div>
-                    <div style="font-size:0.84rem; color:var(--text-secondary); margin-top:6px;">
-                      Clique em <strong>"+ Seguir Amigo"</strong> nos perfis da comunidade acima para acompanhar seus amigos aqui.
-                    </div>
-                  </div>
-                ` : `
-                  <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(265px, 1fr)); gap:14px;">
-                    ${state.friends.map((f, fIdx) => {
-                      const isPlayingNow = f.online && f.currentTrack && f.currentTrack !== "Ouvindo no Miado";
-                      const liveFriendTrack = isPlayingNow
-                        ? f.currentTrack
-                        : "Silencioso no momento";
-                      const friendTrackCover = isPlayingNow
-                        ? ensureTrackCoverUrl(null, f.currentTrack, f.name)
-                        : "";
-                      return `
-                      <div class="album-card" style="padding:16px; cursor:default;">
-                        <div data-open-friend-prof="${fIdx}" style="display:flex; align-items:center; gap:12px; margin-bottom:12px; cursor:pointer;" title="Ver perfil de ${escapeHtml(f.name)}">
-                          <img src="${escapeHtml(safeImgUrl(f.avatar || f.avatarUrl))}" referrerpolicy="no-referrer" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover); cursor:pointer;" alt="${escapeHtml(f.name)}" onerror="window.handleCatAvatarError(this)" />
-                          <div style="flex:1; min-width:0;">
-                            <div style="display:flex; align-items:center; gap:6px;">
-                              <div style="font-weight:700; font-size:0.95rem; color:#fff;" class="text-truncate">${escapeHtml(f.name)}</div>
-                              ${f.online ? `<span class="friend-online-badge">ON</span>` : ""}
-                            </div>
-                            <div style="font-size:0.78rem; color:var(--accent-hover);">${escapeHtml(f.username)}</div>
-                          </div>
-                          <button type="button" class="track-icon-btn" data-unfollow-friend-idx="${fIdx}" title="Deixar de seguir ${escapeHtml(f.username)}" style="width:28px; height:28px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                          </button>
-                        </div>
-                        <div data-open-friend-track-idx="${fIdx}" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.09); padding:10px 12px; border-radius:12px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:${isPlayingNow ? 'pointer' : 'default'};" title="Clique para tocar e abrir o álbum desta música">
-                          ${isPlayingNow ? `
-                            <div style="position:relative; width:40px; height:40px; border-radius:8px; overflow:hidden; flex-shrink:0;">
-                              <img src="${escapeHtml(friendTrackCover)}" referrerpolicy="no-referrer" style="width:100%; height:100%; object-fit:cover;" alt="Capa" onerror="window.handleImgError(this, '${escapeHtml(liveFriendTrack)}', '')" />
-                              <div style="position:absolute; inset:0; background:rgba(0,0,0,0.35); display:flex; align-items:center; justify-content:center;">
-                                <div class="sound-wave-badge" style="padding:1px 3px; height:14px; background:rgba(0,0,0,0.5);">
-                                  <span class="sw-bar"></span>
-                                  <span class="sw-bar"></span>
-                                  <span class="sw-bar"></span>
-                                  <span class="sw-bar"></span>
-                                </div>
-                              </div>
-                            </div>
-                          ` : ""}
-                          <div style="overflow:hidden; flex:1;">
-                            <div style="display:flex; align-items:center; gap:6px;">
-                              <div style="font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Ouvindo Agora</div>
-                              ${isPlayingNow ? `
-                                <div class="sound-wave-badge" style="height:12px; padding:1px 3px;">
-                                  <span class="sw-bar"></span>
-                                  <span class="sw-bar"></span>
-                                  <span class="sw-bar"></span>
-                                </div>
-                              ` : ""}
-                            </div>
-                            <div style="font-size:0.85rem; font-weight:600; color:#fff; margin-top:2px; text-decoration:${isPlayingNow ? 'underline' : 'none'};" class="text-truncate">${escapeHtml(liveFriendTrack)}</div>
-                          </div>
-                          <button class="track-icon-btn ${f.likedByMe ? 'liked' : ''}" data-like-friend-idx="${fIdx}" title="Curtir atividade do amigo">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="${f.likedByMe ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                          </button>
-                        </div>
-                        <div style="display:flex; gap:8px;">
-                          <button class="album-action-btn primary" style="flex:1; height:36px; font-size:0.82rem;" data-play-friend-idx="${fIdx}">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-                            Dar Play
-                          </button>
-                          <button class="album-action-btn" style="flex:1; height:36px; font-size:0.82rem;" data-open-friend-prof-btn="${fIdx}">
-                            Ver Perfil
-                          </button>
-                        </div>
-                      </div>
-                    `;
-                    }).join("")}
-                  </div>
-                `}
-              </div>
-
               <!-- Seção 1.5: Artistas Seguidos por Você -->
-              <div class="showcase-section">
+              <div class="showcase-section" style="display:${showArtists ? 'block' : 'none'};">
                 <div class="section-head">
                   <div>
                     <h2 class="section-title">Artistas que Você Segue (${state.followedArtists.length})</h2>
@@ -11788,7 +12214,7 @@ export function initMiadoClient() {
               </div>
 
               <!-- Seção 2: Timeline de Publicações Escolhidas pelo Usuário (Feed Miau) -->
-              <div class="showcase-section">
+              <div class="showcase-section" style="display:${showPosts ? 'block' : 'none'};">
                 <div class="section-head">
                   <div>
                     <h2 class="section-title">Suas Publicações & Timeline (${state.feedPosts.length})</h2>
@@ -11802,7 +12228,7 @@ export function initMiadoClient() {
                 <div class="album-card" style="padding:16px 18px; margin-bottom:14px; cursor:default;">
                   <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
                     <img src="${escapeHtml(safeImgUrl(state.user.avatarUrl))}" referrerpolicy="no-referrer" style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);" alt="${escapeHtml(state.user.name)}" onerror="window.handleCatAvatarError(this)" />
-                    <input type="text" id="social-custom-post-comment" placeholder="${state.currentTrack ? `Escreva uma legenda sobre "${escapeHtml(state.currentTrack.title)}" (opcional)...` : 'Toque uma música e escreva uma legenda para publicar no Feed Miau...'}" style="flex:1; min-width:220px;" />
+                    <input type="text" id="social-custom-post-comment" placeholder="${selfListening.isPlaying ? `Escreva uma legenda sobre "${escapeHtml(selfListening.trackObj.title)}" (opcional)...` : 'Toque uma música e escreva uma legenda para publicar no Feed Miau...'}" style="flex:1; min-width:220px;" />
                     <button type="button" class="album-action-btn primary" id="btn-social-publish-chosen" style="height:40px; padding:0 18px; flex:0 0 auto;">
                       Publicar no Feed
                     </button>
@@ -11854,9 +12280,21 @@ export function initMiadoClient() {
             </div>
           `;
 
+          this.scrollContainer.querySelectorAll("[data-social-subtab]").forEach(btn => {
+            btn.addEventListener("click", () => {
+              this._activeSocialTab = btn.dataset.socialSubtab || "all";
+              const prevScroll = this.scrollContainer ? this.scrollContainer.scrollTop : 0;
+              this.renderSocialView(searchQuery);
+              if (this.scrollContainer) this.scrollContainer.scrollTop = prevScroll;
+            });
+          });
+
           const publishCurrentTrackToFeed = () => {
-            const targetTrack = state.currentTrack || (state.recentHistory && state.recentHistory[0]);
-            if (!targetTrack) {
+            const targetTrack =
+              (selfListening.isPlaying && selfListening.trackObj) ||
+              state.currentTrack ||
+              (state.recentHistory && state.recentHistory[0]);
+            if (!targetTrack || targetTrack.title === "Silencioso no momento") {
               showToast("Toque uma música primeiro para publicá-la no Feed Miau!");
               return;
             }
@@ -11926,7 +12364,6 @@ export function initMiadoClient() {
             card.addEventListener("click", (e) => {
               if (
                 e.target.closest("[data-toggle-follow-prof]") ||
-                e.target.closest("[data-view-community-prof]") ||
                 e.target.closest("[data-community-track-prof]") ||
                 e.target.closest("#btn-open-my-prof-card")
               ) {
@@ -11945,16 +12382,6 @@ export function initMiadoClient() {
               const prof = communityList[parseInt(trackEl.dataset.communityTrackProf)];
               if (!prof) return;
               await this.playOrOpenFriendTrack(prof, true, true);
-            });
-          });
-
-          this.scrollContainer.querySelectorAll("[data-view-community-prof]").forEach(btn => {
-            btn.addEventListener("click", (e) => {
-              e.stopPropagation();
-              const prof = communityList[parseInt(btn.dataset.viewCommunityProf)];
-              if (!prof) return;
-              this.setActiveNav("profile");
-              this.navigateTo("profile", true, { targetUser: prof });
             });
           });
 
@@ -12926,78 +13353,88 @@ export function initMiadoClient() {
           const btnFriends = document.getElementById("tab-friends-activity");
           const btnQueue = document.getElementById("tab-queue-list");
 
-          btnFriends.addEventListener("click", () => {
-            this.activeRightTab = "friends";
-            btnFriends.classList.add("active");
-            btnQueue.classList.remove("active");
-            this.renderRightSidebarBodyOnly();
-          });
+          if (btnFriends && !btnFriends.dataset.boundRightTab) {
+            btnFriends.dataset.boundRightTab = "1";
+            btnFriends.addEventListener("click", () => {
+              if (this.activeRightTab === "friends") return;
+              this.activeRightTab = "friends";
+              btnFriends.classList.add("active");
+              if (btnQueue) btnQueue.classList.remove("active");
+              this.renderRightSidebarBodyOnly();
+            });
+          }
 
-          btnQueue.addEventListener("click", () => {
-            this.activeRightTab = "queue";
-            btnQueue.classList.add("active");
-            btnFriends.classList.remove("active");
-            this.renderRightSidebarBodyOnly();
-          });
+          if (btnQueue && !btnQueue.dataset.boundRightTab) {
+            btnQueue.dataset.boundRightTab = "1";
+            btnQueue.addEventListener("click", () => {
+              if (this.activeRightTab === "queue") return;
+              this.activeRightTab = "queue";
+              btnQueue.classList.add("active");
+              if (btnFriends) btnFriends.classList.remove("active");
+              this.renderRightSidebarBodyOnly();
+            });
+          }
 
           this.renderRightSidebarBodyOnly();
         }
 
         renderRightSidebarBodyOnly() {
+          const container = document.getElementById("right-sidebar-body");
+          const prevScroll = container ? container.scrollTop : 0;
           if (this.activeRightTab === "queue") {
             this.renderQueue();
           } else {
             this.renderFriendsActivity();
           }
+          if (container) container.scrollTop = prevScroll;
         }
 
         renderFriendsActivity() {
           const container = document.getElementById("right-sidebar-body");
           if (!container) return;
 
-          const myHandle = String((state.user && (state.user.username || state.user.handle)) || "").toLowerCase().trim();
-          const myUid = String((state.user && state.user.uid) || localStorage.getItem("miado_user_uid") || "").trim();
-
-          const communityListeners = (state.communityProfiles || []).filter(p => {
-            if (!p || !p.username || MiadoState.isLegacyFakeHandle(p.username)) return false;
-            const h = String(p.username).toLowerCase().trim();
-            if (h === "@visitante" || h === "@novo_usuario" || h === "visitante" || h === "novo_usuario") return false;
-            const isMe = Boolean(
-              (myUid && p.uid && String(p.uid).trim() === myUid) ||
-              (!myUid && myHandle && h === myHandle)
-            );
-            return !isMe;
-          });
-
-          // Ordena: ouvintes ativos com música tocando no topo, seguidos por perfis online
-          communityListeners.sort((a, b) => {
-            const aTrack = a.online && a.currentTrack && a.currentTrack !== "Silencioso no momento" && a.currentTrack !== "Ouvindo no Miado";
-            const bTrack = b.online && b.currentTrack && b.currentTrack !== "Silencioso no momento" && b.currentTrack !== "Ouvindo no Miado";
-            if (aTrack && !bTrack) return -1;
-            if (!aTrack && bTrack) return 1;
-            if (a.online && !b.online) return -1;
-            if (!a.online && b.online) return 1;
-            return 0;
-          });
+          const selfListening = state.getUnifiedListeningState(state.user);
 
           container.innerHTML = `
+            <!-- Seu Status Sincronizado -->
+            <div class="friend-activity-card" id="sidebar-self-listening-card" style="padding:10px 12px; margin-bottom:14px; cursor:pointer;" title="Ir para Meu Perfil">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <img class="friend-avatar" src="${escapeHtml(safeImgUrl(state.user.avatarUrl))}" referrerpolicy="no-referrer" alt="${escapeHtml(state.user.name)}" style="width:36px; height:36px;" onerror="window.handleCatAvatarError(this)" />
+                <div style="flex:1; min-width:0;">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="font-size:0.78rem; font-weight:800; color:#ffffff;" class="text-truncate">${escapeHtml(state.user.name)}</span>
+                    <span class="friend-online-badge">VOCÊ</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:5px; margin-top:2px;">
+                    ${selfListening.isPlaying ? `
+                      <div class="sound-wave-badge" style="height:10px; padding:1px 2px;">
+                        <span class="sw-bar"></span>
+                        <span class="sw-bar"></span>
+                        <span class="sw-bar"></span>
+                      </div>
+                    ` : `<span style="font-size:0.7rem;">🎧</span>`}
+                    <span style="font-size:0.73rem; color:${selfListening.isPlaying ? '#e9d5ff' : 'var(--text-secondary)'}; font-weight:${selfListening.isPlaying ? '700' : '500'};" class="text-truncate">${escapeHtml(selfListening.isPlaying ? selfListening.trackLabel : "Silencioso no momento")}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
               <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:700;">Amigos Seguidos (${state.friends.length})</div>
-              <button type="button" class="btn-see-all" id="btn-sidebar-find-friends" style="font-size:0.7rem;">+ Buscar Amigos</button>
+              ${state.friends.length > 0 ? `<button type="button" class="btn-see-all" id="btn-sidebar-find-friends" style="font-size:0.7rem;">+ Buscar Amigos</button>` : ""}
             </div>
             ${state.friends.length === 0 ? `
               <div class="friend-activity-card" style="padding:12px; text-align:center;">
                 <div style="font-size:0.8rem; font-weight:700; color:#ffffff;">Nenhum amigo seguido ainda</div>
-                <div style="font-size:0.73rem; color:var(--text-secondary); margin-top:4px;">Siga os ouvintes na comunidade abaixo para vê-los aqui com prioridade.</div>
+                <div style="font-size:0.73rem; color:var(--text-secondary); margin-top:4px;">Siga perfis no Feed Social Miau para ver o que seus amigos estão ouvindo em tempo real.</div>
                 <button type="button" class="album-action-btn primary" id="btn-sidebar-open-social" style="width:100%; height:32px; font-size:0.75rem; margin-top:10px;">
-                  Feed da Comunidade
+                  Explorar Feed Miau
                 </button>
               </div>
             ` : state.friends.map((f, idx) => {
-              const liveSidebarTrack = f.online && f.currentTrack && f.currentTrack !== "Ouvindo no Miado"
-                ? f.currentTrack
-                : "Silencioso no momento";
-              const isPlaying = f.online && liveSidebarTrack !== "Silencioso no momento";
+              const unifiedFriend = state.getUnifiedListeningState(f);
+              const isPlaying = unifiedFriend.isPlaying;
+              const liveSidebarTrack = unifiedFriend.trackLabel;
               return `
               <div class="friend-activity-card">
                 <div class="friend-top-row" data-sidebar-open-friend="${idx}" style="cursor:pointer;" title="Ver perfil de ${escapeHtml(f.name)}">
@@ -13005,12 +13442,12 @@ export function initMiadoClient() {
                   <div class="friend-info">
                     <div class="friend-name-row">
                       <span class="friend-name">${escapeHtml(f.name)}</span>
-                      ${f.online ? `<span class="friend-online-badge">ON</span>` : ""}
+                      ${isPlaying ? `<span class="friend-online-badge">OUVINDO</span>` : f.online ? `<span class="friend-online-badge">ON</span>` : ""}
                     </div>
                     <div class="friend-handle">${escapeHtml(f.username)}</div>
                   </div>
                 </div>
-                <div class="friend-track-pill" data-sidebar-open-friend-track="${idx}" style="cursor:${isPlaying ? 'pointer' : 'default'};" title="${isPlaying ? 'Clique para ouvir junto esta música' : ''}">
+                <div class="friend-track-pill" data-sidebar-open-friend-track="${idx}" style="cursor:${isPlaying ? 'pointer' : 'default'};" title="${isPlaying ? 'Clique para ouvir junto esta música' : escapeHtml(liveSidebarTrack)}">
                   <div style="display:flex; align-items:center; gap:6px; flex:1; min-width:0;">
                     ${isPlaying ? `
                       <div class="sound-wave-badge" title="Tocando agora" style="margin-right:2px;">
@@ -13023,9 +13460,11 @@ export function initMiadoClient() {
                     <div class="friend-status" title="${escapeHtml(liveSidebarTrack)}" style="text-decoration:${isPlaying ? 'underline' : 'none'};">${escapeHtml(liveSidebarTrack)}</div>
                   </div>
                   <div style="display:flex; align-items:center; gap:4px;">
-                    <button class="track-icon-btn" style="width:28px; height:28px; color:var(--accent-hover);" data-sidebar-play-friend="${idx}" title="Tocar essa música">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-                    </button>
+                    ${isPlaying ? `
+                      <button class="track-icon-btn" style="width:28px; height:28px; color:var(--accent-hover);" data-sidebar-play-friend="${idx}" title="Tocar essa música">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+                      </button>
+                    ` : ""}
                     <button class="track-icon-btn ${f.likedByMe ? 'liked' : ''}" style="width:28px; height:28px;" data-sidebar-like-friend="${idx}" title="Curtir atividade">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="${f.likedByMe ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
                     </button>
@@ -13033,63 +13472,6 @@ export function initMiadoClient() {
                 </div>
               </div>
             `;
-            }).join("")}
-
-            <!-- Ouvindo Agora na Comunidade (Ao Vivo / Galerinha do Miado) -->
-            <div style="display:flex; align-items:center; justify-content:space-between; margin:20px 0 10px;">
-              <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:700;">
-                Ouvindo na Comunidade (${communityListeners.length})
-              </div>
-              <span style="font-size:0.7rem; color:#1ed760; font-weight:700; display:flex; align-items:center; gap:4px;">
-                <span style="width:7px; height:7px; border-radius:50%; background:#1ed760; display:inline-block; box-shadow:0 0 6px #1ed760;"></span> Ao Vivo
-              </span>
-            </div>
-            ${communityListeners.length === 0 ? `
-              <div class="friend-activity-card" style="padding:12px; text-align:center;">
-                <div style="font-size:0.8rem; font-weight:700; color:#ffffff;">Aguardando Ouvintes</div>
-                <div style="font-size:0.73rem; color:var(--text-secondary); margin-top:4px;">Conforme outros usuários conectam e dão play, suas músicas aparecem aqui ao vivo!</div>
-              </div>
-            ` : communityListeners.slice(0, 10).map((p, cIdx) => {
-              const hasLiveTrack = Boolean(p.online && p.currentTrack && p.currentTrack !== "Silencioso no momento" && p.currentTrack !== "Ouvindo no Miado");
-              const trackLabel = hasLiveTrack ? p.currentTrack : (p.online ? "Navegando no Miado" : "Silencioso no momento");
-              const isFollowing = state.isProfileFollowed(p.uid || p.username);
-              return `
-                <div class="friend-activity-card" style="margin-bottom:8px;">
-                  <div class="friend-top-row" data-sidebar-open-comm="${cIdx}" style="cursor:pointer;" title="Ver perfil de ${escapeHtml(p.name)}">
-                    <img class="friend-avatar" src="${escapeHtml(safeImgUrl(p.avatar || p.avatarUrl))}" referrerpolicy="no-referrer" alt="${escapeHtml(p.name)}" style="cursor:pointer;" onerror="window.handleCatAvatarError(this)" />
-                    <div class="friend-info">
-                      <div class="friend-name-row">
-                        <span class="friend-name">${escapeHtml(p.name)}</span>
-                        ${p.online ? `<span class="friend-online-badge">ON</span>` : ""}
-                      </div>
-                      <div class="friend-handle">${escapeHtml(p.username)}</div>
-                    </div>
-                  </div>
-                  <div class="friend-track-pill" data-sidebar-comm-track="${cIdx}" style="cursor:${hasLiveTrack ? 'pointer' : 'default'}; margin-top:6px;" title="${hasLiveTrack ? 'Clique para ouvir junto esta música' : ''}">
-                    <div style="display:flex; align-items:center; gap:6px; flex:1; min-width:0;">
-                      ${hasLiveTrack ? `
-                        <div class="sound-wave-badge" title="Tocando agora" style="margin-right:2px;">
-                          <span class="sw-bar"></span>
-                          <span class="sw-bar"></span>
-                          <span class="sw-bar"></span>
-                          <span class="sw-bar"></span>
-                        </div>
-                      ` : `<span style="font-size:0.75rem;">🎧</span>`}
-                      <div class="friend-status" style="text-decoration:${hasLiveTrack ? 'underline' : 'none'};">${escapeHtml(trackLabel)}</div>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:4px;">
-                      ${hasLiveTrack ? `
-                        <button class="track-icon-btn" style="width:28px; height:28px; color:var(--accent-hover);" data-sidebar-play-comm="${cIdx}" title="Dar play e ouvir junto">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
-                        </button>
-                      ` : ""}
-                      <button class="track-icon-btn ${isFollowing ? 'liked' : ''}" style="width:28px; height:28px;" data-sidebar-toggle-follow-comm="${cIdx}" title="${isFollowing ? 'Seguindo' : 'Seguir amigo'}">
-                        ${isFollowing ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>` : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              `;
             }).join("")}
 
             <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); font-weight:700; margin:18px 0 10px;">Artistas Seguidos (${state.followedArtists.length})</div>
@@ -13121,6 +13503,14 @@ export function initMiadoClient() {
               `;
             }).join("")}
           `;
+
+          const selfCard = document.getElementById("sidebar-self-listening-card");
+          if (selfCard) {
+            selfCard.addEventListener("click", () => {
+              this.setActiveNav("profile");
+              this.navigateTo("profile", true);
+            });
+          }
 
           const btnFindFriends = document.getElementById("btn-sidebar-find-friends");
           if (btnFindFriends) {
@@ -13177,44 +13567,6 @@ export function initMiadoClient() {
               f.likedByMe = !f.likedByMe;
               state.saveFriends();
               showToast(f.likedByMe ? `Curtiu ${f.username}` : "Curtida removida");
-              this.renderFriendsActivity();
-            });
-          });
-
-          container.querySelectorAll("[data-sidebar-open-comm]").forEach(row => {
-            row.addEventListener("click", () => {
-              const p = communityListeners[parseInt(row.dataset.sidebarOpenComm)];
-              if (!p) return;
-              this.setActiveNav("profile");
-              this.navigateTo("profile", true, { targetUser: p });
-            });
-          });
-
-          container.querySelectorAll("[data-sidebar-comm-track]").forEach(pill => {
-            pill.addEventListener("click", async (e) => {
-              if (e.target.closest("[data-sidebar-play-comm]") || e.target.closest("[data-sidebar-toggle-follow-comm]")) return;
-              const p = communityListeners[parseInt(pill.dataset.sidebarCommTrack)];
-              if (!p) return;
-              await this.playOrOpenFriendTrack(p, true, true);
-            });
-          });
-
-          container.querySelectorAll("[data-sidebar-play-comm]").forEach(btn => {
-            btn.addEventListener("click", async (e) => {
-              e.stopPropagation();
-              const p = communityListeners[parseInt(btn.dataset.sidebarPlayComm)];
-              if (!p) return;
-              await this.playOrOpenFriendTrack(p, false, true);
-            });
-          });
-
-          container.querySelectorAll("[data-sidebar-toggle-follow-comm]").forEach(btn => {
-            btn.addEventListener("click", (e) => {
-              e.stopPropagation();
-              const p = communityListeners[parseInt(btn.dataset.sidebarToggleFollowComm)];
-              if (!p) return;
-              const nowFollowing = state.toggleFollowProfile(p);
-              showToast(nowFollowing ? `Você agora segue ${p.username}!` : `Deixou de seguir ${p.username}.`);
               this.renderFriendsActivity();
             });
           });

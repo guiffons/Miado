@@ -3,11 +3,31 @@
  */
 
 let ambientAnimFrame: number | null = null;
-let currentAmbientColors: [[number, number, number], [number, number, number], [number, number, number]] = [
-  [139, 92, 246],
-  [59, 130, 246],
-  [236, 72, 153]
+const IDLE_AMBIENT_COLORS: [[number, number, number], [number, number, number], [number, number, number]] = [
+  [20, 13, 34],
+  [14, 10, 24],
+  [18, 12, 30]
 ];
+let currentAmbientColors: [[number, number, number], [number, number, number], [number, number, number]] = [
+  [...IDLE_AMBIENT_COLORS[0]],
+  [...IDLE_AMBIENT_COLORS[1]],
+  [...IDLE_AMBIENT_COLORS[2]]
+];
+
+function clampDarkAmbientTuple(rgb: [number, number, number]): [number, number, number] {
+  const [r, g, b] = rgb;
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  const maxAllowedLum = 88;
+  if (lum > maxAllowedLum && lum > 0) {
+    const scale = maxAllowedLum / lum;
+    return [
+      Math.max(12, Math.round(r * scale)),
+      Math.max(10, Math.round(g * scale)),
+      Math.max(18, Math.round(b * scale))
+    ];
+  }
+  return [Math.max(14, r), Math.max(10, g), Math.max(20, b)];
+}
 
 function animateAmbientRgbTransition(
   target1: [number, number, number],
@@ -85,8 +105,15 @@ export function triggerLiquidGlassTrackTransition(): void {
 }
 
 export function updateAmbientColorsFromCover(coverUrl: string): void {
-  if (!coverUrl || coverUrl.startsWith("data:image/svg+xml")) {
-    animateAmbientRgbTransition([147, 51, 234], [88, 28, 135], [180, 180, 200]);
+  const w = window as any;
+  const currentTitle = String(w.miadoState?.currentTrack?.title || "").trim();
+  const hasActiveTrack = Boolean(
+    currentTitle &&
+    currentTitle !== "Escolha uma música" &&
+    currentTitle !== "Silencioso no momento"
+  );
+  if (!hasActiveTrack || !coverUrl || coverUrl.startsWith("data:image/svg+xml")) {
+    animateAmbientRgbTransition(IDLE_AMBIENT_COLORS[0], IDLE_AMBIENT_COLORS[1], IDLE_AMBIENT_COLORS[2]);
     return;
   }
   let cleanUrl = coverUrl;
@@ -98,7 +125,7 @@ export function updateAmbientColorsFromCover(coverUrl: string): void {
   img.crossOrigin = "anonymous";
   img.referrerPolicy = "no-referrer";
   img.onerror = () => {
-    animateAmbientRgbTransition([147, 51, 234], [88, 28, 135], [180, 180, 200]);
+    animateAmbientRgbTransition([58, 28, 96], [34, 18, 62], [44, 22, 78]);
   };
   img.onload = () => {
     try {
@@ -133,17 +160,19 @@ export function updateAmbientColorsFromCover(coverUrl: string): void {
         }
       }
 
-      const next1: [number, number, number] =
-        c1 > 0 ? [Math.round(r1 / c1), Math.round(g1 / c1), Math.round(b1 / c1)] : [147, 51, 234];
-      const next2: [number, number, number] =
-        c2 > 0 ? [Math.round(r2 / c2), Math.round(g2 / c2), Math.round(b2 / c2)] : [88, 28, 135];
-      const next3: [number, number, number] =
-        c3 > 0 ? [Math.round(r3 / c3), Math.round(g3 / c3), Math.round(b3 / c3)] : [180, 180, 200];
+      const next1: [number, number, number] = clampDarkAmbientTuple(
+        c1 > 0 ? [Math.round(r1 / c1), Math.round(g1 / c1), Math.round(b1 / c1)] : [58, 28, 96]
+      );
+      const next2: [number, number, number] = clampDarkAmbientTuple(
+        c2 > 0 ? [Math.round(r2 / c2), Math.round(g2 / c2), Math.round(b2 / c2)] : [34, 18, 62]
+      );
+      const next3: [number, number, number] = clampDarkAmbientTuple(
+        c3 > 0 ? [Math.round(r3 / c3), Math.round(g3 / c3), Math.round(b3 / c3)] : [44, 22, 78]
+      );
 
       animateAmbientRgbTransition(next1, next2, next3);
     } catch {
-      // Fallback to default Miado palette if canvas is tainted
-      animateAmbientRgbTransition([147, 51, 234], [88, 28, 135], [180, 180, 200]);
+      animateAmbientRgbTransition([58, 28, 96], [34, 18, 62], [44, 22, 78]);
     }
   };
   img.src = cleanUrl;
@@ -152,6 +181,7 @@ export function updateAmbientColorsFromCover(coverUrl: string): void {
 export function initEnhancements(): void {
   const w = window as any;
   w.triggerLiquidGlassTrackTransition = triggerLiquidGlassTrackTransition;
+  w.updateAmbientColorsFromCover = updateAmbientColorsFromCover;
 
   // Watch player cover image changes to update dynamic ambient Liquid Glass colors & MediaSession
   const coverImg = document.getElementById("player-cover-img") as HTMLImageElement | null;
