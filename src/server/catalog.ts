@@ -50,6 +50,71 @@ export interface CanonicalAlbum {
 const KNOWN_ARTIST_ALIASES: Record<string, string[]> = {
   "yung lixo": ["yung lixo", "yun li", "gemaplys", "mc vv", "tokyo marui"],
   "yun li": ["yung lixo", "yun li", "gemaplys", "mc vv", "tokyo marui"],
+  "bom gosto": ["bom gosto", "grupo bom gosto", "banda bom gosto"],
+  "grupo bom gosto": ["bom gosto", "grupo bom gosto", "banda bom gosto"],
+  "banda bom gosto": ["bom gosto", "grupo bom gosto", "banda bom gosto"],
+  "rita lee": [
+    "rita lee",
+    "rita lee e roberto de carvalho",
+    "rita lee roberto de carvalho",
+    "roberto de carvalho",
+    "rita lee e tutti frutti",
+    "rita lee tutti frutti",
+    "os mutantes"
+  ],
+  "rita lee e roberto de carvalho": [
+    "rita lee",
+    "rita lee e roberto de carvalho",
+    "rita lee roberto de carvalho",
+    "roberto de carvalho",
+    "rita lee e tutti frutti",
+    "rita lee tutti frutti"
+  ],
+  "rita lee roberto de carvalho": [
+    "rita lee",
+    "rita lee e roberto de carvalho",
+    "rita lee roberto de carvalho",
+    "roberto de carvalho",
+    "rita lee e tutti frutti",
+    "rita lee tutti frutti"
+  ],
+  "pitty": ["pitty", "pitty leone", "agridoce"],
+  "pitty leone": ["pitty", "pitty leone", "agridoce"],
+  "sophia xablau": [
+    "sophia xablau",
+    "sophia chablau",
+    "sophia chablau e uma enorme perda de tempo",
+    "sophia xablau e uma enorme perda de tempo",
+    "uma enorme perda de tempo"
+  ],
+  "sophia chablau": [
+    "sophia xablau",
+    "sophia chablau",
+    "sophia chablau e uma enorme perda de tempo",
+    "sophia xablau e uma enorme perda de tempo",
+    "uma enorme perda de tempo"
+  ],
+  "sophia chablau e uma enorme perda de tempo": [
+    "sophia xablau",
+    "sophia chablau",
+    "sophia chablau e uma enorme perda de tempo",
+    "sophia xablau e uma enorme perda de tempo",
+    "uma enorme perda de tempo"
+  ],
+  "sophia xablau e uma enorme perda de tempo": [
+    "sophia xablau",
+    "sophia chablau",
+    "sophia chablau e uma enorme perda de tempo",
+    "sophia xablau e uma enorme perda de tempo",
+    "uma enorme perda de tempo"
+  ],
+  "uma enorme perda de tempo": [
+    "sophia xablau",
+    "sophia chablau",
+    "sophia chablau e uma enorme perda de tempo",
+    "sophia xablau e uma enorme perda de tempo",
+    "uma enorme perda de tempo"
+  ],
   "bruno marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
   "bruno e marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
   "bruno and marrone": ["bruno marrone", "bruno e marrone", "bruno and marrone", "bruno morrene", "bruno e morrene"],
@@ -72,12 +137,19 @@ const KNOWN_ARTIST_ALIASES: Record<string, string[]> = {
   "simone simaria": ["simone simaria", "simone e simaria"],
   "simone e simaria": ["simone simaria", "simone e simaria"],
   "victor leo": ["victor leo", "victor e leo"],
-  "victor e leo": ["victor leo", "victor e leo"],
-  "bom gosto": ["bom gosto", "grupo bom gosto"],
-  "grupo bom gosto": ["bom gosto", "grupo bom gosto"]
+  "victor e leo": ["victor leo", "victor e leo"]
 };
 
 const LIVE_ACOUSTIC_CATALOG_ARTIST_KEYS = new Set<string>([
+  "bom gosto",
+  "grupo bom gosto",
+  "banda bom gosto",
+  "rita lee",
+  "rita lee e roberto de carvalho",
+  "pitty",
+  "sophia chablau",
+  "sophia xablau",
+  "sophia chablau e uma enorme perda de tempo",
   "bruno marrone",
   "bruno e marrone",
   "bruno and marrone",
@@ -125,10 +197,9 @@ const LIVE_ACOUSTIC_CATALOG_ARTIST_KEYS = new Set<string>([
   "joao bosco vinicius",
   "joao bosco e vinicius",
   "edson hudson",
+  "edson e hudson",
   "rick renner",
-  "rick e renner",
-  "bom gosto",
-  "grupo bom gosto"
+  "rick e renner"
 ]);
 
 export function isLiveAcousticCatalogArtist(artistOrText: string): boolean {
@@ -212,28 +283,21 @@ export function buildCanonicalDedupKey(track: {
 }
 
 /**
- * Contextual Studio Recording Filter:
- * Rejects genuine non-original / live concert bootlegs / karaoke / tribute / sped-up / 8D versions,
- * while NEVER rejecting legitimate studio songs whose titles contain words like "O Show", "Tour",
- * "Interlude", "Skit", "Carnaval", "MC", or "Ensaio".
+ * Contextual Studio & Official Catalog Recording Filter:
+ * Rejects karaoke, tributes, covers, lullabies, sped-up, slowed, 8D, and bootlegs,
+ * while preserving official studio AND official live/acoustic releases (essential for Pagode, Samba, MPB, Sertanejo, Rock).
  */
 const STRICT_NON_STUDIO_PATTERNS: RegExp[] = [
-  /\b(?:live\s+(?:at|from|in|on|session|version|performance)|ao\s+vivo\s+(?:em|no|na)|en\s+vivo)\b/i,
-  /[\(\[\-]\s*(?:live|ao\s*vivo|ac[uú]stico|acoustic|unplugged|karaok[eê]|instrumental|acapella|a\s*cappella)\b/i,
-  /\b(?:karaok[eê]|tribute\s+to|originally\s+performed\s+by|in\s+the\s+style\s+of|cover\s+version|8-bit\s+version|lullaby\s+version)\b/i,
-  /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed)\b/i,
-  /[\(\[\-]\s*(?:[^\)\]]*\bremix\b|rework|bootleg|mashup|extended\s+mix|club\s+mix)\b/i
+  /[\(\[\-]\s*(?:karaok[eê]|instrumental|acapella|a\s*cappella|playback)\b/i,
+  /\b(?:karaok[eê]|tribute\s+to|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|cover\s+version|8-bit\s+version|lullaby\s+version|rock\s+your\s+babies)\b/i,
+  /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed|ringtone|par[oó]dia)\b/i,
+  /[\(\[\-]\s*(?:rework|bootleg|mashup)\b/i
 ];
 
-const LIVE_CATALOG_REJECT_PATTERNS: RegExp[] = [
-  /[\(\[\-]\s*(?:karaok[eê]|instrumental|acapella|a\s*cappella)\b/i,
-  /\b(?:karaok[eê]|tribute\s+to|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|cover\s+version|8-bit\s+version|lullaby\s+version)\b/i,
-  /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed)\b/i,
-  /[\(\[\-]\s*(?:[^\)\]]*\bremix\b|rework|bootleg|mashup|extended\s+mix|club\s+mix)\b/i
-];
+const LIVE_CATALOG_REJECT_PATTERNS: RegExp[] = STRICT_NON_STUDIO_PATTERNS;
 
 const NON_STUDIO_ARTIST_PATTERNS: RegExp[] = [
-  /\b(?:karaoke|tribute|cover\s+band|8-bit\s+arcade|twinkle\s+twinkle\s+little\s+rock\s+star|rockabye\s+baby|piano\s+tribute|vitamin\s+string\s+quartet|kidz\s+bop|party\s+tyme|ameritz)\b/i
+  /\b(?:karaoke|tribute|cover\s+band|8-bit\s+arcade|twinkle\s+twinkle\s+little\s+rock\s+star|rockabye\s+baby|rock\s+your\s+babies|brazilian\s+hitmakers|portal\s+dos\s+playbacks|piano\s+tribute|vitamin\s+string\s+quartet|kidz\s+bop|party\s+tyme|ameritz)\b/i
 ];
 
 export function isCanonicalStudioTrack(
@@ -248,7 +312,7 @@ export function isCanonicalStudioTrack(
   if (!t || !a) return false;
 
   for (const pat of NON_STUDIO_ARTIST_PATTERNS) {
-    if (pat.test(a)) return false;
+    if (pat.test(a) || pat.test(alb)) return false;
   }
 
   const patternsToApply =

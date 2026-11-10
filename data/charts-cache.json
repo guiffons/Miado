@@ -2,9 +2,27 @@
   "schemaVersion": 2,
   "entry": {
     "payload": {
-      "updatedAt": "2026-11-10T14:17:30.159Z",
+      "updatedAt": "2026-11-10T18:07:06.756Z",
       "source": "Live Charts",
       "trendingBrazil": [
+        {
+          "id": "dz_4337389322",
+          "title": "Pós (Ao Vivo)",
+          "artist": "Felipe e Rodrigo",
+          "artistId": "172071177",
+          "albumTitle": "Pós (Ao Vivo)",
+          "albumId": "dz_alb_1117358492",
+          "duration": "2:55",
+          "durationSec": 175,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/4c07cc728fd1531094bbf11235afef34/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=P%C3%B3s%20(Ao%20Vivo)&artist=Felipe%20e%20Rodrigo&preferFull=1&studioOnly=1",
+          "rank": 1,
+          "popular": true,
+          "previewUrl": "/api/stream?title=P%C3%B3s%20(Ao%20Vivo)&artist=Felipe%20e%20Rodrigo&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "felipe e rodrigo"
+          ]
+        },
         {
           "id": "dz_4179195042",
           "title": "Postinho de Gasolina",
@@ -62,6 +80,24 @@
           ]
         },
         {
+          "id": "dz_4257221701",
+          "title": "Mega Hair (Ao Vivo)",
+          "artist": "Netto Brito",
+          "artistId": "239026701",
+          "albumTitle": "Mega Hair (Ao Vivo)",
+          "albumId": "dz_alb_1067496301",
+          "duration": "2:33",
+          "durationSec": 153,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/26b5899bb076ace43141a11bf4a5f1aa/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Mega%20Hair%20(Ao%20Vivo)&artist=Netto%20Brito&preferFull=1&studioOnly=1",
+          "rank": 5,
+          "popular": true,
+          "previewUrl": "/api/stream?title=Mega%20Hair%20(Ao%20Vivo)&artist=Netto%20Brito&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "netto brito"
+          ]
+        },
+        {
           "id": "dz_3893226711",
           "title": "Peão Todo Tatuado",
           "artist": "Jeninho",
@@ -113,6 +149,60 @@
           "previewUrl": "/api/stream?title=Eu%20Te%20Seguro&artist=Panda&preferFull=1&studioOnly=1",
           "artistIds": [
             "panda"
+          ]
+        },
+        {
+          "id": "dz_3682660782",
+          "title": "Ignora (Ao Vivo)",
+          "artist": "Felipe e Rodrigo",
+          "artistId": "172071177",
+          "albumTitle": "Velhos Hábitos Vol. 1 (Ao Vivo)",
+          "albumId": "dz_alb_865623252",
+          "duration": "2:59",
+          "durationSec": 179,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/e8489eac19c73870d5d9866ef4b3928a/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Ignora%20(Ao%20Vivo)&artist=Felipe%20e%20Rodrigo&preferFull=1&studioOnly=1",
+          "rank": 9,
+          "popular": true,
+          "previewUrl": "/api/stream?title=Ignora%20(Ao%20Vivo)&artist=Felipe%20e%20Rodrigo&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "felipe e rodrigo"
+          ]
+        },
+        {
+          "id": "dz_3638422822",
+          "title": "Cheiro De Culpado (Ao Vivo)",
+          "artist": "Júnior e Cézar",
+          "artistId": "51615992",
+          "albumTitle": "Cheiro De Culpado (Ao Vivo)",
+          "albumId": "dz_alb_850448202",
+          "duration": "2:41",
+          "durationSec": 161,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/69e0ffc4c867729999eac3fdd2a7afac/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Cheiro%20De%20Culpado%20(Ao%20Vivo)&artist=J%C3%BAnior%20e%20C%C3%A9zar&preferFull=1&studioOnly=1",
+          "rank": 10,
+          "popular": true,
+          "previewUrl": "/api/stream?title=Cheiro%20De%20Culpado%20(Ao%20Vivo)&artist=J%C3%BAnior%20e%20C%C3%A9zar&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "junior e cezar"
+          ]
+        },
+        {
+          "id": "dz_3996803841",
+          "title": "Eu Não Sou Terapia (Ao Vivo)",
+          "artist": "Danilo e Davi",
+          "artistId": "145336382",
+          "albumTitle": "Aliança - Vol.2 (Ao Vivo)",
+          "albumId": "dz_alb_973771441",
+          "duration": "2:42",
+          "durationSec": 162,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/d2ea41d7dbb2bad32b032361693af17a/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Eu%20N%C3%A3o%20Sou%20Terapia%20(Ao%20Vivo)&artist=Danilo%20e%20Davi&preferFull=1&studioOnly=1",
+          "rank": 11,
+          "popular": true,
+          "previewUrl": "/api/stream?title=Eu%20N%C3%A3o%20Sou%20Terapia%20(Ao%20Vivo)&artist=Danilo%20e%20Davi&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "danilo e davi"
           ]
         },
         {
@@ -190,6 +280,24 @@
           ]
         },
         {
+          "id": "dz_3499654751",
+          "title": "Pela Última Vez (Ao Vivo)",
+          "artist": "Grupo Menos É Mais",
+          "artistId": "54330242",
+          "albumTitle": "Pela Última Vez (Ao Vivo)",
+          "albumId": "dz_alb_801876931",
+          "duration": "2:42",
+          "durationSec": 162,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/23794e35f9739701ed34741e68400eca/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Pela%20%C3%9Altima%20Vez%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "rank": 16,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Pela%20%C3%9Altima%20Vez%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "grupo menos e mais"
+          ]
+        },
+        {
           "id": "dz_4053915961",
           "title": "Plano C (Ao Vivo)",
           "artist": "Zé Neto & Cristiano",
@@ -209,6 +317,78 @@
           ]
         },
         {
+          "id": "dz_3329623921",
+          "title": "P do Pecado (Ao Vivo)",
+          "artist": "Grupo Menos É Mais",
+          "artistId": "54330242",
+          "albumTitle": "MOLHO (Ao Vivo)",
+          "albumId": "dz_alb_744118141",
+          "duration": "3:12",
+          "durationSec": 192,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/b4ba96de5c901cc03fc4c211e31f1beb/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=P%20do%20Pecado%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "rank": 18,
+          "popular": false,
+          "previewUrl": "/api/stream?title=P%20do%20Pecado%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "grupo menos e mais"
+          ]
+        },
+        {
+          "id": "dz_3979983291",
+          "title": "Aproveita Que Eu Tô Brigado (Ao Vivo)",
+          "artist": "NATTAN",
+          "artistId": "13097199",
+          "albumTitle": "Paredão do Nattan (Ao Vivo Em Fortaleza)",
+          "albumId": "dz_alb_967846721",
+          "duration": "2:36",
+          "durationSec": 156,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/ec3899c0f68c2baf764588e687402a5f/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Aproveita%20Que%20Eu%20T%C3%B4%20Brigado%20(Ao%20Vivo)&artist=NATTAN&preferFull=1&studioOnly=1",
+          "rank": 19,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Aproveita%20Que%20Eu%20T%C3%B4%20Brigado%20(Ao%20Vivo)&artist=NATTAN&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "nattan"
+          ]
+        },
+        {
+          "id": "dz_2916157971",
+          "title": "Apaga Apaga Apaga (Ao Vivo)",
+          "artist": "Danilo e Davi",
+          "artistId": "145336382",
+          "albumTitle": "Toma Essa Verdade (Ao Vivo)",
+          "albumId": "dz_alb_621067941",
+          "duration": "2:58",
+          "durationSec": 178,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/d4e4301b5eb92858143cb5c7f35aa417/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Apaga%20Apaga%20Apaga%20(Ao%20Vivo)&artist=Danilo%20e%20Davi&preferFull=1&studioOnly=1",
+          "rank": 20,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Apaga%20Apaga%20Apaga%20(Ao%20Vivo)&artist=Danilo%20e%20Davi&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "danilo e davi"
+          ]
+        },
+        {
+          "id": "dz_3728246282",
+          "title": "Tudo É Perda (Ao Vivo)",
+          "artist": "Felipe Rodrigues",
+          "artistId": "9240434",
+          "albumTitle": "Tudo É Perda (Ao Vivo)",
+          "albumId": "dz_alb_881111422",
+          "duration": "8:38",
+          "durationSec": 518,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/8c5e09d0078e6f5038ddb8118b51635b/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Tudo%20%C3%89%20Perda%20(Ao%20Vivo)&artist=Felipe%20Rodrigues&preferFull=1&studioOnly=1",
+          "rank": 21,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Tudo%20%C3%89%20Perda%20(Ao%20Vivo)&artist=Felipe%20Rodrigues&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "felipe rodrigues"
+          ]
+        },
+        {
           "id": "dz_3240320441",
           "title": "Eu Me Apaixonei",
           "artist": "Vitinho Imperador",
@@ -224,6 +404,24 @@
           "previewUrl": "/api/stream?title=Eu%20Me%20Apaixonei&artist=Vitinho%20Imperador&preferFull=1&studioOnly=1",
           "artistIds": [
             "vitinho imperador"
+          ]
+        },
+        {
+          "id": "dz_4353584322",
+          "title": "Eu Me Rendo (Ao Vivo)",
+          "artist": "Felipe e Rodrigo",
+          "artistId": "172071177",
+          "albumTitle": "No Sentimento em Brasília Vol. 1 (Ao Vivo)",
+          "albumId": "dz_alb_1123748782",
+          "duration": "2:48",
+          "durationSec": 168,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/d92a947ad4e9a8e5576ecda91325c944/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Eu%20Me%20Rendo%20(Ao%20Vivo)&artist=Felipe%20e%20Rodrigo&preferFull=1&studioOnly=1",
+          "rank": 23,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Eu%20Me%20Rendo%20(Ao%20Vivo)&artist=Felipe%20e%20Rodrigo&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "felipe e rodrigo"
           ]
         },
         {
@@ -263,6 +461,24 @@
           ]
         },
         {
+          "id": "dz_4059462101",
+          "title": "Só Com Ela (Ao Vivo)",
+          "artist": "Murilo Huff",
+          "artistId": "7810466",
+          "albumTitle": "Só Com Ela (Ao Vivo)",
+          "albumId": "dz_alb_996652681",
+          "duration": "2:48",
+          "durationSec": 168,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/f002b948a5dcb89dca8cbb62574259de/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=S%C3%B3%20Com%20Ela%20(Ao%20Vivo)&artist=Murilo%20Huff&preferFull=1&studioOnly=1",
+          "rank": 26,
+          "popular": false,
+          "previewUrl": "/api/stream?title=S%C3%B3%20Com%20Ela%20(Ao%20Vivo)&artist=Murilo%20Huff&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "murilo huff"
+          ]
+        },
+        {
           "id": "dz_3876592021",
           "title": "Amigo Da Minha Saudade (Ao Vivo)",
           "artist": "Henrique & Juliano",
@@ -298,6 +514,42 @@
           "artistIds": [
             "jorge",
             "mateus"
+          ]
+        },
+        {
+          "id": "dz_3429968981",
+          "title": "Um Novo Dia (Ao Vivo)",
+          "artist": "Get Worship",
+          "artistId": "182852487",
+          "albumTitle": "Um Novo Dia (Ao Vivo)",
+          "albumId": "dz_alb_777844191",
+          "duration": "6:00",
+          "durationSec": 360,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/7321b7270e4d8d359a0103f95ded9be4/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Um%20Novo%20Dia%20(Ao%20Vivo)&artist=Get%20Worship&preferFull=1&studioOnly=1",
+          "rank": 29,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Um%20Novo%20Dia%20(Ao%20Vivo)&artist=Get%20Worship&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "get worship"
+          ]
+        },
+        {
+          "id": "dz_3184911081",
+          "title": "Quem É Esse? (Ao Vivo)",
+          "artist": "Julliany Souza",
+          "artistId": "8981214",
+          "albumTitle": "Quem É Esse? (Ao Vivo)",
+          "albumId": "dz_alb_697590101",
+          "duration": "7:48",
+          "durationSec": 468,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/4ce464858a647677b9c19d277e272b6e/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Quem%20%C3%89%20Esse%3F%20(Ao%20Vivo)&artist=Julliany%20Souza&preferFull=1&studioOnly=1",
+          "rank": 30,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Quem%20%C3%89%20Esse%3F%20(Ao%20Vivo)&artist=Julliany%20Souza&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "julliany souza"
           ]
         },
         {
@@ -356,6 +608,60 @@
           ]
         },
         {
+          "id": "dz_3774088012",
+          "title": "Gosta De Rua (Ao Vivo)",
+          "artist": "Felipe e Rodrigo",
+          "artistId": "172071177",
+          "albumTitle": "Questão de Tempo (Ao Vivo / Parte 1)",
+          "albumId": "dz_alb_897424792",
+          "duration": "2:51",
+          "durationSec": 171,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/a00529283fa9c6d24fe8038e963d6f53/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Gosta%20De%20Rua%20(Ao%20Vivo)&artist=Felipe%20e%20Rodrigo&preferFull=1&studioOnly=1",
+          "rank": 34,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Gosta%20De%20Rua%20(Ao%20Vivo)&artist=Felipe%20e%20Rodrigo&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "felipe e rodrigo"
+          ]
+        },
+        {
+          "id": "dz_4303957322",
+          "title": "É Tudo Sobre Você (Ao Vivo)",
+          "artist": "MORADA",
+          "artistId": "2134241",
+          "albumTitle": "É Tudo Sobre Você (Ao Vivo)",
+          "albumId": "dz_alb_1103590312",
+          "duration": "6:12",
+          "durationSec": 372,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/188975d785e6a4c967b7bb72d120eef8/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=%C3%89%20Tudo%20Sobre%20Voc%C3%AA%20(Ao%20Vivo)&artist=MORADA&preferFull=1&studioOnly=1",
+          "rank": 35,
+          "popular": false,
+          "previewUrl": "/api/stream?title=%C3%89%20Tudo%20Sobre%20Voc%C3%AA%20(Ao%20Vivo)&artist=MORADA&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "morada"
+          ]
+        },
+        {
+          "id": "dz_4081294521",
+          "title": "Saudade Inconveniente (Ao Vivo)",
+          "artist": "Grupo Menos É Mais",
+          "artistId": "54330242",
+          "albumTitle": "Saudade Inconveniente (Ao Vivo)",
+          "albumId": "dz_alb_1003519021",
+          "duration": "3:05",
+          "durationSec": 185,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/b6f8b65f941b4e47c3e755a8966ede5d/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Saudade%20Inconveniente%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "rank": 36,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Saudade%20Inconveniente%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "grupo menos e mais"
+          ]
+        },
+        {
           "id": "dz_4323836632",
           "title": "Geme Baixo",
           "artist": "MC Jvila",
@@ -371,6 +677,24 @@
           "previewUrl": "/api/stream?title=Geme%20Baixo&artist=MC%20Jvila&preferFull=1&studioOnly=1",
           "artistIds": [
             "mc jvila"
+          ]
+        },
+        {
+          "id": "dz_3694244422",
+          "title": "Brinda Aê (Ao Vivo)",
+          "artist": "Grupo Menos É Mais",
+          "artistId": "54330242",
+          "albumTitle": "Churrasquinho 4 (Ao Vivo)",
+          "albumId": "dz_alb_869542502",
+          "duration": "3:03",
+          "durationSec": 183,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/9c929fa1c126f7545032246b698d9c96/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Brinda%20A%C3%AA%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "rank": 38,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Brinda%20A%C3%AA%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "grupo menos e mais"
           ]
         },
         {
@@ -425,6 +749,24 @@
           "previewUrl": "/api/stream?title=Arrependida%C3%A7o%20(Onde%20Voc%C3%AA%20Anda)&artist=Ferrugem&preferFull=1&studioOnly=1",
           "artistIds": [
             "ferrugem"
+          ]
+        },
+        {
+          "id": "dz_3835649951",
+          "title": "Saudade Estranha - Du Nada (Ao Vivo)",
+          "artist": "Murilo Huff",
+          "artistId": "7810466",
+          "albumTitle": "Saudade Estranha - Du Nada (Ao Vivo)",
+          "albumId": "dz_alb_916088061",
+          "duration": "2:54",
+          "durationSec": 174,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/c5a02e3fdf815c63a85379dd3748c028/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Saudade%20Estranha%20-%20Du%20Nada%20(Ao%20Vivo)&artist=Murilo%20Huff&preferFull=1&studioOnly=1",
+          "rank": 42,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Saudade%20Estranha%20-%20Du%20Nada%20(Ao%20Vivo)&artist=Murilo%20Huff&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "murilo huff"
           ]
         },
         {
@@ -483,6 +825,24 @@
           ]
         },
         {
+          "id": "dz_3135700161",
+          "title": "Baqueado (Ao Vivo)",
+          "artist": "Panda",
+          "artistId": "12721175",
+          "albumTitle": "Panda Sem Moderação (Ao Vivo)",
+          "albumId": "dz_alb_682135421",
+          "duration": "2:26",
+          "durationSec": 146,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/544f244a1d37f811e4c3a2261d73350a/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Baqueado%20(Ao%20Vivo)&artist=Panda&preferFull=1&studioOnly=1",
+          "rank": 46,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Baqueado%20(Ao%20Vivo)&artist=Panda&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "panda"
+          ]
+        },
+        {
           "id": "dz_3761178052",
           "title": "Esquina",
           "artist": "Felipe e Rodrigo",
@@ -519,6 +879,60 @@
           ]
         },
         {
+          "id": "dz_4257142291",
+          "title": "Tu és + Águas Purificadoras - Ao Vivo",
+          "artist": "fhop music",
+          "artistId": "13257925",
+          "albumTitle": "A Boa Parte (Ao Vivo)",
+          "albumId": "dz_alb_1067468721",
+          "duration": "7:56",
+          "durationSec": 476,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/cae2678ce217b2e68a89325af5ffcead/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Tu%20%C3%A9s%20%2B%20%C3%81guas%20Purificadoras%20-%20Ao%20Vivo&artist=fhop%20music&preferFull=1&studioOnly=1",
+          "rank": 49,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Tu%20%C3%A9s%20%2B%20%C3%81guas%20Purificadoras%20-%20Ao%20Vivo&artist=fhop%20music&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "fhop music"
+          ]
+        },
+        {
+          "id": "dz_4316073002",
+          "title": "Gilete no Box (Ao Vivo)",
+          "artist": "Grupo Menos É Mais",
+          "artistId": "54330242",
+          "albumTitle": "Gilete no Box (Ao Vivo)",
+          "albumId": "dz_alb_1108827692",
+          "duration": "3:19",
+          "durationSec": 199,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/fbc1b6abb663de45ea02941dc33b9a31/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Gilete%20no%20Box%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "rank": 50,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Gilete%20no%20Box%20(Ao%20Vivo)&artist=Grupo%20Menos%20%C3%89%20Mais&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "grupo menos e mais"
+          ]
+        },
+        {
+          "id": "dz_3168044101",
+          "title": "Saudade Burra (Ao Vivo)",
+          "artist": "Lauana Prado",
+          "artistId": "11242224",
+          "albumTitle": "Saudade Burra (Ao Vivo)",
+          "albumId": "dz_alb_692047291",
+          "duration": "2:37",
+          "durationSec": 157,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/9439f91453270e43292b38febc7a0332/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Saudade%20Burra%20(Ao%20Vivo)&artist=Lauana%20Prado&preferFull=1&studioOnly=1",
+          "rank": 51,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Saudade%20Burra%20(Ao%20Vivo)&artist=Lauana%20Prado&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "lauana prado"
+          ]
+        },
+        {
           "id": "dz_3662196962",
           "title": "Calcinha de Renda",
           "artist": "Panda",
@@ -534,6 +948,24 @@
           "previewUrl": "/api/stream?title=Calcinha%20de%20Renda&artist=Panda&preferFull=1&studioOnly=1",
           "artistIds": [
             "panda"
+          ]
+        },
+        {
+          "id": "dz_3069018071",
+          "title": "Body Splash (Ao Vivo)",
+          "artist": "Felipe Araújo",
+          "artistId": "5423737",
+          "albumTitle": "Carta Aberta (Ao Vivo / Vol.1)",
+          "albumId": "dz_alb_664114531",
+          "duration": "2:35",
+          "durationSec": 155,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/9a08e4769d06acfaa7e45018c874f659/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Body%20Splash%20(Ao%20Vivo)&artist=Felipe%20Ara%C3%BAjo&preferFull=1&studioOnly=1",
+          "rank": 53,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Body%20Splash%20(Ao%20Vivo)&artist=Felipe%20Ara%C3%BAjo&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "felipe araujo"
           ]
         },
         {
@@ -589,6 +1021,24 @@
           "previewUrl": "/api/stream?title=Ordinary&artist=Alex%20Warren&preferFull=1&studioOnly=1",
           "artistIds": [
             "alex warren"
+          ]
+        },
+        {
+          "id": "dz_3486261391",
+          "title": "Deixa Eu (Ao Vivo)",
+          "artist": "Murilo Huff",
+          "artistId": "7810466",
+          "albumTitle": "Acústico (Ao Vivo)",
+          "albumId": "dz_alb_797262881",
+          "duration": "2:38",
+          "durationSec": 158,
+          "coverUrl": "https://cdn-images.dzcdn.net/images/cover/65aaabfa768cd9261fbbe67e29e9908c/1000x1000-000000-80-0-0.jpg",
+          "streamUrl": "/api/stream?title=Deixa%20Eu%20(Ao%20Vivo)&artist=Murilo%20Huff&preferFull=1&studioOnly=1",
+          "rank": 57,
+          "popular": false,
+          "previewUrl": "/api/stream?title=Deixa%20Eu%20(Ao%20Vivo)&artist=Murilo%20Huff&preferFull=1&studioOnly=1",
+          "artistIds": [
+            "murilo huff"
           ]
         },
         {
@@ -648,437 +1098,6 @@
             "mc lele jp",
             "mc leozin",
             "mc ryan sp"
-          ]
-        },
-        {
-          "id": "it_br_1198317073",
-          "title": "Sou + Você",
-          "artist": "Racionais MC's",
-          "albumTitle": "Nada Como um Dia Após o Outro Dia, Vol. 1 & 2",
-          "albumId": "it_br_alb_1198317073",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/3f/ca/fd/3fcafdad-07c1-c752-7878-39dfd32b3b28/0.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Sou%20%2B%20Voc%C3%AA&artist=Racionais%20MC's&preferFull=1&studioOnly=1",
-          "rank": 1,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Sou%20%2B%20Voc%C3%AA&artist=Racionais%20MC's&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "racionais mc s"
-          ]
-        },
-        {
-          "id": "it_br_1868482073",
-          "title": "SWIM",
-          "artist": "BTS",
-          "albumTitle": "ARIRANG",
-          "albumId": "it_br_alb_1868482073",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/e0/a2/b4/e0a2b443-7969-b57a-a591-cb6172c10aa7/198704943959_Cover.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=SWIM&artist=BTS&preferFull=1&studioOnly=1",
-          "rank": 3,
-          "popular": true,
-          "previewUrl": "/api/stream?title=SWIM&artist=BTS&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "bts"
-          ]
-        },
-        {
-          "id": "it_br_6817938389",
-          "title": "Flash (Minha Mente) 💠",
-          "artist": "Hugo & Guilherme & Zé Vaqueiro",
-          "albumTitle": "Flash (Minha Mente) 💠 - Single",
-          "albumId": "it_br_alb_6817938389",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/6f/ba/82/6fba821c-28c0-1e0e-0b14-95c0d423e082/1200220233007.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Flash%20(Minha%20Mente)%20%F0%9F%92%A0&artist=Hugo%20%26%20Guilherme%20%26%20Z%C3%A9%20Vaqueiro&preferFull=1&studioOnly=1",
-          "rank": 4,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Flash%20(Minha%20Mente)%20%F0%9F%92%A0&artist=Hugo%20%26%20Guilherme%20%26%20Z%C3%A9%20Vaqueiro&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "guilherme",
-            "hugo",
-            "ze vaqueiro"
-          ]
-        },
-        {
-          "id": "it_br_285797621",
-          "title": "Sarà Perché Ti Amo",
-          "artist": "Ricchi & Poveri",
-          "albumTitle": "Ricchi e Poveri: The Collection",
-          "albumId": "it_br_alb_285797621",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/63/95/b5/6395b585-7529-f03c-c339-24c14b99363e/mzi.wvymzajv.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Sar%C3%A0%20Perch%C3%A9%20Ti%20Amo&artist=Ricchi%20%26%20Poveri&preferFull=1&studioOnly=1",
-          "rank": 5,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Sar%C3%A0%20Perch%C3%A9%20Ti%20Amo&artist=Ricchi%20%26%20Poveri&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "poveri",
-            "ricchi"
-          ]
-        },
-        {
-          "id": "it_br_585972803",
-          "title": "All I Want for Christmas Is You",
-          "artist": "Mariah Carey",
-          "albumTitle": "Merry Christmas",
-          "albumId": "it_br_alb_585972803",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c6/b7/27/c6b727f7-3a32-6b43-cee2-05bb71daf1cf/dj.itfmdeif.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=All%20I%20Want%20for%20Christmas%20Is%20You&artist=Mariah%20Carey&preferFull=1&studioOnly=1",
-          "rank": 6,
-          "popular": true,
-          "previewUrl": "/api/stream?title=All%20I%20Want%20for%20Christmas%20Is%20You&artist=Mariah%20Carey&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "mariah carey"
-          ]
-        },
-        {
-          "id": "it_br_6829772605",
-          "title": "SUIATSU",
-          "artist": "Stray Kids",
-          "albumTitle": "SUIATSU",
-          "albumId": "it_br_alb_6829772605",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/e9/ea/13/e9ea1310-a7c2-cc23-aa8a-7a9bfce24ee0/4547366864731.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=SUIATSU&artist=Stray%20Kids&preferFull=1&studioOnly=1",
-          "rank": 7,
-          "popular": true,
-          "previewUrl": "/api/stream?title=SUIATSU&artist=Stray%20Kids&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "stray kids"
-          ]
-        },
-        {
-          "id": "it_br_6822497774",
-          "title": "Housewife",
-          "artist": "Tate McRae",
-          "albumTitle": "Housewife - Single",
-          "albumId": "it_br_alb_6822497774",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/69/64/e4/6964e483-c02c-e389-14f4-c426e8c65f2c/196874840146.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Housewife&artist=Tate%20McRae&preferFull=1&studioOnly=1",
-          "rank": 8,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Housewife&artist=Tate%20McRae&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "tate mcrae"
-          ]
-        },
-        {
-          "id": "it_br_6822079313",
-          "title": "Don’t tell your dreams",
-          "artist": "STOSLIV & LOVIXX",
-          "albumTitle": "Don’t tell your dreams - Single",
-          "albumId": "it_br_alb_6822079313",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/a0/8f/e3/a08fe340-128e-7453-a9bc-087eb24fb0b2/26UM1IM32354.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Don%E2%80%99t%20tell%20your%20dreams&artist=STOSLIV%20%26%20LOVIXX&preferFull=1&studioOnly=1",
-          "rank": 9,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Don%E2%80%99t%20tell%20your%20dreams&artist=STOSLIV%20%26%20LOVIXX&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "lovixx",
-            "stosliv"
-          ]
-        },
-        {
-          "id": "it_br_1441164589",
-          "title": "Here Comes the Sun",
-          "artist": "The Beatles",
-          "albumTitle": "Abbey Road (Remastered)",
-          "albumId": "it_br_alb_1441164589",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/df/db/61/dfdb615d-47f8-06e9-9533-b96daccc029f/18UMGIM31076.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Here%20Comes%20the%20Sun&artist=The%20Beatles&preferFull=1&studioOnly=1",
-          "rank": 10,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Here%20Comes%20the%20Sun&artist=The%20Beatles&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "the beatles"
-          ]
-        },
-        {
-          "id": "it_br_1596532400",
-          "title": "Dynamite",
-          "artist": "BTS",
-          "albumTitle": "BE",
-          "albumId": "it_br_alb_1596532400",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/22/f3/8f/22f38fb9-1690-326a-d891-7aa946c2b06f/195497623273_Cover.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Dynamite&artist=BTS&preferFull=1&studioOnly=1",
-          "rank": 11,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Dynamite&artist=BTS&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "bts"
-          ]
-        },
-        {
-          "id": "it_br_1440813515",
-          "title": "Everybody Wants to Rule the World",
-          "artist": "Tears for Fears",
-          "albumTitle": "Songs from the Big Chair",
-          "albumId": "it_br_alb_1440813515",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/74/41/43/744143ae-afad-8380-106e-1c1bc48922e4/14UMGIM34762.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Everybody%20Wants%20to%20Rule%20the%20World&artist=Tears%20for%20Fears&preferFull=1&studioOnly=1",
-          "rank": 12,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Everybody%20Wants%20to%20Rule%20the%20World&artist=Tears%20for%20Fears&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "tears for fears"
-          ]
-        },
-        {
-          "id": "it_br_6763656725",
-          "title": "hate that i made you love me",
-          "artist": "Ariana Grande",
-          "albumTitle": "petal",
-          "albumId": "it_br_alb_6763656725",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/56/f4/96/56f49612-02dd-83f4-44fe-d2118cc70707/26UMGIM51129.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=hate%20that%20i%20made%20you%20love%20me&artist=Ariana%20Grande&preferFull=1&studioOnly=1",
-          "rank": 13,
-          "popular": true,
-          "previewUrl": "/api/stream?title=hate%20that%20i%20made%20you%20love%20me&artist=Ariana%20Grande&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "ariana grande"
-          ]
-        },
-        {
-          "id": "it_br_6818422877",
-          "title": "I'm a Slave 4 U",
-          "artist": "Britney Spears",
-          "albumTitle": "Britney (25th Anniversary Edition)",
-          "albumId": "it_br_alb_6818422877",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/3d/61/0f/3d610fd5-e074-45bb-1f0e-5a9bac6ac74d/196874836071.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=I'm%20a%20Slave%204%20U&artist=Britney%20Spears&preferFull=1&studioOnly=1",
-          "rank": 14,
-          "popular": true,
-          "previewUrl": "/api/stream?title=I'm%20a%20Slave%204%20U&artist=Britney%20Spears&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "britney spears"
-          ]
-        },
-        {
-          "id": "it_br_1377826892",
-          "title": "Sweet Child O' Mine",
-          "artist": "Guns N' Roses",
-          "albumTitle": "Appetite For Destruction (Super Deluxe)",
-          "albumId": "it_br_alb_1377826892",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/56/47/b7/5647b700-6b9d-9e72-ec9f-51140b6d4492/00602567673781.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Sweet%20Child%20O'%20Mine&artist=Guns%20N'%20Roses&preferFull=1&studioOnly=1",
-          "rank": 15,
-          "popular": true,
-          "previewUrl": "/api/stream?title=Sweet%20Child%20O'%20Mine&artist=Guns%20N'%20Roses&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "guns n roses"
-          ]
-        },
-        {
-          "id": "it_br_1894066154",
-          "title": "Bom Dia Magnata (Audio Despertador)",
-          "artist": "Dj Montanha O Bravo",
-          "albumTitle": "Bom Dia Magnata (Audio Despertador) - Single",
-          "albumId": "it_br_alb_1894066154",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/2f/0a/4a/2f0a4a1d-2cf3-6510-40f1-c756ae0d091c/0.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Bom%20Dia%20Magnata%20(Audio%20Despertador)&artist=Dj%20Montanha%20O%20Bravo&preferFull=1&studioOnly=1",
-          "rank": 16,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Bom%20Dia%20Magnata%20(Audio%20Despertador)&artist=Dj%20Montanha%20O%20Bravo&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "dj montanha o bravo"
-          ]
-        },
-        {
-          "id": "it_br_920173267",
-          "title": "Fazendinha",
-          "artist": "Mundo Bita",
-          "albumTitle": "Bita e os Animais",
-          "albumId": "it_br_alb_920173267",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/5a/89/92/5a899238-c283-3946-c75a-34beacadfe08/886444815758.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Fazendinha&artist=Mundo%20Bita&preferFull=1&studioOnly=1",
-          "rank": 17,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Fazendinha&artist=Mundo%20Bita&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "mundo bita"
-          ]
-        },
-        {
-          "id": "it_br_401966672",
-          "title": "Sem Medo de Ser Feliz",
-          "artist": "Zezé Di Camargo & Luciano",
-          "albumTitle": "Zezé Di Camargo & Luciano",
-          "albumId": "it_br_alb_401966672",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/3c/c4/26/3cc42693-9d7b-d515-f9db-4f9934c22883/mzi.mnfvkgfk.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Sem%20Medo%20de%20Ser%20Feliz&artist=Zez%C3%A9%20Di%20Camargo%20%26%20Luciano&preferFull=1&studioOnly=1",
-          "rank": 20,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Sem%20Medo%20de%20Ser%20Feliz&artist=Zez%C3%A9%20Di%20Camargo%20%26%20Luciano&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "luciano",
-            "zeze di camargo"
-          ]
-        },
-        {
-          "id": "it_br_545728466",
-          "title": "Try",
-          "artist": "P!nk",
-          "albumTitle": "The Truth About Love (Deluxe Version)",
-          "albumId": "it_br_alb_545728466",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/51/e6/a0/51e6a045-74f2-8bac-9926-d9bac29c9fe7/886443581128.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Try&artist=P!nk&preferFull=1&studioOnly=1",
-          "rank": 21,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Try&artist=P!nk&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "p nk"
-          ]
-        },
-        {
-          "id": "it_br_1198317097",
-          "title": "Da Ponte pra Cá",
-          "artist": "Racionais MC's",
-          "albumTitle": "Nada Como um Dia Após o Outro Dia, Vol. 1 & 2",
-          "albumId": "it_br_alb_1198317097",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/3f/ca/fd/3fcafdad-07c1-c752-7878-39dfd32b3b28/0.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Da%20Ponte%20pra%20C%C3%A1&artist=Racionais%20MC's&preferFull=1&studioOnly=1",
-          "rank": 22,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Da%20Ponte%20pra%20C%C3%A1&artist=Racionais%20MC's&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "racionais mc s"
-          ]
-        },
-        {
-          "id": "it_br_1440832696",
-          "title": "Gonna Fly Now (Theme From \"Rocky\")",
-          "artist": "Bill Conti",
-          "albumTitle": "Rocky (Original Motion Picture Score)",
-          "albumId": "it_br_alb_1440832696",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/66/5d/4e/665d4e4b-223d-4e8e-ceac-79c0c502d749/00602547272881.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Gonna%20Fly%20Now%20(Theme%20From%20%22Rocky%22)&artist=Bill%20Conti&preferFull=1&studioOnly=1",
-          "rank": 23,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Gonna%20Fly%20Now%20(Theme%20From%20%22Rocky%22)&artist=Bill%20Conti&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "bill conti"
-          ]
-        },
-        {
-          "id": "it_br_963435793",
-          "title": "Nirvana",
-          "artist": "Elbosco",
-          "albumTitle": "Angelis (Edición 10º Aniversario)",
-          "albumId": "it_br_alb_963435793",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music3/v4/cc/a5/5c/cca55cff-f8bb-2097-f005-463850083e6b/094634742955.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Nirvana&artist=Elbosco&preferFull=1&studioOnly=1",
-          "rank": 24,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Nirvana&artist=Elbosco&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "elbosco"
-          ]
-        },
-        {
-          "id": "it_br_1440631603",
-          "title": "A Dream Is a Wish Your Heart Makes",
-          "artist": "Ilene Woods & Cinderella's Mice Chorus",
-          "albumTitle": "Cinderella (Original Motion Picture Soundtrack)",
-          "albumId": "it_br_alb_1440631603",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/ce/07/27/ce072765-1c70-324b-1dae-03c51c81cc05/12DMGIM03492.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=A%20Dream%20Is%20a%20Wish%20Your%20Heart%20Makes&artist=Ilene%20Woods%20%26%20Cinderella's%20Mice%20Chorus&preferFull=1&studioOnly=1",
-          "rank": 25,
-          "popular": false,
-          "previewUrl": "/api/stream?title=A%20Dream%20Is%20a%20Wish%20Your%20Heart%20Makes&artist=Ilene%20Woods%20%26%20Cinderella's%20Mice%20Chorus&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "cinderella s mice chorus",
-            "ilene woods"
-          ]
-        },
-        {
-          "id": "it_br_1442413902",
-          "title": "Aqui Estamos Nós",
-          "artist": "Manu Gavassi",
-          "albumTitle": "Manu",
-          "albumId": "it_br_alb_1442413902",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/3b/5c/21/3b5c21e5-fb1c-4cad-1d60-d1de3400df15/17UMGIM87042.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Aqui%20Estamos%20N%C3%B3s&artist=Manu%20Gavassi&preferFull=1&studioOnly=1",
-          "rank": 26,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Aqui%20Estamos%20N%C3%B3s&artist=Manu%20Gavassi&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "manu gavassi"
-          ]
-        },
-        {
-          "id": "it_br_1122778616",
-          "title": "Viva la Vida",
-          "artist": "Coldplay",
-          "albumTitle": "Viva la Vida (Prospekt's March Edition)",
-          "albumId": "it_br_alb_1122778616",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/56/bc/3d/56bc3d9c-0a4a-0466-643e-eb9bd748e8bf/190295978037.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Viva%20la%20Vida&artist=Coldplay&preferFull=1&studioOnly=1",
-          "rank": 27,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Viva%20la%20Vida&artist=Coldplay&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "coldplay"
-          ]
-        },
-        {
-          "id": "it_br_1817609509",
-          "title": "Man I Need",
-          "artist": "Olivia Dean",
-          "albumTitle": "The Art of Loving",
-          "albumId": "it_br_alb_1817609509",
-          "duration": "3:25",
-          "durationSec": 205,
-          "coverUrl": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/08/e2/21/08e22164-7c0b-1522-818f-e0e74f62dc49/25UMGIM69703.rgb.jpg/1000x1000bb.jpg",
-          "streamUrl": "/api/stream?title=Man%20I%20Need&artist=Olivia%20Dean&preferFull=1&studioOnly=1",
-          "rank": 28,
-          "popular": false,
-          "previewUrl": "/api/stream?title=Man%20I%20Need&artist=Olivia%20Dean&preferFull=1&studioOnly=1",
-          "artistIds": [
-            "olivia dean"
           ]
         }
       ],
@@ -4042,7 +4061,7 @@
         }
       ]
     },
-    "fetchedAt": 1794320244626,
-    "expiresAt": 1794323844626
+    "fetchedAt": 1794334021161,
+    "expiresAt": 1794337621161
   }
 }

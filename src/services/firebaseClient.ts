@@ -572,35 +572,45 @@ export function initFirebaseClient(): void {
         localStorage.setItem("miado_user_onboarded_v1", "true");
       }
 
-      if (!profSnap || !profSnap.exists() || (snap && snap.exists() && data.onboardingCompleted !== true && isOnboardingDone)) {
+      const profFavsExisting = Array.isArray(profData?.favoriteArtists) ? profData.favoriteArtists : [];
+      const needsProfileSync =
+        !profSnap ||
+        !profSnap.exists() ||
+        (combinedArtistNames.length > 0 && profFavsExisting.length !== combinedArtistNames.slice(0, 60).length);
+
+      if (needsProfileSync || (snap && snap.exists() && data.onboardingCompleted !== true && isOnboardingDone)) {
         try {
           const safeAvatar = sanitizeImageForRules(
             profData?.avatarUrl || data.avatarUrl || serverUser?.avatarUrl || user.photoURL,
             100000,
             "/api/cat-avatar?id=cat_1"
           );
+          const safeBanner = sanitizeImageForRules(
+            profData?.bannerUrl || data.bannerUrl || serverUser?.bannerUrl || "",
+            150000,
+            ""
+          );
           const handleRef = doc(db, "handles", bareH);
           const handleSnap = await getDoc(handleRef).catch(() => null);
-          const batch = writeBatch(db);
           if (!handleSnap || !handleSnap.exists()) {
-            batch.set(handleRef, {
+            await setDoc(handleRef, {
               uid: user.uid,
               createdAt: serverTimestamp(),
-            });
+            }).catch(() => {});
           }
-          if (!profSnap || !profSnap.exists()) {
-            batch.set(profDocRef, {
+          if (needsProfileSync) {
+            await setDoc(profDocRef, {
               uid: user.uid,
               name: String(profData?.name || data.name || serverUser?.name || user.displayName || "Ouvinte Miado").slice(0, 80),
               handle: bareH,
               bio: String(profData?.bio ?? data.bio ?? serverUser?.bio ?? "").slice(0, 300),
               avatarUrl: safeAvatar,
-              bannerUrl: "",
+              bannerUrl: safeBanner,
               favoriteArtists: combinedArtistNames.slice(0, 60),
               updatedAt: serverTimestamp(),
-            });
+            }).catch(() => {});
           }
-          if (snap && snap.exists() && data.onboardingCompleted !== true && isOnboardingDone) {
+          if (snap && snap.exists() && (data.onboardingCompleted !== true || (Array.isArray(data.followedArtists) ? data.followedArtists.length : 0) !== combinedArtistNames.length) && isOnboardingDone) {
             const cleanEmail = String(data.email || user.email || "").toLowerCase();
             const privacyObj =
               data.privacy &&
@@ -608,7 +618,7 @@ export function initFirebaseClient(): void {
               typeof data.privacy.activity === "string"
                 ? data.privacy
                 : { presence: "public", activity: "public" };
-            batch.set(userDocRef, {
+            await setDoc(userDocRef, {
               uid: user.uid,
               email: cleanEmail,
               name: String(data.name || profData?.name || user.displayName || "Ouvinte Miado").slice(0, 80),
@@ -616,7 +626,7 @@ export function initFirebaseClient(): void {
               bio: String(data.bio || profData?.bio || "").slice(0, 300),
               catId: String(data.catId || "cat_1").slice(0, 40),
               avatarUrl: safeAvatar,
-              bannerUrl: sanitizeImageForRules(data.bannerUrl, 150000, ""),
+              bannerUrl: safeBanner,
               favoriteArtists: combinedArtistNames.slice(0, 60),
               favoriteGenres: Array.isArray(data.favoriteGenres) ? data.favoriteGenres.slice(0, 30) : [],
               followedArtists: combinedArtistNames.slice(0, 200),
@@ -624,9 +634,8 @@ export function initFirebaseClient(): void {
               onboardingCompleted: true,
               createdAt: data.createdAt || serverTimestamp(),
               updatedAt: serverTimestamp(),
-            });
+            }).catch(() => {});
           }
-          await batch.commit();
         } catch {}
       }
 
@@ -1570,9 +1579,12 @@ export function initFirebaseClient(): void {
             : Array.isArray(stateObj.user?.followedArtists)
             ? stateObj.user.followedArtists
             : [];
+          const rawFavSource = Array.isArray(stateObj.user?.favoriteArtists)
+            ? stateObj.user.favoriteArtists
+            : [];
           const cleanFollowedNames: string[] = Array.from(
             new Set<string>(
-              rawFollowedSource
+              [...rawFollowedSource, ...rawFavSource]
                 .map((item: any): string =>
                   typeof item === "string" ? item.trim() : String(item?.name || "").trim()
                 )
@@ -1580,21 +1592,7 @@ export function initFirebaseClient(): void {
             )
           ).slice(0, 200);
 
-          const rawFavSource = Array.isArray(stateObj.user?.favoriteArtists)
-            ? stateObj.user.favoriteArtists
-            : [];
-          const cleanFavNames: string[] =
-            cleanFollowedNames.length > 0
-              ? cleanFollowedNames.slice(0, 60)
-              : Array.from(
-                  new Set<string>(
-                    rawFavSource
-                      .map((item: any): string =>
-                        typeof item === "string" ? item.trim() : String(item?.name || "").trim()
-                      )
-                      .filter((s: string) => s.length > 0 && s.length <= 100)
-                  )
-                ).slice(0, 60);
+          const cleanFavNames: string[] = cleanFollowedNames.slice(0, 60);
 
           const cleanGenres: string[] = Array.isArray(stateObj.user?.favoriteGenres)
             ? stateObj.user.favoriteGenres
@@ -1622,27 +1620,29 @@ export function initFirebaseClient(): void {
             updatedAt: serverTimestamp(),
           });
 
-          // 2. Save /handles/{finalHandle} (only if not yet created!) and /profiles/{uid}
+          // 2. Save /handles/{finalHandle} (only if not yet created!) and /profiles/{uid} independently
           try {
             const finalHandleRef = doc(db, "handles", finalHandle);
             const finalHandleSnap =
               finalHandle === newBareHandle && handleSnap
                 ? handleSnap
                 : await getDoc(finalHandleRef).catch(() => null);
-            const batch = writeBatch(db);
             if (!finalHandleSnap || !finalHandleSnap.exists()) {
-              batch.set(finalHandleRef, {
+              await setDoc(finalHandleRef, {
                 uid,
                 createdAt: serverTimestamp(),
-              });
+              }).catch(() => {});
             }
             if (oldBareHandle && oldBareHandle !== finalHandle) {
               const oldSnap = await getDoc(doc(db, "handles", oldBareHandle)).catch(() => null);
               if (oldSnap && oldSnap.exists() && oldSnap.data()?.uid === uid) {
-                batch.delete(doc(db, "handles", oldBareHandle));
+                await deleteDoc(doc(db, "handles", oldBareHandle)).catch(() => {});
               }
             }
-            batch.set(doc(db, "profiles", uid), {
+          } catch {}
+
+          try {
+            await setDoc(doc(db, "profiles", uid), {
               uid,
               name: cleanName,
               handle: finalHandle,
@@ -1652,9 +1652,8 @@ export function initFirebaseClient(): void {
               favoriteArtists: cleanFavNames,
               updatedAt: serverTimestamp(),
             });
-            await batch.commit();
           } catch (profErr) {
-            console.warn("Firestore profile batch warning:", profErr);
+            console.warn("Firestore profile update warning:", profErr);
           }
 
           // 3. Ensure any likedTracks in stateObj.user.likedTracks are persisted in /users/{uid}/likes
@@ -1727,7 +1726,7 @@ export function initFirebaseClient(): void {
               state,
               updatedAt: serverTimestamp(),
             };
-            if (vis !== "private" && state !== "idle" && track && track.title && track.artist) {
+            if (vis !== "private" && state === "playing" && track && track.title && track.artist) {
               const dur = Math.max(0, Math.min(7200, Math.round(Number(track.durationSec) || 180)));
               const safeCover =
                 typeof track.coverUrl === "string" &&
@@ -1768,9 +1767,9 @@ export function initFirebaseClient(): void {
         const presenceByUid = new Map<string, any>();
         const watchedPresenceUids = new Set<string>();
 
-        const isPresFresh = (pres: any, expectedUid: string): boolean => {
+        const isPresOnline = (pres: any, expectedUid: string): boolean => {
           if (!pres || pres.uid !== expectedUid) return false;
-          if (pres.state !== "playing" || !pres.track || !pres.track.title) return false;
+          if (pres.state !== "playing" && pres.state !== "paused") return false;
           const ts = pres.updatedAt;
           if (!ts) return false;
           let ms = 0;
@@ -1783,6 +1782,14 @@ export function initFirebaseClient(): void {
           }
           if (!ms || Number.isNaN(ms)) return false;
           return Date.now() - ms < 180_000;
+        };
+
+        const isPresPlaying = (pres: any, expectedUid: string): boolean => {
+          return (
+            isPresOnline(pres, expectedUid) &&
+            pres.state === "playing" &&
+            Boolean(pres.track && pres.track.title)
+          );
         };
 
         const ensurePresenceListenerForUid = (targetUid: string) => {
@@ -1829,7 +1836,8 @@ export function initFirebaseClient(): void {
 
             // Strict UID-based presence lookup: never collide between logged-in user and friends
             const pres = presenceByUid.get(uid);
-            const hasLiveTrack = isPresFresh(pres, uid);
+            const isOnlineNow = isPresOnline(pres, uid) || Boolean(selfUid && uid === selfUid);
+            const hasLiveTrack = isPresPlaying(pres, uid);
             const currentTrackStr = hasLiveTrack
               ? `${pres.track.title} - ${pres.track.artist || "Artista"}`
               : "";
@@ -1858,14 +1866,14 @@ export function initFirebaseClient(): void {
               favoriteArtists: favArtists,
               followedArtists: favArtists.map((a: string) => ({
                 name: a,
-                role: "Artista Favorito",
+                role: "Artista Seguido",
                 coverUrl: `/api/artist-image?name=${encodeURIComponent(a)}`,
               })),
               currentTrack: currentTrackStr,
               trackObj,
               liveStateResolved: true,
               _fromFirestore: true,
-              online: hasLiveTrack,
+              online: isOnlineNow,
               isSelf: Boolean(selfUid && uid === selfUid),
             });
           }
@@ -2004,13 +2012,12 @@ export function initFirebaseClient(): void {
                 }
               } catch {}
 
+              let isOnlineFresh = uid === selfUid;
               let isPlayingFresh = false;
               if (
                 presData &&
                 presData.uid === uid &&
-                presData.state === "playing" &&
-                presData.track &&
-                presData.track.title &&
+                (presData.state === "playing" || presData.state === "paused") &&
                 presData.updatedAt
               ) {
                 const ts = presData.updatedAt;
@@ -2021,7 +2028,10 @@ export function initFirebaseClient(): void {
                     ? ts.seconds * 1000
                     : new Date(ts).getTime();
                 if (ms && !Number.isNaN(ms) && Date.now() - ms < 180_000) {
-                  isPlayingFresh = true;
+                  isOnlineFresh = true;
+                  if (presData.state === "playing" && presData.track && presData.track.title) {
+                    isPlayingFresh = true;
+                  }
                 }
               }
 
@@ -2038,7 +2048,7 @@ export function initFirebaseClient(): void {
                 favoriteArtists: favs,
                 followedArtists: favs.map((a: string) => ({
                   name: a,
-                  role: "Artista Favorito",
+                  role: "Artista Seguido",
                   coverUrl: `/api/artist-image?name=${encodeURIComponent(a)}`,
                 })),
                 currentTrack: isPlayingFresh
@@ -2047,7 +2057,7 @@ export function initFirebaseClient(): void {
                 trackObj: isPlayingFresh ? presData.track : null,
                 liveStateResolved: true,
                 _fromFirestore: true,
-                online: isPlayingFresh,
+                online: isOnlineFresh,
                 isSelf: uid === selfUid,
               });
             })

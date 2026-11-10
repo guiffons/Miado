@@ -43,8 +43,8 @@ export function computeStreamExpiryMs(rawUrl: string): number {
 }
 
 const store = new JsonStore<StreamCacheFileSchema>(STREAM_CACHE_FILE, {
-  schemaVersion: 2,
-  defaults: { schemaVersion: 2, entries: {} },
+  schemaVersion: 3,
+  defaults: { schemaVersion: 3, entries: {} },
   maxBytes: 4 * 1024 * 1024,
   flushDebounceMs: 2000,
   migrate: (raw: any) => {
@@ -54,6 +54,15 @@ const store = new JsonStore<StreamCacheFileSchema>(STREAM_CACHE_FILE, {
     let count = 0;
     for (const [k, v] of Object.entries(sourceEntries)) {
       if (count >= 2000) break;
+      const keyLower = String(k || "").toLowerCase();
+      if (
+        keyLower.includes("bom gosto") ||
+        keyLower.includes("rita lee") ||
+        keyLower.includes("pitty") ||
+        keyLower.includes("sophia")
+      ) {
+        continue;
+      }
       const item = v as any;
       if (
         item &&
@@ -84,7 +93,7 @@ const store = new JsonStore<StreamCacheFileSchema>(STREAM_CACHE_FILE, {
         }
       }
     }
-    return { schemaVersion: 2, entries: migrated };
+    return { schemaVersion: 3, entries: migrated };
   }
 });
 
