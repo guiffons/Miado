@@ -7,10 +7,9 @@
  */
 
 :root {
-  color-scheme: dark;
-  --ambient-c1: 20, 13, 34;
-  --ambient-c2: 14, 10, 24;
-  --ambient-c3: 18, 12, 30;
+  --ambient-c1: 139, 92, 246;
+  --ambient-c2: 59, 130, 246;
+  --ambient-c3: 236, 72, 153;
 
   /* Tokens padronizados de Liquid Glass */
   --glass-blur-1: blur(20px) saturate(175%);
@@ -19,23 +18,22 @@
   --glass-blur: var(--glass-blur-2);
   --glass-blur-heavy: var(--glass-blur-3);
 
-  --glass-bg-1: linear-gradient(135deg, rgba(24, 19, 42, 0.76) 0%, rgba(14, 11, 26, 0.84) 100%);
-  --glass-bg-2: linear-gradient(135deg, rgba(18, 14, 32, 0.72) 0%, rgba(10, 8, 20, 0.64) 100%);
-  --glass-bg-3: linear-gradient(135deg, rgba(26, 20, 44, 0.78) 0%, rgba(14, 11, 28, 0.68) 100%);
+  --glass-bg-1: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  --glass-bg-2: linear-gradient(135deg, rgba(22, 18, 36, 0.56) 0%, rgba(12, 10, 22, 0.42) 100%);
+  --glass-bg-3: linear-gradient(135deg, rgba(26, 20, 42, 0.66) 0%, rgba(14, 11, 26, 0.52) 100%);
 
-  --glass-border-subtle: rgba(255, 255, 255, 0.09);
-  --glass-border-mid: rgba(255, 255, 255, 0.14);
-  --glass-border-bright: rgba(255, 255, 255, 0.22);
+  --glass-border-subtle: rgba(255, 255, 255, 0.08);
+  --glass-border-mid: rgba(255, 255, 255, 0.12);
+  --glass-border-bright: rgba(255, 255, 255, 0.2);
   --glass-specular-inset: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 html,
 body {
-  color-scheme: dark;
   width: 100%;
   height: 100dvh;
   min-height: 100dvh;
-  background-color: #050409;
+  background-color: #07060b;
   overflow: hidden;
 }
 
@@ -46,7 +44,7 @@ body {
   background: transparent !important;
 }
 
-/* Fundo cromático dinâmico: escuro e sóbrio quando ocioso, atmosférico quando tocando */
+/* Fundo cromático dinâmico: cores da capa da música atual com blur suave */
 #miado-ambient-backdrop {
   position: fixed;
   inset: 0;
@@ -54,18 +52,18 @@ body {
   pointer-events: none;
   overflow: hidden;
   background:
-    radial-gradient(circle at 18% 12%, rgba(var(--ambient-c1), 0.24), transparent 56%),
-    radial-gradient(circle at 82% 85%, rgba(var(--ambient-c2), 0.18), transparent 56%),
-    #050409;
+    radial-gradient(circle at 18% 12%, rgba(var(--ambient-c1), 0.34), transparent 58%),
+    radial-gradient(circle at 82% 85%, rgba(var(--ambient-c2), 0.28), transparent 58%),
+    #07060b;
 }
 
 .ambient-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(104px);
-  opacity: 0.42;
+  filter: blur(96px);
+  opacity: 0.7;
   will-change: transform, background-color;
-  transition: background-color 1.4s ease, opacity 0.8s ease;
+  transition: background-color 1.4s ease;
 }
 
 .ambient-orb-1 {
@@ -75,7 +73,7 @@ body {
   max-height: 720px;
   top: -12%;
   left: -6%;
-  background: radial-gradient(circle, rgba(var(--ambient-c1), 0.56) 0%, rgba(var(--ambient-c1), 0) 72%);
+  background: radial-gradient(circle, rgba(var(--ambient-c1), 0.72) 0%, rgba(var(--ambient-c1), 0) 72%);
   animation: miadoOrbFloat1 22s ease-in-out infinite alternate;
 }
 
@@ -86,7 +84,7 @@ body {
   max-height: 640px;
   bottom: -10%;
   right: -4%;
-  background: radial-gradient(circle, rgba(var(--ambient-c2), 0.46) 0%, rgba(var(--ambient-c2), 0) 72%);
+  background: radial-gradient(circle, rgba(var(--ambient-c2), 0.58) 0%, rgba(var(--ambient-c2), 0) 72%);
   animation: miadoOrbFloat2 26s ease-in-out infinite alternate;
 }
 
@@ -97,7 +95,7 @@ body {
   max-height: 540px;
   top: 28%;
   left: 34%;
-  background: radial-gradient(circle, rgba(var(--ambient-c3), 0.34) 0%, rgba(var(--ambient-c3), 0) 72%);
+  background: radial-gradient(circle, rgba(var(--ambient-c3), 0.45) 0%, rgba(var(--ambient-c3), 0) 72%);
   animation: miadoOrbFloat3 30s ease-in-out infinite alternate;
 }
 
@@ -116,7 +114,7 @@ body {
   100% { transform: translate3d(24px, -30px, 0) scale(1.05); }
 }
 
-/* Superfícies Liquid Glass Níveis 1, 2 e 3 */
+/* Superfícies Liquid Glass Níveis 1, 2 e 3 — Contínuas, Sem Bordas e Sem Sombras Pesadas */
 .sidebar-left,
 .sidebar-right,
 .top-bar {
@@ -128,11 +126,11 @@ body {
 }
 
 .player-footer {
-  background: rgba(11, 8, 22, 0.78) !important;
+  background: rgba(14, 10, 26, 0.46) !important;
   -webkit-backdrop-filter: blur(38px) saturate(200%) !important;
   backdrop-filter: blur(38px) saturate(200%) !important;
   border: none !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
   outline: none !important;
   box-shadow: none !important;
   transform: translateZ(0) !important;
@@ -145,15 +143,15 @@ body {
   background: var(--glass-bg-1) !important;
   -webkit-backdrop-filter: var(--glass-blur-1) !important;
   backdrop-filter: var(--glass-blur-1) !important;
-  border: 1px solid rgba(255, 255, 255, 0.085) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .album-card:hover,
 .quick-card:hover {
-  background: linear-gradient(135deg, rgba(36, 28, 62, 0.84) 0%, rgba(20, 15, 38, 0.88) 100%) !important;
-  border-color: rgba(168, 85, 247, 0.28) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .category-pill,
@@ -164,93 +162,11 @@ body {
 .nav-arrow-btn,
 .settings-gear-btn,
 .user-pill-top {
+  border: none !important;
+  box-shadow: none !important;
   outline: none !important;
   -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
   backdrop-filter: blur(18px) saturate(180%) !important;
-}
-
-.category-pill {
-  background: rgba(139, 92, 246, 0.15) !important;
-  border: 1px solid rgba(168, 85, 247, 0.3) !important;
-  color: #f3e8ff !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09) !important;
-}
-
-.category-pill:hover {
-  background: rgba(139, 92, 246, 0.28) !important;
-  border-color: rgba(192, 132, 252, 0.52) !important;
-  color: #ffffff !important;
-}
-
-.category-pill.active {
-  background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%) !important;
-  border: 1px solid rgba(216, 180, 254, 0.48) !important;
-  color: #ffffff !important;
-  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
-}
-
-.album-action-btn {
-  background: rgba(139, 92, 246, 0.16) !important;
-  border: 1px solid rgba(168, 85, 247, 0.34) !important;
-  color: #f3e8ff !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
-}
-
-.album-action-btn:hover {
-  background: rgba(139, 92, 246, 0.28) !important;
-  border-color: rgba(192, 132, 252, 0.55) !important;
-  color: #ffffff !important;
-}
-
-.album-action-btn.primary {
-  background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%) !important;
-  border: 1px solid rgba(216, 180, 254, 0.45) !important;
-  color: #ffffff !important;
-  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
-}
-
-.album-action-btn.primary:hover {
-  background: linear-gradient(135deg, #a855f7 0%, #8b5cf6 100%) !important;
-  border-color: rgba(233, 213, 255, 0.62) !important;
-  color: #ffffff !important;
-}
-
-.btn-main-play,
-#prof-btn-play-status,
-#player-btn-play {
-  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%) !important;
-  color: #ffffff !important;
-  border: 1px solid rgba(233, 213, 255, 0.48) !important;
-  box-shadow: 0 4px 14px rgba(139, 92, 246, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
-}
-
-.btn-main-play:hover,
-#prof-btn-play-status:hover,
-#player-btn-play:hover {
-  background: linear-gradient(135deg, #c084fc 0%, #8b5cf6 100%) !important;
-  color: #ffffff !important;
-  transform: scale(1.06);
-}
-
-#prof-now-playing-box {
-  background: linear-gradient(135deg, rgba(34, 24, 62, 0.88) 0%, rgba(18, 13, 36, 0.92) 100%) !important;
-  border: 1px solid rgba(168, 85, 247, 0.38) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
-}
-
-#btn-prof-change-banner,
-.back-btn-pill {
-  background: rgba(24, 17, 44, 0.88) !important;
-  border: 1px solid rgba(192, 132, 252, 0.42) !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
-}
-
-#btn-prof-change-banner:hover,
-.back-btn-pill:hover {
-  background: rgba(139, 92, 246, 0.35) !important;
-  border-color: rgba(216, 180, 254, 0.6) !important;
-  color: #ffffff !important;
 }
 
 .artist-bubble-card,
