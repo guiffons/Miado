@@ -37,6 +37,8 @@ import {
   updatePassword,
   signInWithPopup,
   signOut,
+  setPersistence,
+  browserLocalPersistence,
   type User
 } from "firebase/auth";
 import firebaseConfig from "../../firebase-applet-config.json";
@@ -50,6 +52,9 @@ export const db = getFirestore(
   firebaseConfig.firestoreDatabaseId || "ai-studio-miadostreamingde-0c57b5d9-b4bf-4817-81f3-2d65f4bd82b7"
 );
 export const auth = getAuth(app);
+try {
+  void setPersistence(auth, browserLocalPersistence).catch(() => {});
+} catch {}
 
 async function testConnection() {
   try {
@@ -186,11 +191,25 @@ export async function generateUniqueRandomHandle(prefix = "user"): Promise<strin
 }
 
 export function sanitizeImageForRules(rawUrl: unknown, maxLen: number, fallback = ""): string {
-  const s = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  let s = typeof rawUrl === "string" ? rawUrl.trim() : "";
   if (!s || s.length > maxLen) return fallback;
+  if (s.startsWith("data:image/jpg;base64,")) {
+    s = "data:image/jpeg;base64," + s.slice("data:image/jpg;base64,".length);
+  }
   if (/^\/api\/cat-avatar\?id=[a-z0-9_]{1,40}$/.test(s)) return s;
+  if (/^\/api\/artist-image\?.+$/.test(s)) return s;
+  try {
+    if (/^https:\/\//i.test(s)) {
+      const parsed = new URL(s);
+      const host = parsed.hostname.toLowerCase();
+      if (host.endsWith("googleusercontent.com") || host.endsWith("ggpht.com")) {
+        const proxied = `/api/artist-image?url=${encodeURIComponent(s)}`;
+        if (proxied.length <= maxLen) return proxied;
+      }
+    }
+  } catch {}
   if (/^https:\/\/[A-Za-z0-9._~:/?#@!$&()*+,;=%-]{4,2000}$/.test(s)) return s;
-  if (/^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s)) return s;
+  if (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(s)) return s;
   return fallback;
 }
 
@@ -264,6 +283,17 @@ function mergeTwoCommunityProfiles(primary: any, secondary: any, selfUid: string
       ? secondary.uid
       : primary.uid || secondary.uid;
 
+  const mergedFollowers = Array.isArray(primary.followers) && primary.followers.length > 0
+    ? primary.followers
+    : Array.isArray(secondary.followers)
+    ? secondary.followers
+    : [];
+  const mergedFollowing = Array.isArray(primary.following) && primary.following.length > 0
+    ? primary.following
+    : Array.isArray(secondary.following)
+    ? secondary.following
+    : [];
+
   return {
     ...secondary,
     ...primary,
@@ -278,6 +308,10 @@ function mergeTwoCommunityProfiles(primary: any, secondary: any, selfUid: string
       role: "Artista Favorito",
       coverUrl: `/api/artist-image?name=${encodeURIComponent(a)}`,
     })),
+    followers: mergedFollowers,
+    following: mergedFollowing,
+    followersCount: Math.max(mergedFollowers.length, Number(primary.followersCount) || 0, Number(secondary.followersCount) || 0),
+    followingCount: Math.max(mergedFollowing.length, Number(primary.followingCount) || 0, Number(secondary.followingCount) || 0),
     online: primaryActive || secondaryActive,
     currentTrack: activeSrc.currentTrack || "",
     trackObj: activeSrc.trackObj || null,
@@ -286,7 +320,9 @@ function mergeTwoCommunityProfiles(primary: any, secondary: any, selfUid: string
 }
 
 export function deduplicateCommunityProfilesList(rawList: any[], selfUid = ""): any[] {
+  const byUid = new Map<string, any>();
   const byHandle = new Map<string, any>();
+
   for (const item of rawList) {
     if (!item) continue;
     const rawH = String(item.username || item.handle || "").trim().toLowerCase();
@@ -294,7 +330,38 @@ export function deduplicateCommunityProfilesList(rawList: any[], selfUid = ""): 
       continue;
     }
     const hKey = rawH.startsWith("@") ? rawH : `@${rawH}`;
-    const normalized = { ...item, username: hKey, handle: hKey };
+    const itemUid = String(item.uid || "").trim();
+    const hasRealUid = Boolean(itemUid && !itemUid.startsWith("prof_"));
+    const normalized = {
+      ...item,
+      ...(hasRealUid ? { uid: itemUid } : {}),
+      username: hKey,
+      handle: hKey,
+      avatarUrl: sanitizeImageForRules(item.avatarUrl, 100000, item.avatarUrl || "/api/cat-avatar?id=cat_1"),
+    };
+
+    // Primary deduplication by UID so renamed accounts (@old -> @new) never duplicate
+    if (hasRealUid) {
+      const existingByUid = byUid.get(itemUid);
+      if (existingByUid) {
+        const sNew = scoreCommunityProfile(normalized, selfUid);
+        const sOld = scoreCommunityProfile(existingByUid, selfUid);
+        const tNew = Date.parse(String(normalized.updatedAt || "")) || 0;
+        const tOld = Date.parse(String(existingByUid.updatedAt || "")) || 0;
+        const preferNew = normalized._fromFirestore || tNew >= tOld || sNew >= sOld;
+        const merged = preferNew
+          ? mergeTwoCommunityProfiles(normalized, existingByUid, selfUid)
+          : mergeTwoCommunityProfiles(existingByUid, normalized, selfUid);
+        if (existingByUid.username && existingByUid.username !== merged.username) {
+          byHandle.delete(existingByUid.username);
+        }
+        byUid.set(itemUid, merged);
+        byHandle.set(merged.username, merged);
+        continue;
+      }
+      byUid.set(itemUid, normalized);
+    }
+
     const existing = byHandle.get(hKey);
     if (!existing) {
       byHandle.set(hKey, normalized);
@@ -306,10 +373,13 @@ export function deduplicateCommunityProfilesList(rawList: any[], selfUid = ""): 
           ? mergeTwoCommunityProfiles(normalized, existing, selfUid)
           : mergeTwoCommunityProfiles(existing, normalized, selfUid);
       byHandle.set(hKey, merged);
+      if (merged.uid && !String(merged.uid).startsWith("prof_")) {
+        byUid.set(String(merged.uid), merged);
+      }
     }
   }
 
-  // Secondary pass: if two different handles have the exact same display name and one is an empty shell with default cat_1 avatar, merge into the real profile
+  // Secondary pass: if two different handles have the exact same display name and one lacks a real uid or is an empty shell, merge into the real profile
   const byName = new Map<string, string>();
   for (const [hKey, prof] of Array.from(byHandle.entries())) {
     const normName = String(prof.name || "").trim().toLowerCase();
@@ -321,8 +391,10 @@ export function deduplicateCommunityProfilesList(rawList: any[], selfUid = ""): 
     }
     const prevProf = byHandle.get(prevHKey);
     if (!prevProf) continue;
-    const prevIsShell = !isCustomAvatar(prevProf.avatarUrl) && !prevProf.online;
-    const currIsShell = !isCustomAvatar(prof.avatarUrl) && !prof.online;
+    const prevHasUid = Boolean(prevProf.uid && !String(prevProf.uid).startsWith("prof_"));
+    const currHasUid = Boolean(prof.uid && !String(prof.uid).startsWith("prof_"));
+    const prevIsShell = (!isCustomAvatar(prevProf.avatarUrl) && !prevProf.online) || (!prevHasUid && currHasUid);
+    const currIsShell = (!isCustomAvatar(prof.avatarUrl) && !prof.online) || (!currHasUid && prevHasUid);
     if (prevIsShell && !currIsShell) {
       const merged = mergeTwoCommunityProfiles(prof, prevProf, selfUid);
       byHandle.set(hKey, merged);
@@ -425,13 +497,17 @@ export function initFirebaseClient(): void {
     const userDocRef = doc(db, "users", user.uid);
     const profDocRef = doc(db, "profiles", user.uid);
     const likesQ = query(collection(db, "users", user.uid, "likes"), limit(200));
+    const historyQ = query(collection(db, "users", user.uid, "history"), orderBy("playedAt", "desc"), limit(50));
     const followsQ = query(collection(db, "follows"), where("followerId", "==", user.uid), limit(200));
+    const followersQ = query(collection(db, "follows"), where("followeeId", "==", user.uid), limit(200));
     const playlistsQ = query(collection(db, "playlists"), where("ownerId", "==", user.uid), limit(50));
-    const [snap, profSnap, likesSnap, followsSnap, playlistsSnap, serverSyncRes] = await Promise.all([
+    const [snap, profSnap, likesSnap, historySnap, followsSnap, followersSnap, playlistsSnap, serverSyncRes] = await Promise.all([
       getDoc(userDocRef).catch(() => null),
       getDoc(profDocRef).catch(() => null),
       getDocs(likesQ).catch(() => null),
+      getDocs(historyQ).catch(() => null),
       getDocs(followsQ).catch(() => null),
+      getDocs(followersQ).catch(() => null),
       getDocs(playlistsQ).catch(() => null),
       fetch(`/api/user/firestore-sync?uid=${encodeURIComponent(user.uid)}`, {
         headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
@@ -456,7 +532,30 @@ export function initFirebaseClient(): void {
           uid: followeeIds[i],
           name: String(pd.name || bare),
           username: `@${bare}`,
-          avatarUrl: pd.avatarUrl || "/api/cat-avatar?id=cat_1",
+          avatarUrl: sanitizeImageForRules(pd.avatarUrl, 100000, "/api/cat-avatar?id=cat_1"),
+          bio: String(pd.bio || ""),
+          favoriteArtists: Array.isArray(pd.favoriteArtists) ? pd.favoriteArtists : [],
+        });
+      });
+    }
+
+    const followerProfiles: any[] = [];
+    if (followersSnap && !followersSnap.empty) {
+      const followerIds = followersSnap.docs
+        .map((d) => String((d.data() || {}).followerId || ""))
+        .filter(Boolean);
+      const profDocs = await Promise.all(
+        followerIds.map((fid) => getDoc(doc(db, "profiles", fid)).catch(() => null))
+      );
+      profDocs.forEach((ps, i) => {
+        if (!ps || !ps.exists()) return;
+        const pd: any = ps.data() || {};
+        const bare = normalizeBareHandle(String(pd.handle || ""), "user");
+        followerProfiles.push({
+          uid: followerIds[i],
+          name: String(pd.name || bare),
+          username: `@${bare}`,
+          avatarUrl: sanitizeImageForRules(pd.avatarUrl, 100000, "/api/cat-avatar?id=cat_1"),
           bio: String(pd.bio || ""),
           favoriteArtists: Array.isArray(pd.favoriteArtists) ? pd.favoriteArtists : [],
         });
@@ -506,6 +605,37 @@ export function initFirebaseClient(): void {
     const serverLikes = Array.isArray(serverSyncRes?.likedTracks) ? serverSyncRes.likedTracks : [];
     const serverHistory = Array.isArray(serverSyncRes?.recentHistory) ? serverSyncRes.recentHistory : [];
 
+    const firestoreHistory: any[] = [];
+    if (historySnap && !historySnap.empty) {
+      for (const hDoc of historySnap.docs) {
+        const hd = hDoc.data() || {};
+        if (!hd.title || !hd.artist) continue;
+        const title = String(hd.title);
+        const artist = String(hd.artist);
+        const durSec = Number(hd.durationSec) || 210;
+        const mins = Math.floor(durSec / 60);
+        const secs = Math.floor(durSec % 60);
+        const durFormatted = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+        const tKey = String(hd.trackKey || buildTrackKey(title, artist));
+        const streamUrl = `/api/stream?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}&preferFull=1`;
+        const coverUrl = hd.coverUrl
+          ? `/api/cover?url=${encodeURIComponent(String(hd.coverUrl))}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`
+          : `/api/cover?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`;
+        firestoreHistory.push({
+          id: `hist_${tKey}`,
+          title,
+          artist,
+          albumTitle: String(hd.albumTitle || "Single"),
+          duration: durFormatted,
+          durationSec: durSec,
+          coverUrl,
+          previewUrl: streamUrl,
+          streamUrl,
+        });
+      }
+    }
+    const mergedHistory = [...serverHistory, ...firestoreHistory].slice(0, 50);
+
     const firestorePlaylists: any[] = [];
     if (playlistsSnap && !playlistsSnap.empty) {
       for (const pDoc of playlistsSnap.docs) {
@@ -532,29 +662,53 @@ export function initFirebaseClient(): void {
     if ((snap && snap.exists()) || (profSnap && profSnap.exists()) || serverUser) {
       const data = (snap && snap.exists() ? snap.data() : null) || {};
       const profData = profSnap && profSnap.exists() ? profSnap.data() : null;
+      const resolvedEmail = String(data.email || user.email || serverUser?.email || "").toLowerCase().trim();
       const rawHandle =
+        serverUser?.handle ||
+        serverUser?.username ||
         profData?.handle ||
         data.handle ||
         data.username ||
-        serverUser?.handle ||
-        serverUser?.username ||
         `user${Math.floor(10000 + Math.random() * 90000)}`;
       const bareH = normalizeBareHandle(String(rawHandle), "user");
       const displayHandle = `@${bareH}`;
-      const rawFavs = [
-        ...(Array.isArray(data.favoriteArtists) ? data.favoriteArtists : []),
-        ...(Array.isArray(profData?.favoriteArtists) ? profData.favoriteArtists : []),
-        ...serverFavs,
-      ];
-      const rawFols = [
-        ...(Array.isArray(data.followedArtists) ? data.followedArtists : []),
-        ...serverFols,
-      ];
+
+      let localUnfollowedSet = new Set<string>();
+      let localUnlikedSet = new Set<string>();
+      try {
+        const rawUnf = localStorage.getItem(`miado_unfollowed_v2_${resolvedEmail}`);
+        if (rawUnf) {
+          const parsed = JSON.parse(rawUnf);
+          if (Array.isArray(parsed)) parsed.forEach((x) => localUnfollowedSet.add(String(x || "").toLowerCase().trim()));
+        }
+        const rawUnl = localStorage.getItem(`miado_unliked_v2_${resolvedEmail}`);
+        if (rawUnl) {
+          const parsed = JSON.parse(rawUnl);
+          if (Array.isArray(parsed)) parsed.forEach((x) => localUnlikedSet.add(String(x || "").toLowerCase().trim()));
+        }
+      } catch {}
+
+      const dataUpdatedMs = typeof data.updatedAt?.toMillis === "function" ? data.updatedAt.toMillis() : 0;
+      const profUpdatedMs = typeof profData?.updatedAt?.toMillis === "function" ? profData.updatedAt.toMillis() : 0;
+      const serverUpdatedMs = Number(serverUser?.updatedAt || 0);
+
+      // Prefer the authoritative server sync list or the most recently updated Firestore user document so unfollowed artists do not resurrect from stale profile snapshots
+      let authoritativeArtistsSource: any[] = [];
+      if (serverUser && (serverUpdatedMs >= dataUpdatedMs || (!Array.isArray(data.followedArtists) && !Array.isArray(data.favoriteArtists)))) {
+        authoritativeArtistsSource = serverFols.length > 0 ? serverFols : serverFavs;
+      } else if (Array.isArray(data.followedArtists) || Array.isArray(data.favoriteArtists)) {
+        authoritativeArtistsSource = Array.isArray(data.followedArtists) ? data.followedArtists : data.favoriteArtists;
+      } else if (serverFols.length > 0 || serverFavs.length > 0) {
+        authoritativeArtistsSource = serverFols.length > 0 ? serverFols : serverFavs;
+      } else if (Array.isArray(profData?.favoriteArtists)) {
+        authoritativeArtistsSource = profData.favoriteArtists;
+      }
+
       const combinedArtistNames = Array.from(
         new Set(
-          [...rawFols, ...rawFavs]
+          authoritativeArtistsSource
             .map((item: any) => (typeof item === "string" ? item.trim() : String(item?.name || "").trim()))
-            .filter(Boolean)
+            .filter((name: string) => Boolean(name && !localUnfollowedSet.has(name.toLowerCase())))
         )
       );
 
@@ -572,45 +726,72 @@ export function initFirebaseClient(): void {
         localStorage.setItem("miado_user_onboarded_v1", "true");
       }
 
+      const resolvedBio = String(
+        (serverUser && typeof serverUser.bio === "string" && serverUser.bio.trim() !== "" ? serverUser.bio : "") ||
+          (typeof data.bio === "string" && data.bio.trim() !== "" ? data.bio : "") ||
+          (typeof profData?.bio === "string" && profData.bio.trim() !== "" ? profData.bio : "") ||
+          (serverUser && typeof serverUser.bio === "string" ? serverUser.bio : "") ||
+          (typeof data.bio === "string" ? data.bio : "") ||
+          ""
+      ).slice(0, 300);
+
+      const resolvedName = String(
+        (serverUpdatedMs >= profUpdatedMs && serverUser?.name) ||
+          data.name ||
+          profData?.name ||
+          serverUser?.name ||
+          user.displayName ||
+          "Ouvinte Miado"
+      ).slice(0, 80);
+
       const profFavsExisting = Array.isArray(profData?.favoriteArtists) ? profData.favoriteArtists : [];
       const needsProfileSync =
         !profSnap ||
         !profSnap.exists() ||
-        (combinedArtistNames.length > 0 && profFavsExisting.length !== combinedArtistNames.slice(0, 60).length);
+        profData?.bio !== resolvedBio ||
+        profData?.name !== resolvedName ||
+        profFavsExisting.length !== combinedArtistNames.slice(0, 60).length;
 
       if (needsProfileSync || (snap && snap.exists() && data.onboardingCompleted !== true && isOnboardingDone)) {
         try {
           const safeAvatar = sanitizeImageForRules(
-            profData?.avatarUrl || data.avatarUrl || serverUser?.avatarUrl || user.photoURL,
+            serverUser?.avatarUrl || profData?.avatarUrl || data.avatarUrl || user.photoURL,
             100000,
             "/api/cat-avatar?id=cat_1"
           );
           const safeBanner = sanitizeImageForRules(
-            profData?.bannerUrl || data.bannerUrl || serverUser?.bannerUrl || "",
+            serverUser?.bannerUrl || profData?.bannerUrl || data.bannerUrl || "",
             150000,
             ""
           );
           const handleRef = doc(db, "handles", bareH);
           const handleSnap = await getDoc(handleRef).catch(() => null);
+          const batch = writeBatch(db);
+          let hasBatchOps = false;
           if (!handleSnap || !handleSnap.exists()) {
-            await setDoc(handleRef, {
+            batch.set(handleRef, {
               uid: user.uid,
               createdAt: serverTimestamp(),
-            }).catch(() => {});
+            });
+            hasBatchOps = true;
           }
-          if (needsProfileSync) {
-            await setDoc(profDocRef, {
+          if (needsProfileSync && (!handleSnap || !handleSnap.exists() || handleSnap.data()?.uid === user.uid)) {
+            batch.set(profDocRef, {
               uid: user.uid,
-              name: String(profData?.name || data.name || serverUser?.name || user.displayName || "Ouvinte Miado").slice(0, 80),
+              name: resolvedName,
               handle: bareH,
-              bio: String(profData?.bio ?? data.bio ?? serverUser?.bio ?? "").slice(0, 300),
+              bio: resolvedBio,
               avatarUrl: safeAvatar,
               bannerUrl: safeBanner,
               favoriteArtists: combinedArtistNames.slice(0, 60),
               updatedAt: serverTimestamp(),
-            }).catch(() => {});
+            });
+            hasBatchOps = true;
           }
-          if (snap && snap.exists() && (data.onboardingCompleted !== true || (Array.isArray(data.followedArtists) ? data.followedArtists.length : 0) !== combinedArtistNames.length) && isOnboardingDone) {
+          if (hasBatchOps) {
+            await batch.commit().catch(() => {});
+          }
+          if (snap && snap.exists() && (data.onboardingCompleted !== true || (Array.isArray(data.followedArtists) ? data.followedArtists.length : 0) !== combinedArtistNames.length || data.bio !== resolvedBio) && isOnboardingDone) {
             const cleanEmail = String(data.email || user.email || "").toLowerCase();
             const privacyObj =
               data.privacy &&
@@ -621,9 +802,9 @@ export function initFirebaseClient(): void {
             await setDoc(userDocRef, {
               uid: user.uid,
               email: cleanEmail,
-              name: String(data.name || profData?.name || user.displayName || "Ouvinte Miado").slice(0, 80),
+              name: resolvedName,
               handle: bareH,
-              bio: String(data.bio || profData?.bio || "").slice(0, 300),
+              bio: resolvedBio,
               catId: String(data.catId || "cat_1").slice(0, 40),
               avatarUrl: safeAvatar,
               bannerUrl: safeBanner,
@@ -646,27 +827,42 @@ export function initFirebaseClient(): void {
           ? data.privacy
           : { presence: "public", activity: "public" };
 
-      const combinedLikes = firestoreLikes.length > 0 ? firestoreLikes : serverLikes;
+      const rawCombinedLikes = [...serverLikes, ...firestoreLikes].filter((lk: any) => {
+        if (!lk || !lk.title || !lk.artist) return false;
+        const tKey = buildTrackKey(String(lk.title), String(lk.artist)).toLowerCase();
+        return !localUnlikedSet.has(tKey);
+      });
 
       const hydrated: Record<string, any> = {
         ...data,
         uid: user.uid,
-        email: (data.email || user.email || serverUser?.email || "").toLowerCase(),
-        name: profData?.name || data.name || serverUser?.name || user.displayName || "Ouvinte Miado",
-        bio: profData?.bio ?? data.bio ?? serverUser?.bio ?? "",
-        avatarUrl: profData?.avatarUrl || data.avatarUrl || serverUser?.avatarUrl || "/api/cat-avatar?id=cat_1",
+        email: resolvedEmail,
+        name: resolvedName,
+        bio: resolvedBio,
+        avatarUrl: sanitizeImageForRules(
+          serverUser?.avatarUrl || profData?.avatarUrl || data.avatarUrl,
+          100000,
+          "/api/cat-avatar?id=cat_1"
+        ),
+        bannerUrl: serverUser?.bannerUrl || profData?.bannerUrl || data.bannerUrl || "",
         handle: displayHandle,
         username: displayHandle,
         favoriteArtists: combinedArtistNames.slice(0, 60),
         followedArtists: combinedArtistNames,
-        ...(combinedLikes.length > 0 ? { likedTracks: combinedLikes } : {}),
+        likedTracks: rawCombinedLikes,
         ...(mergedPlaylists ? { playlists: mergedPlaylists } : {}),
-        ...(serverHistory.length > 0 ? { recentHistory: serverHistory } : {}),
+        ...(mergedHistory.length > 0 ? { recentHistory: mergedHistory } : {}),
         ...(followingProfiles.length > 0 ? { followingProfiles } : {}),
+        followers: followerProfiles,
+        followersCount: followerProfiles.length,
+        followingCount: followingProfiles.length,
         privacy: resolvedPrivacy,
         onboardingCompleted: isOnboardingDone,
       };
       if (w.miadoState) {
+        if (followerProfiles.length > 0) {
+          w.miadoState.userFollowers = followerProfiles;
+        }
         w.miadoState.hydrateFromFirestore(hydrated);
       }
       return hydrated;
@@ -1475,6 +1671,17 @@ export function initFirebaseClient(): void {
           } else {
             await deleteDoc(followRef);
           }
+          // Mirror updated followingProfiles list to backend /api/user/preferences
+          const token = await activeUser.getIdToken().catch(() => localStorage.getItem("miado_auth_token") || "");
+          const followingProfiles = Array.isArray(w.miadoState?.friends) ? w.miadoState.friends : [];
+          await fetch("/api/user/preferences", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ followingProfiles }),
+          }).catch(() => {});
         } catch (err) {
           console.warn("Firestore syncProfileFollow warning:", err);
         }
@@ -1487,12 +1694,17 @@ export function initFirebaseClient(): void {
         const title = String(track.title || "Faixa").trim().slice(0, 200);
         const artist = String(track.artist || "Artista").trim().slice(0, 200);
         if (!title || !artist) return;
-        const trackKey = buildTrackKey(title, artist).slice(0, 150);
+        const trackKey = buildTrackKey(title, artist).slice(0, 120);
         if (!trackKey) return;
         const likeRef = doc(db, "users", uid, "likes", trackKey);
 
         try {
           if (isLiked) {
+            const existingSnap = await getDoc(likeRef).catch(() => null);
+            if (existingSnap && existingSnap.exists()) {
+              syncedLikesInSession.add(`${uid}:${trackKey}`);
+              return;
+            }
             const albumTitle = String(track.albumTitle || "Single").trim().slice(0, 200);
             const coverUrl = extractSafeFirestoreCoverUrl(track.coverUrl);
             let durSec = Number(track.durationSec) || 0;
@@ -1520,14 +1732,212 @@ export function initFirebaseClient(): void {
             syncedLikesInSession.delete(`${uid}:${trackKey}`);
           }
         } catch (err) {
-          console.warn("Firestore syncTrackLike warning:", err);
+          console.warn("Firestore syncTrackLike warning (enqueuing retry):", err);
+          this.enqueueSaveRetry("syncTrackLike", { track, isLiked });
         }
       },
 
-      async saveUserState(stateObj: any) {
+      async recordHistoryEvent(track: any) {
         const activeUser = auth.currentUser || this.currentUser;
-        if (!activeUser || !stateObj) return;
+        if (!activeUser || !track || !track.title) return false;
         const uid = activeUser.uid;
+        const title = String(track.title || "Faixa").trim().slice(0, 200);
+        const artist = String(track.artist || "Artista").trim().slice(0, 200);
+        if (!title || !artist) return false;
+        const trackKey = buildTrackKey(title, artist).slice(0, 120);
+        if (!trackKey) return false;
+        const albumTitle = String(track.albumTitle || "Single").trim().slice(0, 200);
+        const coverUrl = extractSafeFirestoreCoverUrl(track.coverUrl);
+        let durSec = Number(track.durationSec) || 0;
+        if (!durSec && typeof track.duration === "string" && track.duration.includes(":")) {
+          const parts = track.duration.split(":");
+          durSec = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+        }
+        durSec = Math.max(0, Math.min(7200, Math.round(durSec || 210)));
+        const eventId = `evt_${Date.now()}_${trackKey.slice(0, 40)}`;
+        const histRef = doc(db, "users", uid, "history", eventId);
+        const histPayload: Record<string, any> = {
+          trackKey,
+          title,
+          artist,
+          albumTitle,
+          durationSec: durSec,
+          playedAt: serverTimestamp(),
+          completed: true,
+        };
+        if (coverUrl && coverUrl.length >= 10) {
+          histPayload.coverUrl = coverUrl;
+        }
+        try {
+          await setDoc(histRef, histPayload);
+          return true;
+        } catch (err) {
+          console.warn("Firestore recordHistoryEvent warning (enqueuing retry):", err);
+          this.enqueueSaveRetry("recordHistoryEvent", { track });
+          return false;
+        }
+      },
+
+      async updateProfile(profileData?: any): Promise<boolean> {
+        const stateRef = w.miadoState;
+        if (stateRef && profileData && typeof profileData === "object") {
+          stateRef._lastUserMutationAt = Date.now();
+          if (typeof profileData.name === "string" && profileData.name.trim()) {
+            stateRef.user.name = profileData.name.trim();
+          }
+          if (typeof profileData.handle === "string" && profileData.handle.trim()) {
+            stateRef.user.username = profileData.handle.trim();
+            stateRef.user.handle = profileData.handle.trim();
+          }
+          if (typeof profileData.bio === "string") {
+            stateRef.user.bio = profileData.bio;
+            stateRef.user._bioEditedLocally = true;
+          }
+          if (typeof profileData.avatarUrl === "string" && profileData.avatarUrl) {
+            stateRef.user.avatarUrl = profileData.avatarUrl;
+          }
+          if (typeof profileData.bannerUrl === "string") {
+            stateRef.user.bannerUrl = profileData.bannerUrl;
+          }
+          if (profileData.privacy && typeof profileData.privacy === "object") {
+            stateRef.user.privacy = profileData.privacy;
+          }
+          try {
+            localStorage.setItem("miado_user_v5", JSON.stringify(stateRef.user));
+          } catch {}
+        }
+        const ok = await this.saveUserState(stateRef || { user: profileData }, { skipRetryEnqueue: false });
+        return Boolean(ok);
+      },
+
+      async saveUserLibrary(libraryData?: any): Promise<boolean> {
+        const stateRef = w.miadoState;
+        if (stateRef && libraryData && typeof libraryData === "object") {
+          stateRef._lastUserMutationAt = Date.now();
+          if (Array.isArray(libraryData.followedArtists)) {
+            stateRef.followedArtists = libraryData.followedArtists;
+          }
+          if (Array.isArray(libraryData.likedTracks) && stateRef.user) {
+            stateRef.user.likedTracks = libraryData.likedTracks;
+          }
+          if (Array.isArray(libraryData.recentHistory)) {
+            stateRef.recentHistory = libraryData.recentHistory;
+          }
+          if (Array.isArray(libraryData.playlists)) {
+            stateRef.playlists = libraryData.playlists;
+          }
+        }
+        const ok = await this.saveUserState(stateRef || libraryData, { skipRetryEnqueue: false });
+        return Boolean(ok);
+      },
+
+      enqueueSaveRetry(opType: string, payload?: any) {
+        const RETRY_KEY = "miado_firebase_retry_queue_v1";
+        try {
+          const raw = localStorage.getItem(RETRY_KEY);
+          const queue: any[] = raw ? JSON.parse(raw) : [];
+          const cleanQueue = Array.isArray(queue) ? queue.slice(-25) : [];
+          // Deduplicate consecutive full-state saves so the queue stays compact and atomic
+          if (opType === "saveUserState" || opType === "updateProfile" || opType === "saveUserLibrary") {
+            for (let i = cleanQueue.length - 1; i >= 0; i--) {
+              if (cleanQueue[i] && cleanQueue[i].opType === opType) {
+                cleanQueue.splice(i, 1);
+              }
+            }
+          }
+          cleanQueue.push({
+            id: `rt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            opType,
+            payload: payload || null,
+            attempts: 0,
+            queuedAt: Date.now(),
+          });
+          localStorage.setItem(RETRY_KEY, JSON.stringify(cleanQueue));
+          this.scheduleRetryFlush(1800);
+        } catch {}
+      },
+
+      _retryTimer: null as any,
+      _isFlushingRetry: false,
+
+      scheduleRetryFlush(delayMs = 2000) {
+        if (this._retryTimer) clearTimeout(this._retryTimer);
+        this._retryTimer = setTimeout(() => {
+          this._retryTimer = null;
+          void this.flushRetryQueue();
+        }, delayMs);
+      },
+
+      async flushRetryQueue(): Promise<void> {
+        if (this._isFlushingRetry) return;
+        const activeUser = auth.currentUser || this.currentUser;
+        if (!activeUser) return;
+        const RETRY_KEY = "miado_firebase_retry_queue_v1";
+        let queue: any[] = [];
+        try {
+          const raw = localStorage.getItem(RETRY_KEY);
+          if (raw) queue = JSON.parse(raw);
+        } catch {}
+        if (!Array.isArray(queue) || queue.length === 0) return;
+
+        this._isFlushingRetry = true;
+        const remaining: any[] = [];
+        try {
+          for (const item of queue) {
+            if (!item || !item.opType) continue;
+            let success = false;
+            try {
+              if (
+                item.opType === "saveUserState" ||
+                item.opType === "updateProfile" ||
+                item.opType === "saveUserLibrary"
+              ) {
+                const targetState = w.miadoState || item.payload;
+                if (targetState) {
+                  success = await this.saveUserState(targetState, { skipRetryEnqueue: true });
+                } else {
+                  success = true;
+                }
+              } else if (item.opType === "syncTrackLike" && item.payload?.track) {
+                await this.syncTrackLike(item.payload.track, Boolean(item.payload.isLiked));
+                success = true;
+              } else if (item.opType === "recordHistoryEvent" && item.payload?.track) {
+                success = await this.recordHistoryEvent(item.payload.track);
+              } else {
+                success = true;
+              }
+            } catch {
+              success = false;
+            }
+            if (!success) {
+              const nextAttempts = (Number(item.attempts) || 0) + 1;
+              if (nextAttempts <= 6) {
+                remaining.push({ ...item, attempts: nextAttempts });
+              }
+            }
+          }
+          localStorage.setItem(RETRY_KEY, JSON.stringify(remaining));
+          if (remaining.length > 0) {
+            const maxAttempt = Math.max(...remaining.map((r) => Number(r.attempts) || 1));
+            const nextDelay = Math.min(30000, 1500 * Math.pow(2, maxAttempt));
+            this.scheduleRetryFlush(nextDelay);
+          }
+        } finally {
+          this._isFlushingRetry = false;
+        }
+      },
+
+      async saveUserState(stateObj: any, opts?: { skipRetryEnqueue?: boolean }): Promise<boolean> {
+        const activeUser = auth.currentUser || this.currentUser;
+        if (!activeUser || !stateObj) return false;
+        const uid = activeUser.uid;
+        if (
+          stateObj.user?.email &&
+          activeUser.email &&
+          String(stateObj.user.email).trim().toLowerCase() !== String(activeUser.email).trim().toLowerCase()
+        ) {
+          return false;
+        }
         try {
           const userDocRef = doc(db, "users", uid);
           const existingSnap = await getDoc(userDocRef);
@@ -1578,13 +1988,12 @@ export function initFirebaseClient(): void {
             ? stateObj.followedArtists
             : Array.isArray(stateObj.user?.followedArtists)
             ? stateObj.user.followedArtists
-            : [];
-          const rawFavSource = Array.isArray(stateObj.user?.favoriteArtists)
+            : Array.isArray(stateObj.user?.favoriteArtists)
             ? stateObj.user.favoriteArtists
             : [];
           const cleanFollowedNames: string[] = Array.from(
             new Set<string>(
-              [...rawFollowedSource, ...rawFavSource]
+              rawFollowedSource
                 .map((item: any): string =>
                   typeof item === "string" ? item.trim() : String(item?.name || "").trim()
                 )
@@ -1601,7 +2010,7 @@ export function initFirebaseClient(): void {
                 .slice(0, 30)
             : [];
 
-          // 1. Save /users/{uid} independently so followedArtists & favoriteArtists always persist
+          // 1. Save /users/{uid}, /handles/{finalHandle}, and /profiles/{uid} atomically
           await setDoc(userDocRef, {
             uid,
             email: cleanEmail,
@@ -1613,36 +2022,47 @@ export function initFirebaseClient(): void {
             bannerUrl: safeBanner,
             favoriteArtists: cleanFavNames,
             favoriteGenres: cleanGenres,
-            followedArtists: cleanFollowedNames.length > 0 ? cleanFollowedNames : cleanFavNames,
+            followedArtists: cleanFollowedNames,
             privacy,
             onboardingCompleted: Boolean(stateObj.user?.onboardingCompleted ?? true),
             createdAt: existingData?.createdAt || serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
 
-          // 2. Save /handles/{finalHandle} (only if not yet created!) and /profiles/{uid} independently
+          // 2. Save /handles/{finalHandle} and /profiles/{uid} atomically in a writeBatch so Firestore existsAfter/getAfter rules pass
           try {
             const finalHandleRef = doc(db, "handles", finalHandle);
-            const finalHandleSnap =
+            const [finalHandleSnap, ownedHandlesSnap] = await Promise.all([
               finalHandle === newBareHandle && handleSnap
-                ? handleSnap
-                : await getDoc(finalHandleRef).catch(() => null);
+                ? Promise.resolve(handleSnap)
+                : getDoc(finalHandleRef).catch(() => null),
+              getDocs(query(collection(db, "handles"), where("uid", "==", uid), limit(10))).catch(() => null),
+            ]);
+            const profBatch = writeBatch(db);
             if (!finalHandleSnap || !finalHandleSnap.exists()) {
-              await setDoc(finalHandleRef, {
+              profBatch.set(finalHandleRef, {
                 uid,
                 createdAt: serverTimestamp(),
-              }).catch(() => {});
+              });
             }
+            const handlesToDelete = new Set<string>();
             if (oldBareHandle && oldBareHandle !== finalHandle) {
               const oldSnap = await getDoc(doc(db, "handles", oldBareHandle)).catch(() => null);
               if (oldSnap && oldSnap.exists() && oldSnap.data()?.uid === uid) {
-                await deleteDoc(doc(db, "handles", oldBareHandle)).catch(() => {});
+                handlesToDelete.add(oldBareHandle);
               }
             }
-          } catch {}
-
-          try {
-            await setDoc(doc(db, "profiles", uid), {
+            if (ownedHandlesSnap && !ownedHandlesSnap.empty) {
+              ownedHandlesSnap.docs.forEach((hd) => {
+                if (hd.id !== finalHandle && hd.data()?.uid === uid) {
+                  handlesToDelete.add(hd.id);
+                }
+              });
+            }
+            for (const staleH of handlesToDelete) {
+              profBatch.delete(doc(db, "handles", staleH));
+            }
+            profBatch.set(doc(db, "profiles", uid), {
               uid,
               name: cleanName,
               handle: finalHandle,
@@ -1652,20 +2072,33 @@ export function initFirebaseClient(): void {
               favoriteArtists: cleanFavNames,
               updatedAt: serverTimestamp(),
             });
+            await profBatch.commit();
           } catch (profErr) {
             console.warn("Firestore profile update warning:", profErr);
           }
 
-          // 3. Ensure any likedTracks in stateObj.user.likedTracks are persisted in /users/{uid}/likes
+          // 3. Reconcile /users/{uid}/likes so newly liked tracks are added and unliked tracks are deleted (awaited!)
           const likedList = Array.isArray(stateObj.user?.likedTracks)
             ? stateObj.user.likedTracks.slice(0, 100)
             : [];
+          const activeLikedKeys = new Set<string>();
           for (const tr of likedList) {
             if (!tr || !tr.title || !tr.artist) continue;
-            const tKey = buildTrackKey(String(tr.title), String(tr.artist)).slice(0, 150);
-            if (!tKey || syncedLikesInSession.has(`${uid}:${tKey}`)) continue;
-            void this.syncTrackLike(tr, true);
+            const tKey = buildTrackKey(String(tr.title), String(tr.artist)).slice(0, 120);
+            if (!tKey) continue;
+            activeLikedKeys.add(tKey);
+            if (syncedLikesInSession.has(`${uid}:${tKey}`)) continue;
+            await this.syncTrackLike(tr, true);
           }
+          try {
+            const existingLikesSnap = await getDocs(query(collection(db, "users", uid, "likes"), limit(200)));
+            for (const lkDoc of existingLikesSnap.docs) {
+              if (!activeLikedKeys.has(lkDoc.id)) {
+                await deleteDoc(doc(db, "users", uid, "likes", lkDoc.id)).catch(() => {});
+                syncedLikesInSession.delete(`${uid}:${lkDoc.id}`);
+              }
+            }
+          } catch {}
 
           // 4. Persist user playlists to /playlists/{playlistId} in Firestore
           const playlistsList = Array.isArray(stateObj.playlists)
@@ -1696,17 +2129,62 @@ export function initFirebaseClient(): void {
               await setDoc(plRef, plPayload);
             } catch {}
           }
+
+          // 5. Mirror full atomic snapshot to backend /api/user/firestore-sync
+          try {
+            const token = await activeUser.getIdToken().catch(() => localStorage.getItem("miado_auth_token") || "");
+            await fetch("/api/user/firestore-sync", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({
+                uid,
+                email: cleanEmail,
+                name: cleanName,
+                username: `@${finalHandle}`,
+                handle: `@${finalHandle}`,
+                bio: String(stateObj.user?.bio || "").slice(0, 300),
+                catId: String(stateObj.user?.avatarId || "cat_1").slice(0, 40),
+                avatarUrl: safeAvatar,
+                bannerUrl: safeBanner,
+                favoriteArtists: cleanFavNames,
+                followedArtists: Array.isArray(stateObj.followedArtists) ? stateObj.followedArtists : cleanFollowedNames,
+                likedTracks: likedList,
+                playlists: playlistsList,
+                recentHistory: Array.isArray(stateObj.recentHistory) ? stateObj.recentHistory.slice(0, 50) : [],
+              }),
+            });
+          } catch {}
+
+          return true;
         } catch (e) {
-          console.warn("Firestore saveUserState warning:", e);
+          console.warn("Firestore saveUserState warning (enqueuing retry):", e);
+          if (!opts?.skipRetryEnqueue) {
+            this.enqueueSaveRetry("saveUserState", {
+              user: stateObj.user ? { ...stateObj.user } : {},
+              followedArtists: Array.isArray(stateObj.followedArtists) ? [...stateObj.followedArtists] : [],
+              recentHistory: Array.isArray(stateObj.recentHistory) ? [...stateObj.recentHistory] : [],
+              playlists: Array.isArray(stateObj.playlists) ? [...stateObj.playlists] : [],
+            });
+          }
+          return false;
         }
       },
 
-      updatePresence(state: PresenceState, track?: { title: string; artist: string; coverUrl?: string; durationSec?: number }) {
+      _presenceHeartbeatTimer: null as any,
+
+      updatePresence(
+        state: PresenceState,
+        track?: { title: string; artist: string; coverUrl?: string; durationSec?: number },
+        forceHeartbeat = false
+      ) {
         const activeUser = auth.currentUser || this.currentUser;
         if (!activeUser) return;
-        if (lastPresenceTimer) clearTimeout(lastPresenceTimer);
+        if (lastPresenceTimer && !forceHeartbeat) clearTimeout(lastPresenceTimer);
 
-        lastPresenceTimer = setTimeout(async () => {
+        const runPresenceWrite = async () => {
           const curUser = auth.currentUser || this.currentUser;
           if (!curUser) return;
           const uid = curUser.uid;
@@ -1714,7 +2192,7 @@ export function initFirebaseClient(): void {
           const trackKey = track ? buildTrackKey(track.title, track.artist) : "";
           const fp = `${state}|${trackKey}|${visibility}`;
           const now = Date.now();
-          if (fp === lastPresenceFingerprint && now - lastPresenceSentAt < 8000) return;
+          if (!forceHeartbeat && fp === lastPresenceFingerprint && now - lastPresenceSentAt < 6000) return;
 
           lastPresenceFingerprint = fp;
           lastPresenceSentAt = now;
@@ -1754,9 +2232,48 @@ export function initFirebaseClient(): void {
               if (w.miadoState?.user) {
                 w.miadoState.user.privacy = { presence: fallbackVis, activity: fallbackVis };
               }
-            } catch {}
+            } catch {
+              try {
+                if (w.miadoState && typeof this.saveUserState === "function") {
+                  await this.saveUserState(w.miadoState);
+                }
+                await setDoc(doc(db, "presence", uid), buildPresencePayload("public"));
+              } catch {}
+            }
           }
-        }, 120);
+        };
+
+        if (forceHeartbeat) {
+          void runPresenceWrite();
+        } else {
+          lastPresenceTimer = setTimeout(runPresenceWrite, 100);
+        }
+      },
+
+      startPresenceHeartbeat() {
+        if (this._presenceHeartbeatTimer) {
+          clearInterval(this._presenceHeartbeatTimer);
+          this._presenceHeartbeatTimer = null;
+        }
+        const emitCurrentHeartbeat = () => {
+          const curUser = auth.currentUser || this.currentUser;
+          if (!curUser) return;
+          const st = w.miadoState;
+          const isPlayingNow = Boolean(st?.isPlaying && st?.currentTrack && st?.currentTrack?.title);
+          const trackPayload = isPlayingNow
+            ? {
+                title: String(st.currentTrack.title || ""),
+                artist: String(st.currentTrack.artist || "Artista"),
+                coverUrl: st.currentTrack.coverUrl,
+                durationSec: Number(st.currentTrack.durationSec) || 180,
+              }
+            : undefined;
+          this.updatePresence(isPlayingNow ? "playing" : "paused", trackPayload, true);
+        };
+
+        // Initial pulse + 20s real-time Firestore presence heartbeat
+        setTimeout(emitCurrentHeartbeat, 600);
+        this._presenceHeartbeatTimer = setInterval(emitCurrentHeartbeat, 20_000);
       },
 
       subscribeLiveCommunity() {
@@ -1766,6 +2283,7 @@ export function initFirebaseClient(): void {
         const handlesByUid = new Map<string, string>();
         const presenceByUid = new Map<string, any>();
         const watchedPresenceUids = new Set<string>();
+        const followEdges = new Map<string, { followerId: string; followeeId: string }>();
 
         const isPresOnline = (pres: any, expectedUid: string): boolean => {
           if (!pres || pres.uid !== expectedUid) return false;
@@ -1792,6 +2310,17 @@ export function initFirebaseClient(): void {
           );
         };
 
+        let emitDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        let lastSyncPostAt = 0;
+
+        const scheduleEmitMerged = () => {
+          if (emitDebounceTimer) clearTimeout(emitDebounceTimer);
+          emitDebounceTimer = setTimeout(() => {
+            emitDebounceTimer = null;
+            emitMerged();
+          }, 150);
+        };
+
         const ensurePresenceListenerForUid = (targetUid: string) => {
           if (!targetUid || watchedPresenceUids.has(targetUid)) return;
           watchedPresenceUids.add(targetUid);
@@ -1807,11 +2336,11 @@ export function initFirebaseClient(): void {
               } else {
                 presenceByUid.delete(targetUid);
               }
-              emitMerged();
+              scheduleEmitMerged();
             },
             () => {
               presenceByUid.delete(targetUid);
-              emitMerged();
+              scheduleEmitMerged();
             }
           );
           listenerRegistry.register(presKey, unsubSinglePres);
@@ -1822,7 +2351,7 @@ export function initFirebaseClient(): void {
             ...profilesByUid.keys(),
             ...handlesByUid.keys(),
           ]);
-          const merged: any[] = [];
+          const mergedByUid = new Map<string, any>();
           const selfUid = (auth.currentUser || this.currentUser)?.uid || "";
 
           for (const uid of allUids) {
@@ -1853,15 +2382,16 @@ export function initFirebaseClient(): void {
               : null;
 
             const favArtists = Array.isArray(prof.favoriteArtists) ? prof.favoriteArtists : [];
+            const safeAv = sanitizeImageForRules(prof.avatarUrl, 100000, "/api/cat-avatar?id=cat_1");
 
-            merged.push({
+            mergedByUid.set(uid, {
               uid,
               id: `prof_${uid}`,
               name: prof.name || prof.displayName || bare || "Ouvinte Miado",
               username: h,
               handle: h,
               bio: prof.bio || "",
-              avatarUrl: prof.avatarUrl || "/api/cat-avatar?id=cat_1",
+              avatarUrl: safeAv,
               bannerUrl: prof.bannerUrl || "",
               favoriteArtists: favArtists,
               followedArtists: favArtists.map((a: string) => ({
@@ -1869,6 +2399,10 @@ export function initFirebaseClient(): void {
                 role: "Artista Seguido",
                 coverUrl: `/api/artist-image?name=${encodeURIComponent(a)}`,
               })),
+              following: [] as any[],
+              followers: [] as any[],
+              followingCount: 0,
+              followersCount: 0,
               currentTrack: currentTrackStr,
               trackObj,
               liveStateResolved: true,
@@ -1878,11 +2412,61 @@ export function initFirebaseClient(): void {
             });
           }
 
+          // Populate followers & following arrays from Firestore follows collection
+          for (const edge of followEdges.values()) {
+            const followerProf = mergedByUid.get(edge.followerId);
+            const followeeProf = mergedByUid.get(edge.followeeId);
+            if (followerProf && followeeProf && edge.followerId !== edge.followeeId) {
+              if (!followerProf.following.some((u: any) => u.uid === followeeProf.uid)) {
+                followerProf.following.push({
+                  uid: followeeProf.uid,
+                  id: followeeProf.id,
+                  name: followeeProf.name,
+                  username: followeeProf.username,
+                  avatarUrl: followeeProf.avatarUrl,
+                  bio: followeeProf.bio || "",
+                  online: Boolean(followeeProf.online),
+                  currentTrack: followeeProf.currentTrack || "",
+                });
+              }
+              if (!followeeProf.followers.some((u: any) => u.uid === followerProf.uid)) {
+                followeeProf.followers.push({
+                  uid: followerProf.uid,
+                  id: followerProf.id,
+                  name: followerProf.name,
+                  username: followerProf.username,
+                  avatarUrl: followerProf.avatarUrl,
+                  bio: followerProf.bio || "",
+                  online: Boolean(followerProf.online),
+                  currentTrack: followerProf.currentTrack || "",
+                });
+              }
+            }
+          }
+
+          const merged = Array.from(mergedByUid.values()).map((p) => ({
+            ...p,
+            followingCount: p.following.length,
+            followersCount: p.followers.length,
+          }));
+
+          if (selfUid && mergedByUid.has(selfUid) && w.miadoState) {
+            const selfEntry = mergedByUid.get(selfUid);
+            if (Array.isArray(selfEntry.followers)) {
+              w.miadoState.userFollowers = selfEntry.followers;
+              if (w.miadoState.user) {
+                w.miadoState.user.followersCount = selfEntry.followers.length;
+              }
+            }
+          }
+
           const deduped = deduplicateCommunityProfilesList(merged, selfUid);
           if (w.miadoState && typeof w.miadoState.applyLiveCommunityUpdate === "function") {
             w.miadoState.applyLiveCommunityUpdate(deduped);
           }
-          if (deduped.length > 0) {
+          const nowMs = Date.now();
+          if (deduped.length > 0 && nowMs - lastSyncPostAt > 10_000) {
+            lastSyncPostAt = nowMs;
             fetch("/api/profiles/sync-community", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -1904,7 +2488,7 @@ export function initFirebaseClient(): void {
                 profilesByUid.set(docUid, { ...data, uid: docUid });
                 ensurePresenceListenerForUid(docUid);
               });
-              emitMerged();
+              scheduleEmitMerged();
             },
             () => {}
           );
@@ -1919,25 +2503,50 @@ export function initFirebaseClient(): void {
               snap.docs.forEach((d) => {
                 const data = d.data() || {};
                 if (data.uid && typeof data.uid === "string") {
-                  handlesByUid.set(data.uid, d.id);
+                  // Only keep handle if profile doesn't already specify a newer handle
+                  const existingProf = profilesByUid.get(data.uid);
+                  const profHandle = existingProf?.handle ? String(existingProf.handle).toLowerCase().trim() : "";
+                  if (!profHandle || profHandle === d.id) {
+                    handlesByUid.set(data.uid, d.id);
+                  }
                   ensurePresenceListenerForUid(data.uid);
                   if (!profilesByUid.has(data.uid)) {
                     getDoc(doc(db, "profiles", data.uid))
                       .then((pSnap) => {
                         if (pSnap.exists()) {
                           profilesByUid.set(data.uid, { ...pSnap.data(), uid: data.uid });
-                          emitMerged();
+                          scheduleEmitMerged();
                         }
                       })
                       .catch(() => {});
                   }
                 }
               });
-              emitMerged();
+              scheduleEmitMerged();
             },
             () => {}
           );
           listenerRegistry.register("live_community_handles", unsubHandles);
+
+          // Real-time follows graph listener so followers and following lists update live
+          const followsGraphQ = query(collection(db, "follows"), limit(300));
+          const unsubFollowsGraph = onSnapshot(
+            followsGraphQ,
+            (snap) => {
+              followEdges.clear();
+              snap.docs.forEach((d) => {
+                const data = d.data() || {};
+                const followerId = String(data.followerId || "").trim();
+                const followeeId = String(data.followeeId || "").trim();
+                if (followerId && followeeId && followerId !== followeeId) {
+                  followEdges.set(d.id, { followerId, followeeId });
+                }
+              });
+              scheduleEmitMerged();
+            },
+            () => {}
+          );
+          listenerRegistry.register("live_community_follows_graph", unsubFollowsGraph);
 
           // Real-time public presence collection listener keyed strictly by UID
           const presCollectionQ = query(
@@ -1955,7 +2564,7 @@ export function initFirebaseClient(): void {
                   presenceByUid.set(docUid, { ...data, uid: docUid });
                 }
               });
-              emitMerged();
+              scheduleEmitMerged();
             },
             () => {}
           );
@@ -1968,9 +2577,10 @@ export function initFirebaseClient(): void {
         if (!activeUser) return [];
         const safeLimit = Math.max(1, Math.min(100, Number(maxItems) || 100));
         try {
-          const [profSnap, handlesSnap] = await Promise.all([
+          const [profSnap, handlesSnap, followsSnap] = await Promise.all([
             getDocs(query(collection(db, "profiles"), limit(safeLimit))),
             getDocs(query(collection(db, "handles"), limit(safeLimit))).catch(() => null),
+            getDocs(query(collection(db, "follows"), limit(300))).catch(() => null),
           ]);
 
           const profilesByUid = new Map<string, any>();
@@ -1991,7 +2601,7 @@ export function initFirebaseClient(): void {
           }
 
           const selfUid = activeUser.uid;
-          const list: any[] = [];
+          const byUidEntry = new Map<string, any>();
 
           await Promise.all(
             Array.from(profilesByUid.entries()).map(async ([uid, data]) => {
@@ -2036,14 +2646,15 @@ export function initFirebaseClient(): void {
               }
 
               const favs = Array.isArray(data.favoriteArtists) ? data.favoriteArtists : [];
-              list.push({
+              const safeAv = sanitizeImageForRules(data.avatarUrl, 100000, "/api/cat-avatar?id=cat_1");
+              byUidEntry.set(uid, {
                 uid,
                 id: `prof_${uid}`,
                 name: data.name || data.displayName || bare || "Ouvinte Miado",
                 username: h,
                 handle: h,
                 bio: data.bio || "",
-                avatarUrl: data.avatarUrl || "/api/cat-avatar?id=cat_1",
+                avatarUrl: safeAv,
                 bannerUrl: data.bannerUrl || "",
                 favoriteArtists: favs,
                 followedArtists: favs.map((a: string) => ({
@@ -2051,6 +2662,10 @@ export function initFirebaseClient(): void {
                   role: "Artista Seguido",
                   coverUrl: `/api/artist-image?name=${encodeURIComponent(a)}`,
                 })),
+                following: [] as any[],
+                followers: [] as any[],
+                followingCount: 0,
+                followersCount: 0,
                 currentTrack: isPlayingFresh
                   ? `${presData.track.title} - ${presData.track.artist || "Artista"}`
                   : "",
@@ -2062,6 +2677,46 @@ export function initFirebaseClient(): void {
               });
             })
           );
+
+          if (followsSnap && !followsSnap.empty) {
+            followsSnap.docs.forEach((d) => {
+              const fd = d.data() || {};
+              const followerProf = byUidEntry.get(String(fd.followerId || ""));
+              const followeeProf = byUidEntry.get(String(fd.followeeId || ""));
+              if (followerProf && followeeProf && followerProf.uid !== followeeProf.uid) {
+                if (!followerProf.following.some((u: any) => u.uid === followeeProf.uid)) {
+                  followerProf.following.push({
+                    uid: followeeProf.uid,
+                    id: followeeProf.id,
+                    name: followeeProf.name,
+                    username: followeeProf.username,
+                    avatarUrl: followeeProf.avatarUrl,
+                    bio: followeeProf.bio || "",
+                    online: Boolean(followeeProf.online),
+                    currentTrack: followeeProf.currentTrack || "",
+                  });
+                }
+                if (!followeeProf.followers.some((u: any) => u.uid === followerProf.uid)) {
+                  followeeProf.followers.push({
+                    uid: followerProf.uid,
+                    id: followerProf.id,
+                    name: followerProf.name,
+                    username: followerProf.username,
+                    avatarUrl: followerProf.avatarUrl,
+                    bio: followerProf.bio || "",
+                    online: Boolean(followerProf.online),
+                    currentTrack: followerProf.currentTrack || "",
+                  });
+                }
+              }
+            });
+          }
+
+          const list = Array.from(byUidEntry.values()).map((p) => ({
+            ...p,
+            followingCount: p.following.length,
+            followersCount: p.followers.length,
+          }));
           return deduplicateCommunityProfilesList(list, selfUid);
         } catch {
           return [];
@@ -2070,6 +2725,24 @@ export function initFirebaseClient(): void {
     };
 
     w.miadoFirestore.init();
+    w.miadoFirestore.startPresenceHeartbeat?.();
+    window.addEventListener("online", () => {
+      void w.miadoFirestore?.flushRetryQueue?.();
+      w.miadoFirestore?.startPresenceHeartbeat?.();
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        void w.miadoFirestore?.flushRetryQueue?.();
+        w.miadoFirestore?.startPresenceHeartbeat?.();
+      }
+    });
+    const markIdleOnExit = () => {
+      try {
+        w.miadoFirestore?.updatePresence?.("idle", undefined, true);
+      } catch {}
+    };
+    window.addEventListener("pagehide", markIdleOnExit);
+    window.addEventListener("beforeunload", markIdleOnExit);
   } catch (err) {
     console.warn("Firebase initialization warning:", err);
   }

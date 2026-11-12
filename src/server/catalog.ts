@@ -137,7 +137,22 @@ const KNOWN_ARTIST_ALIASES: Record<string, string[]> = {
   "simone simaria": ["simone simaria", "simone e simaria"],
   "simone e simaria": ["simone simaria", "simone e simaria"],
   "victor leo": ["victor leo", "victor e leo"],
-  "victor e leo": ["victor leo", "victor e leo"]
+  "victor e leo": ["victor leo", "victor e leo"],
+  "lana del rey": ["lana del rey", "lana del ray"],
+  "lana del ray": ["lana del rey", "lana del ray"],
+  "fall out boy": ["fall out boy", "fall out boys"],
+  "fall out boys": ["fall out boy", "fall out boys"],
+  "imagine dragons": ["imagine dragons", "imagine dragon"],
+  "imagine dragon": ["imagine dragons", "imagine dragon"],
+  "arctic monkeys": ["arctic monkeys", "arctic monkey"],
+  "arctic monkey": ["arctic monkeys", "arctic monkey"],
+  "red hot chili peppers": ["red hot chili peppers", "red hot chilli peppers", "rhcp"],
+  "red hot chilli peppers": ["red hot chili peppers", "red hot chilli peppers", "rhcp"],
+  "ghost": ["ghost", "gost", "banda ghost", "banda gost", "ghost bc"],
+  "gost": ["ghost", "gost", "banda ghost", "banda gost", "ghost bc"],
+  "banda ghost": ["ghost", "gost", "banda ghost", "banda gost", "ghost bc"],
+  "banda gost": ["ghost", "gost", "banda ghost", "banda gost", "ghost bc"],
+  "ghost bc": ["ghost", "gost", "banda ghost", "banda gost", "ghost bc"]
 };
 
 const LIVE_ACOUSTIC_CATALOG_ARTIST_KEYS = new Set<string>([
@@ -290,8 +305,9 @@ export function buildCanonicalDedupKey(track: {
 const STRICT_NON_STUDIO_PATTERNS: RegExp[] = [
   /[\(\[\-]\s*(?:karaok[eê]|instrumental|acapella|a\s*cappella|playback)\b/i,
   /\b(?:karaok[eê]|tribute\s+to|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|cover\s+version|8-bit\s+version|lullaby\s+version|rock\s+your\s+babies)\b/i,
-  /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed|ringtone|par[oó]dia)\b/i,
-  /[\(\[\-]\s*(?:rework|bootleg|mashup)\b/i
+  /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and|\+)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed|ringtone|par[oó]dia)\b/i,
+  /\b(?:remix|remixes|remixed)\b/i,
+  /[\(\[\-]\s*[^\)\]]*\b(?:rework|bootleg|mashup|dub|club\s+mix|extended\s+mix|vip\s+mix|rac\s+mix|rob\s+orton\s+mix|artifact\s+version|orchestral\s+version|gershwin\s+version|early\s+mix|alternate\s+mix|alternative\s+mix)\b/i
 ];
 
 const LIVE_CATALOG_REJECT_PATTERNS: RegExp[] = STRICT_NON_STUDIO_PATTERNS;

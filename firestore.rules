@@ -32,6 +32,7 @@ service cloud.firestore {
       return v is string && v.size() <= maxLen
         && (v == ''
             || v.matches('^/api/cat-avatar\\?id=[a-z0-9_]{1,40}$')
+            || v.matches('^/api/artist-image\\?.+$')
             || v.matches('^https://[A-Za-z0-9._~:/?#@!$&()*+,;=%-]+$')
             || v.matches('^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$'));
     }
@@ -196,9 +197,7 @@ service cloud.firestore {
 
     // ------------------------------- follows ------------------------------
     match /follows/{followId} {
-      allow read: if signedIn()
-        && (resource.data.followerId == request.auth.uid
-            || resource.data.followeeId == request.auth.uid);
+      allow read: if signedIn();
       allow create: if signedIn()
         && request.resource.data.keys().hasAll(['followerId', 'followeeId', 'createdAt'])
         && request.resource.data.keys().hasOnly(['followerId', 'followeeId', 'createdAt'])

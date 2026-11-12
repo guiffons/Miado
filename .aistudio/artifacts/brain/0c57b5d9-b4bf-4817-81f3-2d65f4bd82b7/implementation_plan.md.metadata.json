@@ -1,6 +1,0 @@
-{
-  "summary": "Plano arquitetural e de execução completo (Fases 0 a 8) para o MIADO: diagnóstico detalhado com mapa de linhas do index.html e server.ts, erradicação total de previews de 30s com resolução multi-provedor e failover automático, Liquid Glass com paridade dev/prod, catálogo canônico sem mistura de artistas, paradas em tempo real, autenticação Firebase segura com modo visitante e motor de recomendações.",
-  "updatedAt": "2026-11-05T12:28:09.603068308Z",
-  "requestFeedback": true,
-  "userFacing": true
-}

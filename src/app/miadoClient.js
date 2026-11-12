@@ -162,6 +162,15 @@ export function initMiadoClient() {
         if (raw.startsWith("http://")) {
           raw = "https://" + raw.slice(7);
         }
+        if (raw.startsWith("https://")) {
+          try {
+            const parsed = new URL(raw);
+            const host = parsed.hostname.toLowerCase();
+            if (host.endsWith("googleusercontent.com") || host.endsWith("ggpht.com")) {
+              raw = `/api/artist-image?url=${encodeURIComponent(raw)}`;
+            }
+          } catch (_e) {}
+        }
         if (window.miadoDom && typeof window.miadoDom.safeUrl === "function") {
           return window.miadoDom.safeUrl(raw, { allowDataImage: true }) || fallback;
         }
@@ -357,6 +366,12 @@ export function initMiadoClient() {
           return `/api/artist-image?name=${encodeURIComponent("ROSÉ")}&url=${encodeURIComponent(roseKrUrl)}`;
         }
         let rawCover = typeof art === "object" ? (art.coverUrl || art.pictureUrl || "") : "";
+        if (
+          rawCover &&
+          (rawCover.includes("d41d8cd98f00b204e9800998ecf8427e") || rawCover.includes("/images/artist//"))
+        ) {
+          rawCover = "";
+        }
         if (rawCover && rawCover.startsWith("http://")) {
           rawCover = "https://" + rawCover.slice(7);
         }
@@ -364,7 +379,10 @@ export function initMiadoClient() {
           return rawCover;
         }
         if (!rawCover || rawCover.startsWith("data:") || rawCover.includes("dzcdn.net") || rawCover.includes("deezer.com")) {
-          return `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(rawCover.startsWith("data:") ? "" : rawCover)}`;
+          const cleanUrlParam = rawCover && !rawCover.startsWith("data:") ? rawCover : "";
+          return cleanUrlParam
+            ? `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(cleanUrlParam)}`
+            : `/api/artist-image?name=${encodeURIComponent(name || "Artista")}`;
         }
         return `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(rawCover)}`;
       }
@@ -671,6 +689,41 @@ export function initMiadoClient() {
         return true;
       }
 
+      function ensureUniqueClientTrackIdentity(tr) {
+        if (!tr || typeof tr !== "object") return tr;
+        if (window.miadoTrackIdentity && typeof window.miadoTrackIdentity.resolveUniqueTrackId === "function") {
+          const resolved = window.miadoTrackIdentity.resolveUniqueTrackId(tr);
+          tr.id = resolved.id;
+          tr.trackUid = resolved.trackUid;
+          tr.provider = resolved.provider;
+        } else {
+          const rawId = String(tr.id || tr.trackId || "").trim();
+          const key = normalizeTrackKey(tr.title, tr.artist) || "track";
+          if (rawId.startsWith("dz_")) {
+            tr.provider = "deezer";
+          } else if (rawId.startsWith("it_")) {
+            tr.provider = "itunes";
+          } else if (rawId.startsWith("saavn_")) {
+            tr.provider = "saavn";
+          } else if (/^\d+$/.test(rawId)) {
+            tr.provider = tr.provider || "itunes";
+            tr.id = `it_${rawId}`;
+          } else {
+            tr.provider = tr.provider || "catalog";
+            let h = 2166136261;
+            const seed = `${key}|${String(tr.title || "").toLowerCase()}|${String(tr.artist || "").toLowerCase()}`;
+            for (let i = 0; i < seed.length; i++) {
+              h ^= seed.charCodeAt(i);
+              h = Math.imul(h, 16777619);
+            }
+            const hex = (h >>> 0).toString(16).padStart(8, "0");
+            tr.id = rawId || `trk_${hex}_${key.slice(0, 24)}`;
+          }
+          tr.trackUid = `${tr.provider}:${tr.id}:${key}`;
+        }
+        return tr;
+      }
+
       function deduplicateTracks(tracks) {
         if (!Array.isArray(tracks)) return [];
         if (window.MiadoMusicResolver && typeof window.MiadoMusicResolver.deduplicateStudioTracks === "function") {
@@ -686,7 +739,7 @@ export function initMiadoClient() {
           return 210;
         };
         const scoreCandidate = (tr) => {
-          const sec = parseDurSec(tr.duration);
+          const sec = parseDurSec(tr.durationSec || tr.duration);
           let sc = 100;
           if (sec >= 150 && sec <= 270) sc += 45;
           else if (sec >= 120 && sec <= 330) sc += 25;
@@ -698,9 +751,12 @@ export function initMiadoClient() {
         for (const t of tracks) {
           if (!t || !t.title) continue;
           if (!isOriginalStudioTrackClient(t.title, t.artist, t.duration)) continue;
+          ensureUniqueClientTrackIdentity(t);
           const key = normalizeTrackKey(t.title, t.artist);
           t.coverUrl = ensureTrackCoverUrl(t, t.title, t.artist);
-          const cleanStream = `/api/stream?title=${encodeURIComponent(t.title || "")}&artist=${encodeURIComponent(t.artist || "")}&preferFull=1`;
+          const durSec = parseDurSec(t.durationSec || t.duration);
+          t.durationSec = durSec;
+          const cleanStream = toProxyStreamUrl("", t.title, t.artist, true, t.id, t.provider, durSec);
           t.streamUrl = cleanStream;
           t.previewUrl = cleanStream;
           t.versionType = "Studio Version";
@@ -1241,100 +1297,298 @@ export function initMiadoClient() {
 
       // Base de ouvintes reais verificados por artista (garante contagem precisa e ordenação por relevância)
       const KNOWN_ARTIST_LISTENERS_CLIENT = {
-        "the weeknd": 116400000,
-        "bruno mars": 114200000,
-        "taylor swift": 102800000,
+        "the weeknd": 115400000,
+        "bruno mars": 108200000,
+        "taylor swift": 102500000,
         "lady gaga": 98400000,
-        "billie eilish": 96500000,
-        "rihanna": 89200000,
-        "coldplay": 88500000,
-        "justin bieber": 84100000,
-        "ariana grande": 83700000,
-        "ed sheeran": 81400000,
-        "drake": 79800000,
-        "eminem": 78200000,
-        "sabrina carpenter": 76900000,
-        "david guetta": 74500000,
-        "dua lipa": 73800000,
-        "kendrick lamar": 72600000,
-        "sza": 71200000,
-        "travis scott": 69800000,
-        "post malone": 68400000,
-        "kanye west": 66900000,
-        "lana del rey": 63500000,
-        "beyonce": 61800000,
-        "katy perry": 60400000,
-        "calvin harris": 59200000,
+        "billie eilish": 96800000,
+        "rihanna": 88900000,
+        "coldplay": 78500000,
+        "sabrina carpenter": 85600000,
+        "justin bieber": 84200000,
+        "bad bunny": 83400000,
+        "ariana grande": 82500000,
+        "drake": 81300000,
+        "ed sheeran": 79800000,
+        "dua lipa": 76400000,
+        "eminem": 74900000,
+        "kendrick lamar": 73600000,
+        "post malone": 71200000,
+        "sza": 69500000,
+        "travis scott": 68900000,
+        "maroon 5": 68200000,
+        "david guetta": 67800000,
+        "kanye west": 66400000,
+        "beyonce": 65100000,
+        "lana del rey": 64800000,
+        "lana del ray": 64800000,
+        "miley cyrus": 64200000,
+        "shakira": 63200000,
+        "adele": 62800000,
+        "olivia rodrigo": 62300000,
+        "calvin harris": 61200000,
+        "karol g": 59800000,
+        "katy perry": 59200000,
+        "imagine dragons": 58900000,
+        "imagine dragon": 58900000,
+        "harry styles": 58400000,
+        "sia": 58400000,
         "linkin park": 57600000,
-        "olivia rodrigo": 56100000,
-        "queen": 54300000,
-        "arctic monkeys": 53400000,
-        "harry styles": 51800000,
-        "chappell roan": 48900000,
-        "future": 48200000,
-        "21 savage": 46500000,
-        "playboi carti": 44800000,
+        "queen": 54900000,
+        "onerepublic": 54600000,
+        "one republic": 54600000,
+        "chris brown": 54200000,
+        "sam smith": 53800000,
+        "future": 53200000,
+        "arctic monkeys": 52400000,
+        "arctic monkey": 52400000,
+        "j balvin": 52400000,
+        "shawn mendes": 49600000,
+        "daddy yankee": 49200000,
+        "21 savage": 48600000,
+        "peso pluma": 48600000,
+        "chappell roan": 46800000,
+        "hozier": 46200000,
+        "feid": 46200000,
+        "one direction": 45600000,
+        "marshmello": 45200000,
+        "camila cabello": 44800000,
+        "red hot chili peppers": 44600000,
+        "red hot chilli peppers": 44600000,
         "tate mcrae": 44200000,
+        "playboi carti": 43800000,
+        "rauw alejandro": 43800000,
+        "tiesto": 43600000,
+        "charlie puth": 43200000,
         "selena gomez": 43100000,
-        "red hot chili peppers": 41200000,
-        "j cole": 40500000,
-        "nirvana": 38900000,
-        "tyler the creator": 38600000,
-        "anitta": 36400000,
-        "ac dc": 35600000,
-        "frank ocean": 34800000,
+        "usher": 42800000,
+        "avicii": 42600000,
+        "the chainsmokers": 42100000,
+        "chainsmokers": 42100000,
+        "nirvana": 41800000,
+        "maluma": 41600000,
+        "j cole": 41200000,
+        "bts": 39800000,
+        "metallica": 39500000,
+        "tyler the creator": 39400000,
+        "jung kook": 38400000,
+        "jungkook": 38400000,
+        "charli xcx": 38400000,
+        "ac dc": 38200000,
+        "frank ocean": 37900000,
+        "guns n roses": 36900000,
+        "the neighbourhood": 36400000,
+        "twenty one pilots": 36200000,
+        "21 pilots": 36200000,
+        "jennie": 36200000,
+        "green day": 35400000,
+        "kali uchis": 35400000,
+        "anitta": 34800000,
+        "kygo": 34800000,
+        "fall out boy": 34600000,
+        "fall out boys": 34600000,
+        "daft punk": 34500000,
         "asap rocky": 34200000,
-        "avicii": 33900000,
-        "guns n roses": 33400000,
-        "green day": 32100000,
-        "the neighbourhood": 31800000,
-        "daft punk": 31200000,
-        "metallica": 30400000,
+        "a ap rocky": 34200000,
+        "blackpink": 34200000,
+        "cigarettes after sex": 31200000,
+        "tame impala": 29800000,
+        "lisa": 29800000,
+        "central cee": 29600000,
+        "gorillaz": 29400000,
         "daniel caesar": 29400000,
-        "charli xcx": 29100000,
-        "tame impala": 28700000,
-        "cigarettes after sex": 27600000,
-        "alok": 26800000,
-        "system of a down": 25800000,
-        "paramore": 24700000,
+        "rosalia": 28900000,
+        "martin garrix": 28400000,
+        "childish gambino": 28400000,
+        "zedd": 27900000,
+        "avril lavigne": 26900000,
+        "system of a down": 26800000,
+        "alok": 26400000,
+        "newjeans": 26400000,
+        "panic at the disco": 25800000,
+        "foo fighters": 24900000,
+        "mitski": 24800000,
+        "paramore": 24600000,
+        "jimin": 24600000,
+        "pinkpantheress": 24200000,
+        "tv girl": 23800000,
         "steve lacy": 23600000,
+        "blink 182": 23500000,
+        "skrillex": 23400000,
+        "ice spice": 22800000,
+        "summer walker": 22600000,
         "maneskin": 22500000,
+        "my chemical romance": 22400000,
+        "mcr": 22400000,
         "lorde": 21900000,
+        "evanescence": 21800000,
+        "twice": 21800000,
+        "clairo": 21600000,
+        "beabadoobee": 21500000,
         "brent faiyaz": 21200000,
-        "mitski": 19800000,
+        "h e r": 19800000,
+        "her": 19800000,
+        "fred again": 19600000,
+        "bring me the horizon": 19500000,
+        "muse": 19400000,
+        "stray kids": 19400000,
+        "silk sonic": 19400000,
+        "mgmt": 19200000,
+        "slipknot": 18900000,
         "giveon": 18900000,
-        "slipknot": 17600000,
-        "clairo": 16400000,
+        "anderson paak": 18900000,
+        "the strokes": 18600000,
+        "le sserafim": 18600000,
+        "mac demarco": 18400000,
+        "kehlani": 18400000,
+        "the cure": 18200000,
+        "pearl jam": 17800000,
+        "black sabbath": 17200000,
+        "jhene aiko": 17200000,
+        "marilia mendonca": 16800000,
+        "disclosure": 16800000,
+        "iron maiden": 16400000,
+        "dave": 16400000,
+        "rammstein": 16200000,
+        "henrique juliano": 15900000,
+        "henrique e juliano": 15900000,
+        "deftones": 15800000,
+        "ana castela": 15400000,
+        "peggy gou": 15400000,
         "the marias": 15200000,
-        "bring me the horizon": 14900000,
-        "black sabbath": 14300000,
+        "ghost": 14800000,
+        "jorge mateus": 14800000,
+        "jorge e mateus": 14800000,
+        "korn": 14600000,
+        "ludmilla": 14500000,
+        "gusttavo lima": 14200000,
+        "rufus du sol": 14200000,
+        "avenged sevenfold": 13900000,
         "beach house": 13800000,
-        "iron maiden": 12800000,
-        "luisa sonza": 12400000,
-        "matue": 11900000,
+        "matue": 13600000,
+        "luan santana": 13600000,
+        "the smashing pumpkins": 13400000,
+        "smashing pumpkins": 13400000,
+        "ze neto cristiano": 12900000,
+        "ze neto e cristiano": 12900000,
+        "luisa sonza": 12800000,
+        "simone mendes": 12600000,
+        "phoebe bridgers": 12400000,
+        "maiara maraisa": 11800000,
+        "maiara e maraisa": 11800000,
+        "filipe ret": 11800000,
+        "charlie brown jr": 11400000,
+        "matheus kauan": 11400000,
+        "matheus e kauan": 11400000,
+        "flume": 11400000,
+        "pabllo vittar": 11200000,
+        "alice in chains": 11200000,
+        "menos e mais": 11200000,
+        "grupo menos e mais": 11200000,
+        "veigh": 11200000,
+        "gloria groove": 10900000,
+        "bruno marrone": 10800000,
+        "bruno e marrone": 10800000,
+        "bruno and marrone": 10800000,
+        "bruno morrene": 10800000,
+        "bruno e morrene": 10800000,
+        "queens of the stone age": 10800000,
         "wallows": 10600000,
-        "ghost": 10500000,
+        "cabelinho": 10400000,
+        "mc cabelinho": 10400000,
+        "kayblack": 10200000,
+        "teto": 9800000,
+        "soundgarden": 9800000,
+        "l7nnon": 9800000,
         "vintage culture": 9600000,
-        "gloria groove": 9200000,
-        "filipe ret": 8900000,
-        "teto": 8400000,
-        "pabllo vittar": 7800000,
-        "jao": 6850000,
-        "marina sena": 6100000,
-        "baco exu do blues": 5950000,
-        "djavan": 5600000,
-        "tim maia": 5400000,
-        "caetano veloso": 4800000,
-        "liniker": 4400000,
-        "gilberto gil": 4100000,
-        "duda beat": 3400000,
+        "odesza": 9600000,
+        "jao": 9400000,
+        "orochi": 9400000,
+        "racionais mcs": 9200000,
+        "sorriso maroto": 9200000,
+        "franz ferdinand": 9200000,
+        "djavan": 8900000,
+        "xama": 8900000,
+        "gesaffelstein": 8900000,
+        "yeah yeah yeahs": 8700000,
+        "zeze di camargo luciano": 8600000,
+        "zeze di camargo e luciano": 8600000,
+        "wiu": 8600000,
+        "nine inch nails": 8400000,
+        "thiaguinho": 8400000,
+        "tim maia": 8200000,
+        "chitaozinho xororo": 7900000,
+        "chitaozinho e xororo": 7900000,
+        "pericles": 7800000,
+        "justice": 7800000,
+        "baco exu do blues": 7600000,
+        "ferrugem": 7600000,
+        "placebo": 7600000,
+        "jorge ben jor": 7400000,
+        "legiao urbana": 7400000,
+        "simone simaria": 7200000,
+        "simone e simaria": 7200000,
+        "marisa monte": 7100000,
+        "caetano veloso": 6900000,
+        "skank": 6900000,
+        "marina sena": 6800000,
+        "anavitoria": 6800000,
+        "ana vitoria": 6800000,
+        "sleep token": 6800000,
+        "seu jorge": 6700000,
+        "rita lee": 6500000,
+        "o rappa": 6500000,
+        "liniker": 6400000,
+        "victor leo": 6400000,
+        "victor e leo": 6400000,
+        "jota quest": 6200000,
+        "natiruts": 6100000,
+        "nando reis": 5900000,
+        "gilberto gil": 5800000,
+        "cazuza": 5800000,
+        "bk": 5600000,
+        "yunk vino": 5400000,
+        "tribalistas": 5200000,
+        "interpol": 4900000,
+        "pitty": 4800000,
+        "lagum": 4800000,
+        "gal costa": 4600000,
+        "melim": 4500000,
+        "engenheiros do hawaii": 4400000,
+        "duda beat": 4200000,
+        "djonga": 4200000,
+        "emicida": 3800000,
+        "duquesa": 3600000,
+        "criolo": 3400000,
         "silva": 3100000,
+        "bom gosto": 2900000,
+        "grupo bom gosto": 2900000,
+        "banda bom gosto": 2900000,
+        "sabotage": 2900000,
+        "tasha tracie": 2800000,
+        "tasha e tracie": 2800000,
         "rubel": 2750000,
         "yung lixo": 2450000,
         "yun li": 2450000,
         "gemaplys": 2450000,
-        "mc vv": 2450000
+        "mc vv": 2450000,
+        "sophia chablau e uma enorme perda de tempo": 185000,
+        "sophia xablau e uma enorme perda de tempo": 185000,
+        "sophia chablau": 185000,
+        "sophia xablau": 185000,
+        "gost": 14800000,
+        "banda ghost": 14800000,
+        "banda gost": 14800000,
+        "ghost bc": 14800000,
+        "enzo yuki": 42000
       };
+
+      const DYNAMIC_ARTIST_LISTENERS_CACHE_CLIENT = new Map();
+
+      function singularizeArtistKeyClient(normKey) {
+        if (!normKey || normKey.length < 5) return normKey;
+        return normKey.endsWith("s") ? normKey.slice(0, -1).trim() : normKey;
+      }
 
       const KNOWN_COMPOUND_ARTISTS_CLIENT = new Set([
         "tyler, the creator",
@@ -1528,12 +1782,18 @@ export function initMiadoClient() {
         ["simone simaria", "simone e simaria"],
         ["victor leo", "victor e leo"],
         ["yun li", "yung lixo", "gemaplys", "victor gemaplys", "mc vv"],
-        ["anavitoria", "ana vitoria"]
+        ["anavitoria", "ana vitoria"],
+        ["lana del rey", "lana del ray"],
+        ["fall out boy", "fall out boys"],
+        ["imagine dragons", "imagine dragon"],
+        ["arctic monkeys", "arctic monkey"],
+        ["red hot chili peppers", "red hot chilli peppers", "rhcp"],
+        ["ghost", "gost", "banda ghost", "banda gost", "ghost bc"]
       ];
 
       function matchesAliasGroupClient(candNorm, targNorm) {
         if (!candNorm || !targNorm) return false;
-        if (candNorm === targNorm) return true;
+        if (candNorm === targNorm || singularizeArtistKeyClient(candNorm) === singularizeArtistKeyClient(targNorm)) return true;
         for (const group of DUO_ALIAS_GROUPS_CLIENT) {
           if (group.includes(targNorm)) {
             if (group.some(al => candNorm === al || candNorm.startsWith(al + " ") || candNorm.endsWith(" " + al) || candNorm.includes(" " + al + " "))) {
@@ -1576,25 +1836,42 @@ export function initMiadoClient() {
           : String(artistObjOrName?.name || "");
         const name = extractPrimaryArtistClient(rawName) || rawName;
         const rawNbFan = typeof artistObjOrName === "object" && artistObjOrName
-          ? Number(artistObjOrName.nbFan || artistObjOrName.listeners || 0)
+          ? Number(artistObjOrName.nbFan || artistObjOrName.nb_fan || artistObjOrName.listeners || 0)
           : 0;
         const nfcLower = String(name || "").normalize("NFC").trim().toLowerCase();
         if (nfcLower === "rosé") {
           return Math.max(68400000, isFinite(rawNbFan) ? rawNbFan : 0);
         }
         if (nfcLower === "rose") {
-          return isFinite(rawNbFan) && rawNbFan >= 1000 ? Math.round(rawNbFan) : 55509;
+          return isFinite(rawNbFan) && rawNbFan > 0 ? Math.round(rawNbFan) : 55509;
         }
         const norm = normalizeTextKey(name);
-        if (norm && KNOWN_ARTIST_LISTENERS_CLIENT[norm]) {
-          return Math.max(KNOWN_ARTIST_LISTENERS_CLIENT[norm], isFinite(rawNbFan) ? rawNbFan : 0);
+        const normSing = singularizeArtistKeyClient(norm);
+        const numericRaw = isFinite(rawNbFan) && rawNbFan > 0 ? Math.round(rawNbFan) : 0;
+        if (norm && numericRaw > 0) {
+          const prev = DYNAMIC_ARTIST_LISTENERS_CACHE_CLIENT.get(norm) || 0;
+          if (numericRaw > prev) {
+            DYNAMIC_ARTIST_LISTENERS_CACHE_CLIENT.set(norm, numericRaw);
+            if (normSing && normSing !== norm) {
+              DYNAMIC_ARTIST_LISTENERS_CACHE_CLIENT.set(normSing, numericRaw);
+            }
+          }
         }
-        if (isFinite(rawNbFan) && rawNbFan >= 1000) return Math.round(rawNbFan);
+        const known =
+          (norm && KNOWN_ARTIST_LISTENERS_CLIENT[norm]) ||
+          (normSing && KNOWN_ARTIST_LISTENERS_CLIENT[normSing]) ||
+          0;
+        const cached =
+          (norm && DYNAMIC_ARTIST_LISTENERS_CACHE_CLIENT.get(norm)) ||
+          (normSing && DYNAMIC_ARTIST_LISTENERS_CACHE_CLIENT.get(normSing)) ||
+          0;
+        const best = Math.max(known, numericRaw, cached);
+        if (best > 0) return best;
         let hash = 0;
         for (let i = 0; i < norm.length; i++) {
           hash = (hash * 31 + norm.charCodeAt(i)) >>> 0;
         }
-        return 250000 + (hash % 1800000);
+        return 120 + (hash % 1800);
       }
 
       function formatArtistListeners(count) {
@@ -1708,6 +1985,9 @@ export function initMiadoClient() {
         { name: "AC/DC", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=AC%2FDC" },
         { name: "Guns N' Roses", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Guns%20N%20Roses" },
         { name: "Green Day", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Green%20Day" },
+        { name: "Fall Out Boy", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Fall%20Out%20Boy" },
+        { name: "My Chemical Romance", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=My%20Chemical%20Romance" },
+        { name: "Twenty One Pilots", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Twenty%20One%20Pilots" },
         { name: "Måneskin", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Maneskin" },
 
         // Hip-Hop / Rap
@@ -1818,12 +2098,17 @@ export function initMiadoClient() {
       // ------------------------------------------------------------------------
       // 3. GERENCIAMENTO DE ESTADO LOCAL E PERSISTÊNCIA (LOCALSTORAGE)
       // ------------------------------------------------------------------------
-      function toProxyStreamUrl(rawUrl, title = "", artist = "", preferFull = true) {
+      function toProxyStreamUrl(rawUrl, title = "", artist = "", preferFull = true, trackId = "", provider = "", durationSec = 0) {
         const cleanUrl = String(rawUrl || "").trim();
         if (title || artist) {
           const params = new URLSearchParams();
           if (title) params.set("title", String(title));
           if (artist) params.set("artist", String(artist));
+          if (trackId) params.set("trackId", String(trackId));
+          if (provider) params.set("provider", String(provider));
+          if (durationSec && Number(durationSec) > 0) {
+            params.set("durationSec", String(Math.round(Number(durationSec))));
+          }
           if (preferFull) params.set("preferFull", "1");
           params.set("studioOnly", "1");
           return `/api/stream?${params.toString()}`;
@@ -1933,21 +2218,31 @@ export function initMiadoClient() {
                 data = await retryRes.json();
               }
             }
-            if (data && (data.ok || data.topArtists100 || data.trendingBrazil || data.newReleases)) {
+            if (data && (data.ok || data.topArtists100 || data.globalTop100 || data.newReleases)) {
               this._lastChartsFetchedAt = Date.now();
+              let rawTopSongs = Array.isArray(data.globalTop100) && data.globalTop100.length > 0
+                ? [...data.globalTop100]
+                : Array.isArray(data.topSongs)
+                ? [...data.topSongs]
+                : [];
+              if (forceRefresh && Array.isArray(rawTopSongs) && rawTopSongs.length > 6) {
+                this._chartsRotateOffset = ((this._chartsRotateOffset || 0) + 4) % Math.min(rawTopSongs.length, 24);
+                const off = this._chartsRotateOffset;
+                rawTopSongs = [...rawTopSongs.slice(off), ...rawTopSongs.slice(0, off)];
+              }
               this.charts = {
                 ...data,
                 top100Artists: (data.top100Artists || data.topArtists100 || []).map(a => ({
                   ...a,
                   nbFan: getArtistListenersCount(a)
                 })),
-                topSongs: data.topSongs || [...(data.globalTop100 || []), ...(data.trendingBrazil || [])],
+                topSongs: rawTopSongs,
                 newReleases: deduplicateAlbumsGlobal(data.newReleases || [])
               };
               if (this.currentView === "home" && window.miadoUI) {
                 window.miadoUI.renderHomeView();
               } else if (this.currentView === "search" && window.miadoUI) {
-                const inp = document.getElementById("view-search-input");
+                const inp = document.getElementById("global-search-input");
                 if (!inp || !inp.value.trim()) {
                   window.miadoUI.renderSearchView();
                 }
@@ -2103,15 +2398,70 @@ export function initMiadoClient() {
           return MiadoState.LEGACY_FAKE_HANDLES.has(clean) || MiadoState.LEGACY_FAKE_HANDLES.has(clean.replace(/^@/, ""));
         }
 
+        getUnfollowedArtistsSet(emailOverride = "") {
+          const emailKey = String(emailOverride || this.user?.email || "guest").trim().toLowerCase() || "guest";
+          if (!this._sessionUnfollowedArtists) {
+            this._sessionUnfollowedArtists = new Set();
+          }
+          try {
+            const raw = localStorage.getItem(`miado_unfollowed_v2_${emailKey}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                parsed.forEach(k => {
+                  if (k) this._sessionUnfollowedArtists.add(String(k).trim().toLowerCase());
+                });
+              }
+            }
+          } catch (_e) {}
+          return this._sessionUnfollowedArtists;
+        }
+
+        saveUnfollowedArtistsSet(setObj, emailOverride = "") {
+          const emailKey = String(emailOverride || this.user?.email || "guest").trim().toLowerCase() || "guest";
+          const arr = Array.from(setObj || []).map(k => String(k || "").trim().toLowerCase()).filter(Boolean);
+          try {
+            localStorage.setItem(`miado_unfollowed_v2_${emailKey}`, JSON.stringify(arr));
+          } catch (_e) {}
+        }
+
+        getUnlikedTracksSet(emailOverride = "") {
+          const emailKey = String(emailOverride || this.user?.email || "guest").trim().toLowerCase() || "guest";
+          if (!this._sessionUnlikedKeys) {
+            this._sessionUnlikedKeys = new Set();
+          }
+          try {
+            const raw = localStorage.getItem(`miado_unliked_v2_${emailKey}`);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                parsed.forEach(k => {
+                  if (k) this._sessionUnlikedKeys.add(String(k).trim().toLowerCase());
+                });
+              }
+            }
+          } catch (_e) {}
+          return this._sessionUnlikedKeys;
+        }
+
+        saveUnlikedTracksSet(setObj, emailOverride = "") {
+          const emailKey = String(emailOverride || this.user?.email || "guest").trim().toLowerCase() || "guest";
+          const arr = Array.from(setObj || []).map(k => String(k || "").trim().toLowerCase()).filter(Boolean);
+          try {
+            localStorage.setItem(`miado_unliked_v2_${emailKey}`, JSON.stringify(arr));
+          } catch (_e) {}
+        }
+
         loadFollowedArtists() {
           const seen = new Set();
+          const unfollowedSet = this.getUnfollowedArtistsSet();
           const result = [];
           const pushArtist = item => {
             if (!item) return;
             const name = typeof item === "string" ? item.trim() : String(item.name || "").trim();
             if (!name) return;
             const k = name.toLowerCase();
-            if (seen.has(k)) return;
+            if (seen.has(k) || unfollowedSet.has(k)) return;
             seen.add(k);
             const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
             result.push({
@@ -2148,7 +2498,7 @@ export function initMiadoClient() {
           return result;
         }
 
-        saveFollowedArtists() {
+        async saveFollowedArtists() {
           const cleanNames = (this.followedArtists || [])
             .map(a => String(a?.name || a || "").trim())
             .filter(Boolean);
@@ -2157,7 +2507,7 @@ export function initMiadoClient() {
           this.user.followingCount = (this.friends?.length || 0) + (this.followedArtists?.length || 0);
           localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
           localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
-          this.saveUser();
+          await this.saveUser();
         }
 
         isArtistFollowed(artistName = "") {
@@ -2179,16 +2529,16 @@ export function initMiadoClient() {
           }
           if (!name) return false;
 
-          if (!this._sessionUnfollowedArtists) {
-            this._sessionUnfollowedArtists = new Set();
-          }
+          this._lastUserMutationAt = Date.now();
+          const unfollowedSet = this.getUnfollowedArtistsSet();
           const cleanKey = name.toLowerCase();
           const existingIdx = (this.followedArtists || []).findIndex(a => String(a.name || "").trim().toLowerCase() === cleanKey);
           let nowFollowing = false;
 
           if (existingIdx > -1) {
             this.followedArtists.splice(existingIdx, 1);
-            this._sessionUnfollowedArtists.add(cleanKey);
+            unfollowedSet.add(cleanKey);
+            this.saveUnfollowedArtistsSet(unfollowedSet);
             if (Array.isArray(this.user.favoriteArtists)) {
               this.user.favoriteArtists = this.user.favoriteArtists.filter(
                 f => String(f || "").trim().toLowerCase() !== cleanKey
@@ -2202,7 +2552,8 @@ export function initMiadoClient() {
             nowFollowing = false;
             showToast(`Você deixou de seguir ${name}`);
           } else {
-            this._sessionUnfollowedArtists.delete(cleanKey);
+            unfollowedSet.delete(cleanKey);
+            this.saveUnfollowedArtistsSet(unfollowedSet);
             const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === cleanKey);
             this.followedArtists.unshift({
               name,
@@ -2261,21 +2612,34 @@ export function initMiadoClient() {
             return s.startsWith("@") ? s : `@${s}`;
           };
 
+          const handleByUid = new Map();
           for (const existing of this.communityProfiles || []) {
             if (!existing || !existing.username || MiadoState.isLegacyFakeHandle(existing.username)) continue;
             const hKey = normalizeHandleKey(existing.username || existing.handle);
             if (!hKey || hKey === "@visitante" || hKey === "@novo_usuario") continue;
+            const exUid = String(existing.uid || "").trim();
+            if (isRealFirebaseUid(exUid)) {
+              // If this is the logged-in user and their handle changed locally, use the new handle immediately
+              if (myUid && exUid === myUid && myHandle && hKey !== myHandle) {
+                continue;
+              }
+              handleByUid.set(exUid, hKey);
+            }
             byHandle.set(hKey, { ...existing, username: hKey, handle: hKey });
           }
 
           for (const inc of incomingProfiles) {
             if (!inc || !(inc.username || inc.handle)) continue;
-            const hKey = normalizeHandleKey(inc.username || inc.handle);
+            let hKey = normalizeHandleKey(inc.username || inc.handle);
             if (!hKey || hKey === "@visitante" || hKey === "@novo_usuario" || MiadoState.isLegacyFakeHandle(hKey)) {
               continue;
             }
             const incUid = String(inc.uid || "").trim();
-            const prev = byHandle.get(hKey) || {};
+            const prevHKeyForUid = isRealFirebaseUid(incUid) ? handleByUid.get(incUid) : null;
+            const prevByUid = prevHKeyForUid ? byHandle.get(prevHKeyForUid) : null;
+            const prevByHandle = byHandle.get(hKey);
+            const prev = prevByUid || prevByHandle || {};
+
             const resolvedUid = isRealFirebaseUid(incUid)
               ? incUid
               : isRealFirebaseUid(prev.uid)
@@ -2286,6 +2650,29 @@ export function initMiadoClient() {
               (myUid && isRealFirebaseUid(resolvedUid) && resolvedUid === myUid) ||
                 (!myUid && myHandle && hKey === myHandle)
             );
+
+            // If this is the logged-in user, always use their authoritative current handle so old handles never reappear
+            if (isSelfProfile && myHandle && myHandle !== "@visitante" && myHandle !== "@novo_usuario") {
+              if (hKey !== myHandle) {
+                byHandle.delete(hKey);
+              }
+              hKey = myHandle;
+            }
+
+            // If this UID previously had a different handle in byHandle, decide which handle is newer and remove the stale one
+            if (isRealFirebaseUid(resolvedUid) && prevHKeyForUid && prevHKeyForUid !== hKey) {
+              const incTs = Date.parse(String(inc.updatedAt || "")) || 0;
+              const prevTs = Date.parse(String(prev.updatedAt || "")) || 0;
+              const preferIncomingHandle = isSelfProfile || inc._fromFirestore || incTs >= prevTs;
+              if (preferIncomingHandle) {
+                byHandle.delete(prevHKeyForUid);
+                handleByUid.set(resolvedUid, hKey);
+              } else {
+                hKey = prevHKeyForUid;
+              }
+            } else if (isRealFirebaseUid(resolvedUid)) {
+              handleByUid.set(resolvedUid, hKey);
+            }
 
             const incHasLiveTrack = Boolean(
               inc.online &&
@@ -2301,9 +2688,9 @@ export function initMiadoClient() {
                 prev.currentTrack !== "Silencioso no momento" &&
                 prev.currentTrack !== "Ouvindo no Miado"
             );
-            // If incoming is not from live Firestore and prev already has a live Firestore track, don't let stale /api/profiles wipe it
-            const keepPrevLive = Boolean(!inc._fromFirestore && !incHasLiveTrack && prev._fromFirestore && prevHasLiveTrack);
-            const keepPrevOnline = Boolean(!inc._fromFirestore && !inc.online && prev._fromFirestore && prev.online);
+            // Preserve live status/track from either /api/profiles or Firestore when merging duplicate entries for the same handle
+            const keepPrevLive = Boolean(!incHasLiveTrack && prevHasLiveTrack);
+            const keepPrevOnline = Boolean(!inc.online && prev.online);
 
             const isOnlineNow = isSelfProfile
               ? true
@@ -2323,35 +2710,39 @@ export function initMiadoClient() {
               ? prev.trackObj || null
               : null;
 
-            const bestAvatar = isRealCustomAvatar(inc.avatarUrl)
+            const rawBestAvatar = isRealCustomAvatar(inc.avatarUrl)
               ? inc.avatarUrl
               : isRealCustomAvatar(prev.avatarUrl)
               ? prev.avatarUrl
               : isSelfProfile && isRealCustomAvatar(this.user?.avatarUrl)
               ? this.user.avatarUrl
               : inc.avatarUrl || prev.avatarUrl || "/api/cat-avatar?id=cat_1";
+            const bestAvatar = safeImgUrl(rawBestAvatar);
 
-            const bestBanner = inc.bannerUrl || prev.bannerUrl || (isSelfProfile ? this.user?.bannerUrl || "" : "");
+            const bestBanner = isSelfProfile
+              ? (this.user?.bannerUrl || inc.bannerUrl || prev.bannerUrl || "")
+              : (inc.bannerUrl || prev.bannerUrl || "");
             const extractArtistStr = item => (typeof item === "string" ? item.trim() : String(item?.name || "").trim());
-            const mergedFavs = Array.from(
-              new Set(
-                [
-                  ...(isSelfProfile ? (this.followedArtists || []).map(a => a.name) : []),
-                  ...(isSelfProfile && Array.isArray(this.user?.favoriteArtists) ? this.user.favoriteArtists : []),
-                  ...(Array.isArray(inc.favoriteArtists) ? inc.favoriteArtists.map(extractArtistStr) : []),
-                  ...(Array.isArray(inc.followedArtists) ? inc.followedArtists.map(extractArtistStr) : []),
-                  ...(Array.isArray(prev.favoriteArtists) ? prev.favoriteArtists.map(extractArtistStr) : []),
-                  ...(Array.isArray(prev.followedArtists) ? prev.followedArtists.map(extractArtistStr) : [])
-                ].filter(Boolean)
-              )
-            );
+            const mergedFavs = isSelfProfile
+              ? Array.from(new Set((this.followedArtists || []).map(a => extractArtistStr(a)).filter(Boolean)))
+              : Array.from(
+                  new Set(
+                    [
+                      ...(Array.isArray(inc.favoriteArtists) ? inc.favoriteArtists.map(extractArtistStr) : []),
+                      ...(Array.isArray(inc.followedArtists) ? inc.followedArtists.map(extractArtistStr) : []),
+                      ...(Array.isArray(prev.favoriteArtists) ? prev.favoriteArtists.map(extractArtistStr) : []),
+                      ...(Array.isArray(prev.followedArtists) ? prev.followedArtists.map(extractArtistStr) : [])
+                    ].filter(Boolean)
+                  )
+                );
 
-            const rawFollowedPool = [
-              ...(isSelfProfile ? (this.followedArtists || []) : []),
-              ...(Array.isArray(inc.followedArtists) ? inc.followedArtists : []),
-              ...(Array.isArray(prev.followedArtists) ? prev.followedArtists : []),
-              ...mergedFavs
-            ];
+            const rawFollowedPool = isSelfProfile
+              ? [...(this.followedArtists || [])]
+              : [
+                  ...(Array.isArray(inc.followedArtists) ? inc.followedArtists : []),
+                  ...(Array.isArray(prev.followedArtists) ? prev.followedArtists : []),
+                  ...mergedFavs
+                ];
             const seenFolKeys = new Set();
             const normalizedFollowedList = [];
             for (const item of rawFollowedPool) {
@@ -2371,6 +2762,34 @@ export function initMiadoClient() {
               });
             }
 
+            const dedupUserSublist = (arrA, arrB) => {
+              const combined = [
+                ...(Array.isArray(arrA) ? arrA : []),
+                ...(Array.isArray(arrB) ? arrB : [])
+              ];
+              const seen = new Set();
+              const out = [];
+              for (const u of combined) {
+                if (!u || typeof u !== "object") continue;
+                const uUid = String(u.uid || "").trim();
+                const uH = normalizeHandleKey(u.username || u.handle);
+                if (!uH || uH === "@visitante") continue;
+                const key = (isRealFirebaseUid(uUid) ? `uid:${uUid}` : "") || `h:${uH}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push({
+                  ...u,
+                  username: uH,
+                  handle: uH,
+                  avatarUrl: safeImgUrl(u.avatarUrl || u.avatar)
+                });
+              }
+              return out;
+            };
+
+            const mergedFollowingUsers = dedupUserSublist(inc.following, prev.following);
+            const mergedFollowerUsers = dedupUserSublist(inc.followers, prev.followers);
+
             const mergedProfile = {
               ...prev,
               ...inc,
@@ -2378,8 +2797,12 @@ export function initMiadoClient() {
               id: isRealFirebaseUid(resolvedUid) ? `prof_${resolvedUid}` : (inc.id || prev.id || `prof_${hKey.slice(1)}`),
               username: hKey,
               handle: hKey,
-              name: String(inc.name || prev.name || hKey.slice(1)).trim(),
-              bio: String(inc.bio || prev.bio || "").trim(),
+              name: isSelfProfile
+                ? String(this.user?.name || inc.name || prev.name || hKey.slice(1)).trim()
+                : String((inc._fromFirestore ? inc.name : (inc.name || prev.name)) || hKey.slice(1)).trim(),
+              bio: isSelfProfile
+                ? String(this.user?.bio ?? inc.bio ?? prev.bio ?? "").trim()
+                : String(inc.bio || prev.bio || "").trim(),
               isSelf: isSelfProfile,
               _fromFirestore: Boolean(inc._fromFirestore || prev._fromFirestore),
               online: isOnlineNow,
@@ -2389,24 +2812,51 @@ export function initMiadoClient() {
               bannerUrl: bestBanner,
               favoriteArtists: mergedFavs,
               followedArtists: normalizedFollowedList,
-              likedTracks:
-                Array.isArray(inc.likedTracks) && inc.likedTracks.length > 0
-                  ? inc.likedTracks
-                  : prev.likedTracks || [],
-              playlists:
-                Array.isArray(inc.playlists) && inc.playlists.length > 0
-                  ? inc.playlists
-                  : prev.playlists || [],
-              recentHistory:
-                Array.isArray(inc.recentHistory) && inc.recentHistory.length > 0
-                  ? inc.recentHistory
-                  : prev.recentHistory || []
+              following: mergedFollowingUsers,
+              followers: mergedFollowerUsers,
+              followingCount: Math.max(mergedFollowingUsers.length, Number(inc.followingCount) || 0, Number(prev.followingCount) || 0),
+              followersCount: Math.max(mergedFollowerUsers.length, Number(inc.followersCount) || 0, Number(prev.followersCount) || 0),
+              likedTracks: isSelfProfile
+                ? (this.user?.likedTracks || [])
+                : Array.isArray(inc.likedTracks) && inc.likedTracks.length > 0
+                ? inc.likedTracks
+                : prev.likedTracks || [],
+              playlists: isSelfProfile
+                ? (this.playlists || [])
+                : Array.isArray(inc.playlists) && inc.playlists.length > 0
+                ? inc.playlists
+                : prev.playlists || [],
+              recentHistory: isSelfProfile
+                ? (this.recentHistory || [])
+                : Array.isArray(inc.recentHistory) && inc.recentHistory.length > 0
+                ? inc.recentHistory
+                : prev.recentHistory || []
             };
 
             byHandle.set(hKey, mergedProfile);
           }
 
-          // Secondary deduplication pass: if two different handles have the exact same display name and one is an inactive shell with default avatar, merge into the real profile
+          // Secondary deduplication pass: if two different handles share the same real UID or have the exact same display name and one is an inactive shell, keep only the active one
+          const seenRealUids = new Map();
+          for (const [hKey, prof] of Array.from(byHandle.entries())) {
+            const pUid = String(prof.uid || "").trim();
+            if (isRealFirebaseUid(pUid)) {
+              const prevH = seenRealUids.get(pUid);
+              if (prevH && prevH !== hKey) {
+                const prevP = byHandle.get(prevH);
+                if (prof.isSelf || (prof._fromFirestore && !prevP?._fromFirestore)) {
+                  byHandle.delete(prevH);
+                  seenRealUids.set(pUid, hKey);
+                } else {
+                  byHandle.delete(hKey);
+                  continue;
+                }
+              } else {
+                seenRealUids.set(pUid, hKey);
+              }
+            }
+          }
+
           const handleByName = new Map();
           for (const [hKey, prof] of Array.from(byHandle.entries())) {
             const normName = String(prof.name || "").trim().toLowerCase();
@@ -2418,8 +2868,10 @@ export function initMiadoClient() {
             }
             const prevProf = byHandle.get(prevHKey);
             if (!prevProf) continue;
-            const prevIsShell = !isRealCustomAvatar(prevProf.avatarUrl) && !prevProf.online && !prevProf.isSelf;
-            const currIsShell = !isRealCustomAvatar(prof.avatarUrl) && !prof.online && !prof.isSelf;
+            const prevHasRealUid = isRealFirebaseUid(prevProf.uid);
+            const currHasRealUid = isRealFirebaseUid(prof.uid);
+            const prevIsShell = (!isRealCustomAvatar(prevProf.avatarUrl) && !prevProf.online && !prevProf.isSelf) || (!prevHasRealUid && currHasRealUid);
+            const currIsShell = (!isRealCustomAvatar(prof.avatarUrl) && !prof.online && !prof.isSelf) || (!currHasRealUid && prevHasRealUid);
             if (prevIsShell && !currIsShell) {
               byHandle.delete(prevHKey);
               handleByName.set(normName, hKey);
@@ -2428,30 +2880,112 @@ export function initMiadoClient() {
             }
           }
 
-          this.communityProfiles = Array.from(byHandle.values());
-
           const byUidLookup = new Map();
-          for (const p of this.communityProfiles) {
+          for (const p of byHandle.values()) {
             if (p.uid) byUidLookup.set(String(p.uid).trim(), p);
           }
+
+          // Cross-link followers & following across all community profiles so counts and lists are always complete
+          for (const prof of byHandle.values()) {
+            const fList = Array.isArray(prof.following) ? prof.following : [];
+            for (const targetRef of fList) {
+              if (!targetRef) continue;
+              const tUid = String(targetRef.uid || "").trim();
+              const tHandle = normalizeHandleKey(targetRef.username || targetRef.handle);
+              const targetProf = (tUid && byUidLookup.get(tUid)) || (tHandle && byHandle.get(tHandle));
+              if (targetProf && targetProf.username !== prof.username) {
+                targetRef.username = targetProf.username;
+                targetRef.handle = targetProf.username;
+                targetRef.name = targetProf.name;
+                targetRef.avatarUrl = targetProf.avatarUrl;
+                targetRef.online = Boolean(targetProf.online);
+                if (!Array.isArray(targetProf.followers)) targetProf.followers = [];
+                if (
+                  !targetProf.followers.some(
+                    u => (u.uid && prof.uid && u.uid === prof.uid) || normalizeHandleKey(u.username) === prof.username
+                  )
+                ) {
+                  targetProf.followers.push({
+                    uid: prof.uid || "",
+                    id: prof.id,
+                    name: prof.name,
+                    username: prof.username,
+                    avatarUrl: prof.avatarUrl,
+                    bio: prof.bio || "",
+                    online: Boolean(prof.online),
+                    currentTrack: prof.currentTrack || ""
+                  });
+                }
+              }
+            }
+            prof.followingCount = Math.max(Array.isArray(prof.following) ? prof.following.length : 0, Number(prof.followingCount) || 0);
+            prof.followersCount = Math.max(Array.isArray(prof.followers) ? prof.followers.length : 0, Number(prof.followersCount) || 0);
+          }
+
+          // Update logged-in user's own followers list (state.userFollowers) from their community profile entry
+          const myCommunityEntry = (myUid && byUidLookup.get(myUid)) || (myHandle && byHandle.get(myHandle));
+          if (myCommunityEntry && Array.isArray(myCommunityEntry.followers)) {
+            const combinedMyFollowers = [
+              ...myCommunityEntry.followers,
+              ...(Array.isArray(this.userFollowers) ? this.userFollowers : [])
+            ];
+            const seenMyF = new Set();
+            const dedupedMyFollowers = [];
+            for (const u of combinedMyFollowers) {
+              if (!u || !u.username) continue;
+              const uUid = String(u.uid || "").trim();
+              const liveF = (uUid && byUidLookup.get(uUid)) || byHandle.get(normalizeHandleKey(u.username));
+              const resolvedU = liveF
+                ? {
+                    uid: liveF.uid || uUid,
+                    name: liveF.name,
+                    username: liveF.username,
+                    avatarUrl: liveF.avatarUrl,
+                    bio: liveF.bio || "",
+                    online: Boolean(liveF.online)
+                  }
+                : {
+                    ...u,
+                    username: normalizeHandleKey(u.username),
+                    avatarUrl: safeImgUrl(u.avatarUrl || u.avatar)
+                  };
+              const k = (isRealFirebaseUid(resolvedU.uid) ? `uid:${resolvedU.uid}` : "") || `h:${resolvedU.username}`;
+              if (seenMyF.has(k) || resolvedU.username === myHandle) continue;
+              seenMyF.add(k);
+              dedupedMyFollowers.push(resolvedU);
+            }
+            this.userFollowers = dedupedMyFollowers;
+            if (this.user) {
+              this.user.followersCount = dedupedMyFollowers.length;
+            }
+          }
+
+          this.communityProfiles = Array.from(byHandle.values()).sort((a, b) => {
+            if (Boolean(a.isSelf) !== Boolean(b.isSelf)) return a.isSelf ? -1 : 1;
+            if (Boolean(a.online) !== Boolean(b.online)) return a.online ? -1 : 1;
+            return String(a.name || "").localeCompare(String(b.name || ""));
+          });
 
           const updatedFriends = [];
           const seenFriendKeys = new Set();
           for (const f of this.friends || []) {
             if (!f || !f.username || MiadoState.isLegacyFakeHandle(f.username)) continue;
             const fHandle = normalizeHandleKey(f.username);
+            const fUid = String(f.uid || "").trim();
+            // Match by UID first so if a friend changed their @username or name, we automatically update to their new @username!
+            const liveByUid = isRealFirebaseUid(fUid) ? byUidLookup.get(fUid) : null;
             const liveByHandle = byHandle.get(fHandle);
-            const resolvedUid = String(
-              (liveByHandle && liveByHandle.uid) || f.uid || ""
-            ).trim();
-            // Never include the logged-in user inside their own friends list
-            if ((myUid && resolvedUid && resolvedUid === myUid) || (myHandle && fHandle === myHandle)) continue;
+            const live = liveByUid || liveByHandle;
+            const resolvedUid = String((live && live.uid) || fUid || "").trim();
+            const resolvedHandle = (live && live.username) || fHandle;
 
-            const dedupKey = fHandle || resolvedUid;
+            // Never include the logged-in user inside their own friends list
+            if ((myUid && resolvedUid && resolvedUid === myUid) || (myHandle && resolvedHandle === myHandle)) continue;
+
+            const dedupKey = (isRealFirebaseUid(resolvedUid) ? `uid:${resolvedUid}` : "") || `h:${resolvedHandle}`;
             if (seenFriendKeys.has(dedupKey)) continue;
             seenFriendKeys.add(dedupKey);
 
-            const live = liveByHandle || (resolvedUid ? byUidLookup.get(resolvedUid) : null);
             if (live && (!myUid || live.uid !== myUid)) {
               const isFriendPlaying = Boolean(
                 live.online &&
@@ -2466,18 +3000,24 @@ export function initMiadoClient() {
                 ...f,
                 ...live,
                 uid: live.uid || resolvedUid,
-                username: live.username || fHandle,
+                name: live.name || f.name,
+                username: resolvedHandle,
+                handle: resolvedHandle,
                 online: isFriendOnline,
-                avatar: isRealCustomAvatar(live.avatarUrl)
-                  ? live.avatarUrl
-                  : isRealCustomAvatar(f.avatar || f.avatarUrl)
-                  ? f.avatar || f.avatarUrl
-                  : live.avatarUrl || f.avatar || f.avatarUrl || "/api/cat-avatar?id=cat_1",
-                avatarUrl: isRealCustomAvatar(live.avatarUrl)
-                  ? live.avatarUrl
-                  : isRealCustomAvatar(f.avatarUrl || f.avatar)
-                  ? f.avatarUrl || f.avatar
-                  : live.avatarUrl || f.avatarUrl || f.avatar || "/api/cat-avatar?id=cat_1",
+                avatar: safeImgUrl(
+                  isRealCustomAvatar(live.avatarUrl)
+                    ? live.avatarUrl
+                    : isRealCustomAvatar(f.avatar || f.avatarUrl)
+                    ? f.avatar || f.avatarUrl
+                    : live.avatarUrl || f.avatar || f.avatarUrl || "/api/cat-avatar?id=cat_1"
+                ),
+                avatarUrl: safeImgUrl(
+                  isRealCustomAvatar(live.avatarUrl)
+                    ? live.avatarUrl
+                    : isRealCustomAvatar(f.avatarUrl || f.avatar)
+                    ? f.avatarUrl || f.avatar
+                    : live.avatarUrl || f.avatarUrl || f.avatar || "/api/cat-avatar?id=cat_1"
+                ),
                 currentTrack: liveTrackStr,
                 trackObj: liveTrackObj
               });
@@ -2496,7 +3036,21 @@ export function initMiadoClient() {
             localStorage.setItem("miado_real_friends_v1", JSON.stringify(this.friends));
           } catch (_e) {}
 
-          if (window.miadoUI) {
+          // Compute lightweight state fingerprint to avoid redundant DOM rebuilds when nothing changed
+          const nextFingerprint = [
+            this.communityProfiles
+              .map(p => `${p.uid || ""}:${p.username}:${p.name}:${p.online ? 1 : 0}:${p.currentTrack || ""}:${p.followersCount || 0}:${p.followingCount || 0}`)
+              .join("|"),
+            this.friends
+              .map(f => `${f.uid || ""}:${f.username}:${f.name}:${f.online ? 1 : 0}:${f.currentTrack || ""}`)
+              .join("|"),
+            (this.userFollowers || []).length
+          ].join("::");
+
+          const changed = this._lastCommunityFingerprint !== nextFingerprint;
+          this._lastCommunityFingerprint = nextFingerprint;
+
+          if (changed && window.miadoUI) {
             window.miadoUI.renderRightSidebarBodyOnly();
             if (this.currentView === "social") {
               const activeEl = document.activeElement;
@@ -2508,7 +3062,8 @@ export function initMiadoClient() {
               if (!isTypingInSocial) {
                 const scrollWrap = document.getElementById("main-content-scroll");
                 const prevScroll = scrollWrap ? scrollWrap.scrollTop : 0;
-                window.miadoUI.renderSocialView();
+                const currentSearchVal = document.getElementById("social-profile-search-input")?.value || "";
+                window.miadoUI.renderSocialView(currentSearchVal);
                 if (scrollWrap) scrollWrap.scrollTop = prevScroll;
               }
             } else if (this.currentView === "profile") {
@@ -2516,7 +3071,7 @@ export function initMiadoClient() {
               const isTypingInProfile =
                 activeEl &&
                 (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA");
-              if (!isTypingInProfile) {
+              if (!isTypingInProfile && window.miadoUI._activeProfileTab !== "edit") {
                 const scrollWrap = document.getElementById("main-content-scroll");
                 const prevScroll = scrollWrap ? scrollWrap.scrollTop : 0;
                 window.miadoUI.renderProfileView(this.viewingTargetProfile || null);
@@ -2524,6 +3079,20 @@ export function initMiadoClient() {
               }
             }
           }
+        }
+
+        isAuthenticatedAccount() {
+          return Boolean(
+            this.user &&
+            this.user.username &&
+            this.user.username !== "@visitante" &&
+            this.user.username !== "@novo_usuario" &&
+            this.user.name !== "Visitante" &&
+            ((this.user.email && this.user.email !== "usr_guest@miado.app") ||
+              (this.user.uid && this.user.uid !== "usr_guest") ||
+              localStorage.getItem("miado_auth_token") ||
+              localStorage.getItem("miado_active_session_v1") === "true")
+          );
         }
 
         broadcastLivePlaybackState(track = this.currentTrack, isPlaying = this.isPlaying) {
@@ -2600,16 +3169,18 @@ export function initMiadoClient() {
         startLiveCommunitySyncLoop() {
           if (this._liveSyncInterval) clearInterval(this._liveSyncInterval);
           this._liveSyncTick = 0;
+          this.broadcastLivePlaybackState(this.currentTrack, Boolean(this.isPlaying && this.currentTrack));
+          this.fetchCommunityProfiles();
           this._liveSyncInterval = setInterval(() => {
             if (document.hidden) return;
             this._liveSyncTick = (this._liveSyncTick || 0) + 1;
-            this.fetchCommunityProfiles();
             if (this.isPlaying && this.currentTrack) {
               this.broadcastLivePlaybackState(this.currentTrack, true);
-            } else if (this._liveSyncTick % 4 === 1) {
+            } else if (this._liveSyncTick % 2 === 1) {
               this.broadcastLivePlaybackState(null, false);
             }
-          }, 4000);
+            this.fetchCommunityProfiles();
+          }, 12000);
         }
 
         async fetchCommunityProfiles(searchQuery = "") {
@@ -2715,7 +3286,7 @@ export function initMiadoClient() {
               currentTrack: friendTrackStr,
               trackObj,
               albumId: srcProf.albumId || (trackObj && trackObj.albumId) || INITIAL_ALBUMS[0].id,
-              online: Boolean(srcProf.online && friendTrackStr !== "Silencioso no momento"),
+              online: Boolean(srcProf.online),
               likedByMe: false
             });
             nowFollowing = true;
@@ -2960,13 +3531,14 @@ export function initMiadoClient() {
             ? incomingUser.favoriteArtists
             : [];
 
+          const unfollowedForAcc = this.getUnfollowedArtistsSet(incomingEmail);
           const seenArt = new Set();
           const hydratedFollowed = [];
           (Array.isArray(rawFollowed) ? rawFollowed : []).forEach(item => {
             const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
             if (!name) return;
             const k = name.toLowerCase();
-            if (seenArt.has(k)) return;
+            if (seenArt.has(k) || unfollowedForAcc.has(k)) return;
             seenArt.add(k);
             const dirMatch = POPULAR_ARTISTS_DIRECTORY.find(p => p.name.toLowerCase() === k);
             hydratedFollowed.push({
@@ -2986,9 +3558,17 @@ export function initMiadoClient() {
               : Array.isArray(payload.likedTracks)
               ? payload.likedTracks
               : (Array.isArray(incomingUser.likedTracks) ? incomingUser.likedTracks : []);
+            const unlikedForAcc = this.getUnlikedTracksSet(incomingEmail);
+            const filteredIncomingLiked = (incomingLiked || []).filter(tr => {
+              if (!tr) return false;
+              const k1 = normalizeTrackKey(tr).toLowerCase();
+              const k2 = `${String(tr.artist || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")}__${String(tr.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+              return !unlikedForAcc.has(k1) && !unlikedForAcc.has(k2);
+            });
             const cleanName = String(incomingUser.name || this.user.name || "Ouvinte").trim();
             const cleanHandle = sanitizeCleanHandle(incomingUser.username || incomingUser.handle || this.user.username, cleanName);
             const prevSessionAvatar = this.user.avatarUrl;
+            const followedNames = (this.followedArtists || []).map(a => a.name);
             this.user = {
               ...this.user,
               ...incomingUser,
@@ -2996,15 +3576,12 @@ export function initMiadoClient() {
               username: cleanHandle,
               handle: cleanHandle,
               email: String(incomingUser.email || acc.email || this.user.email || "").toLowerCase().trim(),
-              favoriteArtists: Array.isArray(incomingUser.favoriteArtists)
-                ? incomingUser.favoriteArtists
-                : Array.isArray(acc.favoriteArtists)
-                ? acc.favoriteArtists
-                : (this.followedArtists || []).map(a => a.name),
-              followedArtists: (this.followedArtists || []).map(a => a.name),
+              bio: typeof incomingUser.bio === "string" ? incomingUser.bio : (this.user.bio || ""),
+              favoriteArtists: followedNames.slice(0, 60),
+              followedArtists: followedNames,
               followingCount: (this.friends?.length || 0) + (this.followedArtists?.length || 0),
               followersCount: incomingUser.followersCount === 1280 ? 0 : (incomingUser.followersCount || 0),
-              likedTracks: deduplicateTracks((incomingLiked || []).map(tr => ({
+              likedTracks: deduplicateTracks(filteredIncomingLiked.map(tr => ({
                 ...tr,
                 coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
               })))
@@ -3028,10 +3605,13 @@ export function initMiadoClient() {
             : Array.isArray(payload.recentHistory)
             ? payload.recentHistory
             : [];
-          this.recentHistory = incomingHistory.slice(0, 50).map(tr => ({
-            ...tr,
-            coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
-          }));
+          this.recentHistory = incomingHistory
+            .filter(tr => tr && !String(tr.artist || "").toLowerCase().includes("arthurzinho batedeira"))
+            .slice(0, 50)
+            .map(tr => ({
+              ...tr,
+              coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
+            }));
           localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
 
           const incomingPlaylists = Array.isArray(acc.playlists)
@@ -3107,21 +3687,26 @@ export function initMiadoClient() {
             if (db.token && typeof db.token === "string") {
               localStorage.setItem("miado_auth_token", db.token);
             }
+            const recentlyMutated = Boolean(
+              this._lastUserMutationAt && Date.now() - this._lastUserMutationAt < 15000
+            );
             let updated = false;
 
-            const rawFollowed = Array.isArray(db.followedArtists) && db.followedArtists.length > 0
+            const rawFollowed = Array.isArray(db.followedArtists)
               ? db.followedArtists
-              : Array.isArray(db.user.followedArtists) && db.user.followedArtists.length > 0
+              : Array.isArray(db.user.followedArtists)
               ? db.user.followedArtists
-              : Array.isArray(db.user.favoriteArtists) && db.user.favoriteArtists.length > 0
+              : Array.isArray(db.user.favoriteArtists)
               ? db.user.favoriteArtists
               : [];
 
-            const unfollowedSet = this._sessionUnfollowedArtists || new Set();
+            const unfollowedSet = this.getUnfollowedArtistsSet(db.user.email);
             const seenArt = new Set();
             const mergedFollowed = [];
-            // Merge local followedArtists first so newly followed artists in current session are never lost
-            [...(this.followedArtists || []), ...rawFollowed].forEach(item => {
+            const artistSourcePool = recentlyMutated
+              ? [...(this.followedArtists || [])]
+              : [...(this.followedArtists || []), ...rawFollowed];
+            artistSourcePool.forEach(item => {
               const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
               if (!name) return;
               const k = name.toLowerCase();
@@ -3144,19 +3729,33 @@ export function initMiadoClient() {
               : Array.isArray(db.user.likedTracks)
               ? db.user.likedTracks
               : [];
-            const unlikedSet = this._sessionUnlikedKeys || new Set();
-            const combinedLikes = [...(this.user.likedTracks || []), ...serverLikes].filter(tr => {
+            const unlikedSet = this.getUnlikedTracksSet(db.user.email);
+            const likesPool = recentlyMutated
+              ? [...(this.user.likedTracks || [])]
+              : [...(this.user.likedTracks || []), ...serverLikes];
+            const combinedLikes = likesPool.filter(tr => {
               if (!tr) return false;
-              const k = normalizeTrackKey(tr);
-              return !unlikedSet.has(k);
+              const k1 = normalizeTrackKey(tr).toLowerCase();
+              const k2 = `${String(tr.artist || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")}__${String(tr.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+              return !unlikedSet.has(k1) && !unlikedSet.has(k2);
             });
-            const cleanName = String(db.user.name || this.user.name || "Ouvinte").trim();
-            const cleanHandle = sanitizeCleanHandle(db.user.username || db.user.handle || this.user.username, cleanName);
+            const cleanName = recentlyMutated && this.user.name && this.user.name !== "Visitante"
+              ? this.user.name
+              : String(db.user.name || this.user.name || "Ouvinte").trim();
+            const cleanHandle = recentlyMutated && this.user.username && this.user.username !== "@visitante"
+              ? this.user.username
+              : sanitizeCleanHandle(db.user.username || db.user.handle || this.user.username, cleanName);
             const followedNamesList = (this.followedArtists || []).map(a => a.name);
-            const resolvedBio = (typeof db.user.bio === "string" && db.user.bio.trim() !== "")
+            const resolvedBio = (this.user._bioEditedLocally || recentlyMutated)
+              ? String(this.user.bio || "").slice(0, 100)
+              : (typeof db.user.bio === "string" && db.user.bio.trim() !== "")
               ? db.user.bio.trim().slice(0, 100)
-              : (this.user.bio || "").slice(0, 100);
+              : String(this.user.bio || db.user.bio || "").slice(0, 100);
             const prevSessionAvatar = this.user.avatarUrl;
+            const isCustomAv = (u) => {
+              const str = String(u || "").trim();
+              return Boolean(str && str !== "/api/cat-avatar?id=cat_1" && !str.startsWith("data:image/svg") && !str.includes("placeholder"));
+            };
             this.user = {
               ...this.user,
               ...db.user,
@@ -3164,6 +3763,7 @@ export function initMiadoClient() {
               username: cleanHandle,
               handle: cleanHandle,
               bio: resolvedBio,
+              _bioEditedLocally: Boolean(this.user._bioEditedLocally),
               favoriteArtists: followedNamesList.slice(0, 60),
               followedArtists: followedNamesList,
               followingCount: (this.friends?.length || 0) + (this.followedArtists?.length || 0),
@@ -3184,10 +3784,14 @@ export function initMiadoClient() {
             updated = true;
 
             if (Array.isArray(db.recentHistory) && db.recentHistory.length > 0) {
-              this.recentHistory = deduplicateTracks([...(this.recentHistory || []), ...db.recentHistory]).slice(0, 50).map(tr => ({
-                ...tr,
-                coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
-              }));
+              this.recentHistory = deduplicateTracks([...(this.recentHistory || []), ...db.recentHistory])
+                .filter(tr => tr && !String(tr.artist || "").toLowerCase().includes("arthurzinho batedeira"))
+                .slice(0, 50)
+                .map(tr => ({
+                  ...tr,
+                  coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
+                }));
+              localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
               updated = true;
             }
             if (Array.isArray(db.playlists) && db.playlists.length > 0) {
@@ -3216,6 +3820,9 @@ export function initMiadoClient() {
               this.applyCustomAlbumCovers();
               updated = true;
             }
+            if (recentlyMutated) {
+              this.syncServerDb();
+            }
             if (updated) {
               this.fetchRecommendations();
               if (window.miadoEngine) window.miadoEngine.updateLikeButtonUI();
@@ -3224,7 +3831,7 @@ export function initMiadoClient() {
                 window.miadoUI.syncHeaderUserUI();
                 window.miadoUI.renderSidebarPlaylists();
                 window.miadoUI.syncAllLikeButtonsInDOM();
-                if (this.currentView === "profile") {
+                if (this.currentView === "profile" && window.miadoUI._activeProfileTab !== "edit") {
                   window.miadoUI.renderProfileView();
                 } else if (this.currentView === "home") {
                   window.miadoUI.renderHomeView();
@@ -3320,6 +3927,7 @@ export function initMiadoClient() {
                 bio: this.user.bio || "",
                 catId: this.user.avatarId || "cat_1",
                 avatarUrl: this.user.avatarUrl || "",
+                bannerUrl: this.user.bannerUrl || "",
                 favoriteArtists: this.user.favoriteArtists || [],
                 followedArtists: this.followedArtists || [],
                 likedTracks: this.user.likedTracks || [],
@@ -3338,6 +3946,9 @@ export function initMiadoClient() {
           const prevUid = String(this.user?.uid || "").trim();
           const isAccountSwitch =
             Boolean((incomingEmail && prevEmail && incomingEmail !== prevEmail) || (incomingUid && prevUid && incomingUid !== prevUid));
+          const recentlyMutated = Boolean(
+            !isAccountSwitch && this._lastUserMutationAt && Date.now() - this._lastUserMutationAt < 15000
+          );
 
           if (isAccountSwitch) {
             if (this._sessionUnfollowedArtists) this._sessionUnfollowedArtists.clear();
@@ -3349,6 +3960,7 @@ export function initMiadoClient() {
             this.feedPosts = [];
             this.user.likedTracks = [];
             this.user.favoriteArtists = [];
+            this.user._bioEditedLocally = false;
             this.currentTrack = null;
             this.isPlaying = false;
             if (window.miadoEngine && typeof window.miadoEngine.pause === "function") {
@@ -3364,10 +3976,10 @@ export function initMiadoClient() {
             this.user.email = incomingEmail;
             localStorage.setItem("miado_active_session_v1", "true");
           }
-          if (data.name && data.name !== "Visitante") {
+          if (!recentlyMutated && data.name && data.name !== "Visitante") {
             this.user.name = String(data.name).trim();
           }
-          if (data.username || data.handle) {
+          if (!recentlyMutated && (data.username || data.handle)) {
             const rawHandle = String(data.username || data.handle).trim();
             const cleanH = rawHandle.startsWith("@")
               ? rawHandle
@@ -3375,7 +3987,11 @@ export function initMiadoClient() {
             this.user.username = cleanH;
             this.user.handle = cleanH;
           }
-          if (typeof data.bio === "string") this.user.bio = data.bio;
+          if (isAccountSwitch) {
+            this.user.bio = typeof data.bio === "string" ? data.bio : "";
+          } else if (!this.user._bioEditedLocally && !recentlyMutated && typeof data.bio === "string" && (data.bio.trim() !== "" || !this.user.bio)) {
+            this.user.bio = data.bio;
+          }
           if (data.avatarUrl) this.user.avatarUrl = data.avatarUrl;
           if (data.bannerUrl) this.user.bannerUrl = data.bannerUrl;
           if (typeof data.onboardingCompleted === "boolean") {
@@ -3389,7 +4005,7 @@ export function initMiadoClient() {
             ...(Array.isArray(data.followedArtists) ? data.followedArtists : []),
             ...(Array.isArray(data.favoriteArtists) ? data.favoriteArtists : [])
           ];
-          const unfollowedSet = this._sessionUnfollowedArtists || new Set();
+          const unfollowedSet = this.getUnfollowedArtistsSet(incomingEmail);
           const seenArt = new Set();
           const mergedFollowed = [];
           const localToKeep = isAccountSwitch ? [] : (this.followedArtists || []);
@@ -3400,7 +4016,8 @@ export function initMiadoClient() {
               .filter(Boolean)
           );
 
-          [...localToKeep, ...remoteFollowedSource].forEach(item => {
+          const poolToIterate = recentlyMutated ? [...localToKeep] : [...localToKeep, ...remoteFollowedSource];
+          poolToIterate.forEach(item => {
             const name = typeof item === "string" ? item.trim() : String(item?.name || "").trim();
             if (!name) return;
             const k = name.toLowerCase();
@@ -3458,12 +4075,15 @@ export function initMiadoClient() {
           localStorage.setItem("miado_followed_artists_v1", JSON.stringify(this.followedArtists));
           localStorage.setItem("miado_followed_artists_v5", JSON.stringify(this.followedArtists));
 
-          const unlikedSet = this._sessionUnlikedKeys || new Set();
+          const unlikedSet = this.getUnlikedTracksSet(incomingEmail);
           const localLikesToKeep = isAccountSwitch ? [] : (this.user.likedTracks || []);
           const incomingLikes = Array.isArray(data.likedTracks) ? data.likedTracks : [];
-          const combinedLikes = [...localLikesToKeep, ...incomingLikes].filter(t => {
+          const likesPool = recentlyMutated ? [...localLikesToKeep] : [...localLikesToKeep, ...incomingLikes];
+          const combinedLikes = likesPool.filter(t => {
             if (!t) return false;
-            return !unlikedSet.has(normalizeTrackKey(t));
+            const k1 = normalizeTrackKey(t).toLowerCase();
+            const k2 = `${String(t.artist || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")}__${String(t.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+            return !unlikedSet.has(k1) && !unlikedSet.has(k2);
           });
           this.user.likedTracks = deduplicateTracks(
             combinedLikes.map(t => ({
@@ -3485,20 +4105,27 @@ export function initMiadoClient() {
               }));
           }
           if (Array.isArray(data.recentHistory) && (isAccountSwitch || data.recentHistory.length > 0)) {
-            this.recentHistory = deduplicateTracks(data.recentHistory.map(t => ({
-              ...t,
-              coverUrl: ensureTrackCoverUrl(t, t.title, t.artist)
-            })));
+            const historyBase = isAccountSwitch ? [] : (this.recentHistory || []);
+            this.recentHistory = deduplicateTracks(
+              [...historyBase, ...data.recentHistory]
+                .filter(t => t && !String(t.artist || "").toLowerCase().includes("arthurzinho batedeira"))
+                .slice(0, 50)
+                .map(t => ({
+                  ...t,
+                  coverUrl: ensureTrackCoverUrl(t, t.title, t.artist)
+                }))
+            );
           }
 
           localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
           localStorage.setItem("miado_playlists_v5", JSON.stringify(this.playlists));
           localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
+          this.saveCurrentAccountToSwitcher();
 
-          // If local had artists or likes that weren't in Firestore yet, push them to Firestore now
+          // If local had artists, bio, or likes that weren't in Firestore yet, push them to Firestore now
           if (
             !isAccountSwitch &&
-            (hasLocalUnsyncedArtists || (localLikesToKeep.length > incomingLikes.length)) &&
+            (recentlyMutated || hasLocalUnsyncedArtists || (localLikesToKeep.length !== incomingLikes.length)) &&
             window.miadoFirestore &&
             typeof window.miadoFirestore.saveUserState === "function"
           ) {
@@ -3507,7 +4134,7 @@ export function initMiadoClient() {
 
           if (window.miadoEngine) window.miadoEngine.updateLikeButtonUI();
           if (window.miadoUI) {
-            if (typeof window.miadoUI.syncAccountStateAcrossApp === "function") {
+            if (typeof window.miadoUI.syncAccountStateAcrossApp === "function" && window.miadoUI._activeProfileTab !== "edit") {
               window.miadoUI.syncAccountStateAcrossApp();
             } else {
               window.miadoUI.syncHeaderUserUI();
@@ -3515,7 +4142,9 @@ export function initMiadoClient() {
               window.miadoUI.syncAllLikeButtonsInDOM();
               if (this.currentView === "liked") window.miadoUI.renderLikedTracksView();
               if (this.currentView === "library") window.miadoUI.renderLibraryView();
-              if (this.currentView === "profile") window.miadoUI.renderProfileView();
+              if (this.currentView === "profile" && window.miadoUI._activeProfileTab !== "edit") {
+                window.miadoUI.renderProfileView();
+              }
             }
           }
         }
@@ -3586,13 +4215,18 @@ export function initMiadoClient() {
           };
         }
 
-        saveUser() {
+        async saveUser() {
           this.user.followingCount = (this.friends?.length || 0) + (this.followedArtists?.length || 0);
           localStorage.setItem("miado_user_v5", JSON.stringify(this.user));
+          if (window.miadoIndexedDb && typeof window.miadoIndexedDb.persistFromMiadoState === "function") {
+            void window.miadoIndexedDb.persistFromMiadoState(this);
+          }
           this.saveCurrentAccountToSwitcher();
           this.syncServerDb();
-          if (window.miadoFirestore && typeof window.miadoFirestore.saveUserState === "function") {
-            window.miadoFirestore.saveUserState(this).catch(err => console.warn("Firestore saveUserState warning:", err));
+          if (window.miadoPersistence && typeof window.miadoPersistence.saveUserLibrary === "function") {
+            await window.miadoPersistence.saveUserLibrary(this).catch(err => console.warn("saveUserLibrary warning:", err));
+          } else if (window.miadoFirestore && typeof window.miadoFirestore.saveUserState === "function") {
+            await window.miadoFirestore.saveUserState(this).catch(err => console.warn("Firestore saveUserState warning:", err));
           }
         }
 
@@ -3708,10 +4342,19 @@ export function initMiadoClient() {
             if (saved) {
               const parsed = JSON.parse(saved);
               if (Array.isArray(parsed) && parsed.length > 0) {
-                return deduplicateTracks(parsed.slice(0, 50).map(tr => ({
-                  ...tr,
-                  coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
-                })));
+                const cleaned = deduplicateTracks(
+                  parsed
+                    .filter(tr => tr && !String(tr.artist || "").toLowerCase().includes("arthurzinho batedeira"))
+                    .slice(0, 50)
+                    .map(tr => ({
+                      ...tr,
+                      coverUrl: ensureTrackCoverUrl(tr, tr.title, tr.artist)
+                    }))
+                );
+                if (cleaned.length !== parsed.length) {
+                  localStorage.setItem("miado_recent_history_50", JSON.stringify(cleaned));
+                }
+                return cleaned;
               }
             }
           } catch (e) {}
@@ -3719,31 +4362,67 @@ export function initMiadoClient() {
         }
 
         recordTrackInHistory(track, album) {
-          if (!track || !track.id) return;
+          if (!track || (!track.id && !track.title)) return;
+          if (String(track.artist || "").toLowerCase().includes("arthurzinho batedeira")) return;
+          this._lastUserMutationAt = Date.now();
+          ensureUniqueClientTrackIdentity(track);
           const nowStr = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-          const cleanStream = `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1`;
+          const cleanStream = toProxyStreamUrl("", track.title || "", track.artist || "", true, track.id || "", track.provider || "", track.durationSec || 0);
+          const albumMatchesArtist = Boolean(
+            album &&
+            album.id &&
+            album.id !== "billie_hmhas" &&
+            album.id !== "search" &&
+            album.id !== "artist" &&
+            (!album.artist || artistMatchesClient(album.artist, track.artist || ""))
+          );
+          const resolvedAlbumTitle =
+            (albumMatchesArtist && album.title) ||
+            track.albumTitle ||
+            track.title ||
+            "Single";
+          const resolvedAlbumId = albumMatchesArtist
+            ? String(album.id)
+            : `hist_alb_${normalizeTextKey(track.artist || "art")}_${normalizeTextKey(resolvedAlbumTitle)}`;
+          const itemId = String(track.id || `trk_${normalizeTrackKey(track)}`);
           const item = {
-            id: String(track.id),
-            title: track.title,
-            artist: track.artist,
+            id: itemId,
+            trackUid: track.trackUid || `${track.provider || "catalog"}:${itemId}:${normalizeTrackKey(track)}`,
+            provider: track.provider || "catalog",
+            title: track.title || "Faixa",
+            artist: track.artist || "Artista",
             duration: track.duration || "3:30",
+            durationSec: track.durationSec || 210,
             previewUrl: cleanStream,
             streamUrl: cleanStream,
-            coverUrl: ensureTrackCoverUrl(track, track.title, track.artist, album && album.coverUrl),
-            albumId: (album && album.id) || track.albumId || "billie_hmhas",
-            albumTitle: (album && album.title) || track.albumTitle || "Single",
+            coverUrl: ensureTrackCoverUrl(track, track.title, track.artist, albumMatchesArtist ? album.coverUrl : ""),
+            albumId: resolvedAlbumId,
+            albumTitle: resolvedAlbumTitle,
             playedAt: nowStr
           };
 
-          this.recentHistory = this.recentHistory.filter(t => String(t.id) !== String(item.id));
+          this.recentHistory = (this.recentHistory || []).filter(
+            t => t && String(t.id) !== String(item.id) && normalizeTrackKey(t) !== normalizeTrackKey(item)
+          );
           this.recentHistory.unshift(item);
           if (this.recentHistory.length > 50) {
             this.recentHistory = this.recentHistory.slice(0, 50);
           }
           localStorage.setItem("miado_recent_history_50", JSON.stringify(this.recentHistory));
+          this.history = this.recentHistory;
+          if (window.miadoIndexedDb && typeof window.miadoIndexedDb.persistFromMiadoState === "function") {
+            void window.miadoIndexedDb.persistFromMiadoState(this);
+          }
+          this.saveCurrentAccountToSwitcher();
 
-          // Não publica mais automaticamente no Feed Miau a cada música ouvida (apenas quando o usuário escolher publicar)
+          if (window.miadoFirestore && typeof window.miadoFirestore.recordHistoryEvent === "function") {
+            void window.miadoFirestore.recordHistoryEvent(item);
+          }
+
           this.syncServerDb();
+          if (window.miadoUI && this.currentView === "history" && typeof window.miadoUI.renderHistoryView === "function") {
+            window.miadoUI.renderHistoryView();
+          }
           if (this.recentHistory.length % 2 === 1) {
             this.fetchRecommendations();
           }
@@ -3913,15 +4592,15 @@ export function initMiadoClient() {
           if (!Array.isArray(this.user.likedTracks)) {
             this.user.likedTracks = [];
           }
-          if (!this._sessionUnlikedKeys) {
-            this._sessionUnlikedKeys = new Set();
-          }
+          this._lastUserMutationAt = Date.now();
+          const unlikedSet = this.getUnlikedTracksSet();
           const idStr = String(track.id || "");
-          const targetKey = normalizeTrackKey(track);
+          const targetKey = normalizeTrackKey(track).toLowerCase();
+          const firestoreKey = `${String(track.artist || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")}__${String(track.title || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
           const idx = this.user.likedTracks.findIndex(t => {
             if (!t) return false;
             if (idStr && String(t.id) === idStr) return true;
-            if (targetKey && targetKey !== "__" && normalizeTrackKey(t) === targetKey) return true;
+            if (targetKey && targetKey !== "__" && normalizeTrackKey(t).toLowerCase() === targetKey) return true;
             return false;
           });
           let nowLiked = false;
@@ -3929,20 +4608,31 @@ export function initMiadoClient() {
           if (idx > -1) {
             const removed = this.user.likedTracks.splice(idx, 1)[0];
             if (targetKey && targetKey !== "__") {
-              this._sessionUnlikedKeys.add(targetKey);
+              unlikedSet.add(targetKey);
+            }
+            if (firestoreKey && firestoreKey !== "__") {
+              unlikedSet.add(firestoreKey);
             }
             if (removed) {
-              const remKey = normalizeTrackKey(removed);
-              if (remKey && remKey !== "__") this._sessionUnlikedKeys.add(remKey);
+              const remKey = normalizeTrackKey(removed).toLowerCase();
+              if (remKey && remKey !== "__") unlikedSet.add(remKey);
             }
+            this.saveUnlikedTracksSet(unlikedSet);
             nowLiked = false;
             showToast(`"${track.title || "Música"}" removida das Músicas Curtidas`);
           } else {
             if (targetKey && targetKey !== "__") {
-              this._sessionUnlikedKeys.delete(targetKey);
+              unlikedSet.delete(targetKey);
             }
+            if (firestoreKey && firestoreKey !== "__") {
+              unlikedSet.delete(firestoreKey);
+            }
+            this.saveUnlikedTracksSet(unlikedSet);
+            ensureUniqueClientTrackIdentity(track);
             likedTrackObj = {
-              id: idStr || `like_${Date.now()}`,
+              id: track.id || idStr || `like_${Date.now()}`,
+              trackUid: track.trackUid || "",
+              provider: track.provider || "catalog",
               title: track.title || "Faixa Miau",
               artist: track.artist || "Artista",
               duration: track.duration || "3:30",
@@ -3960,7 +4650,7 @@ export function initMiadoClient() {
           if (window.miadoFirestore && typeof window.miadoFirestore.syncTrackLike === "function") {
             void window.miadoFirestore.syncTrackLike(likedTrackObj, nowLiked);
           }
-          this.saveUser();
+          void this.saveUser();
           if (window.miadoEngine) {
             window.miadoEngine.updateLikeButtonUI();
           }
@@ -4202,7 +4892,7 @@ export function initMiadoClient() {
             combined = `${trackOrText || ""} ${artist || ""} ${albumTitle || ""} ${extraVersion || ""}`.toLowerCase();
           }
 
-          if (/\b(remix|karaoke|karaokê|superturne|superturnê)\b/i.test(combined)) {
+          if (/\b(remix|remixes|remixed|dub mix|rac mix|rob orton mix|club mix|extended mix|vip mix|artifact version|orchestral version|gershwin version|karaoke|karaokê|superturne|superturnê)\b/i.test(combined)) {
             return true;
           }
 
@@ -4395,8 +5085,11 @@ export function initMiadoClient() {
 
             if (!best || bestScore < 0) continue;
 
+            ensureUniqueClientTrackIdentity(best);
             best.coverUrl = ensureTrackCoverUrl(best, best.title, best.artist);
-            const studioStream = `/api/stream?title=${encodeURIComponent(best.title || "")}&artist=${encodeURIComponent(best.artist || "")}&preferFull=1&studioOnly=1`;
+            const durSec = MiadoMusicResolver.parseDurationSeconds(best.durationSec || best.duration || best.trackTimeMillis) || refDurationSec || 210;
+            best.durationSec = durSec;
+            const studioStream = toProxyStreamUrl("", best.title || "", best.artist || "", true, best.id || "", best.provider || "", durSec);
             best.previewUrl = studioStream;
             best.streamUrl = studioStream;
             best.versionType = "Studio Version";
@@ -5272,7 +5965,6 @@ export function initMiadoClient() {
             state.queueIndex = state.queue.length - 1;
           }
 
-          state.recordTrackInHistory(track, album);
           this.syncPlayerMetadataUI(track, album);
           state.broadcastLivePlaybackState(track, true);
 
@@ -5281,31 +5973,41 @@ export function initMiadoClient() {
             window.miadoUI.renderRightSidebarBodyOnly();
           }
 
+          ensureUniqueClientTrackIdentity(track);
           const tKey = normalizeTrackKey(track);
-          const cachedStream = sessionStorage.getItem("miado_stream_" + tKey);
+          const streamCacheKey = `miado_stream_${track.id || ""}_${tKey}`;
+          const cachedStream = sessionStorage.getItem(streamCacheKey);
           let started = false;
 
-          // 1. Tenta carregar do cache local de áudio da sessão (0ms de latência)
+          // 1. Tenta carregar do cache local de áudio da sessão específico do ID único da faixa (0ms de latência)
           if (cachedStream) {
             started = await this.attemptPlayUrl(cachedStream, currentReq, 4500, 0);
           }
 
-          // 2. Tentativa Primária: Proxy Stream URL com resolução paralela ultrarrápida no backend
+          // 2. Tentativa Primária: Proxy Stream URL com ID único do provedor e duração esperada
           if (!started && currentReq === this.playRequestId) {
             const rawCandidate = track.rawPreviewUrl || track.previewUrl || track.streamUrl || "";
-            const primaryProxyStreamUrl = toProxyStreamUrl(rawCandidate, track.title, track.artist, true);
+            const primaryProxyStreamUrl = toProxyStreamUrl(
+              rawCandidate,
+              track.title,
+              track.artist,
+              true,
+              track.id || "",
+              track.provider || "",
+              track.durationSec || 0
+            );
             started = await this.attemptPlayUrl(primaryProxyStreamUrl, currentReq, 11500, 0);
             if (started) {
-              try { sessionStorage.setItem("miado_stream_" + tKey, primaryProxyStreamUrl); } catch (_e) {}
+              try { sessionStorage.setItem(streamCacheKey, primaryProxyStreamUrl); } catch (_e) {}
             }
           }
 
-          // 3. Contingência rápida pelo servidor (otimizada sem loop de 6 instâncias que esquentava o celular)
+          // 3. Contingência rápida pelo servidor com ID único da faixa
           if (!started && currentReq === this.playRequestId) {
-            const contingencyUrl = `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&retry=1&_=${Date.now()}`;
+            const contingencyUrl = `${toProxyStreamUrl("", track.title, track.artist, true, track.id || "", track.provider || "", track.durationSec || 0)}&retry=1&_=${Date.now()}`;
             started = await this.attemptPlayUrl(contingencyUrl, currentReq, 11500, 0);
             if (started) {
-              try { sessionStorage.setItem("miado_stream_" + tKey, contingencyUrl); } catch (_e) {}
+              try { sessionStorage.setItem(streamCacheKey, contingencyUrl); } catch (_e) {}
             }
           }
 
@@ -5316,6 +6018,7 @@ export function initMiadoClient() {
               this.startVisualizerLoop();
               showToast(`Tocando agora: ${track.title} - ${track.artist}`);
               state.broadcastLivePlaybackState(track, true);
+              state.recordTrackInHistory(track, album);
             } else {
               state.setIsPlaying(false);
             }
@@ -6163,46 +6866,34 @@ export function initMiadoClient() {
           const tKey = row.dataset.trackKey;
 
           if (tId || tKey) {
-            if (state.currentTrack && (String(state.currentTrack.id) === String(tId) || normalizeTrackKey(state.currentTrack) === tKey)) {
-              return state.currentTrack;
+            const pools = [
+              state.currentTrack ? [state.currentTrack] : [],
+              Array.isArray(state.queue) ? state.queue : [],
+              Array.isArray(state.currentAlbum?.tracks) ? state.currentAlbum.tracks : [],
+              Array.isArray(this.currentArtistSongs) ? this.currentArtistSongs : [],
+              Array.isArray(this.lastSearchSongs) ? this.lastSearchSongs : [],
+              Array.isArray(this.homeGlobalTopTracks) ? this.homeGlobalTopTracks : [],
+              Array.isArray(this.homeAlgoTracks) ? this.homeAlgoTracks : [],
+              Array.isArray(this.profileLikedTracks) ? this.profileLikedTracks : [],
+              Array.isArray(state.user?.likedTracks) ? state.user.likedTracks : [],
+              ...(state.playlists || []).map(pl => Array.isArray(pl?.tracks) ? pl.tracks : []),
+              ...(state.albums || []).map(alb => Array.isArray(alb?.tracks) ? alb.tracks : [])
+            ];
+
+            // Passagem 1: Busca estrita pelo identificador único da música (tId) em todas as coleções
+            if (tId) {
+              for (const list of pools) {
+                const exactById = list.find(t => t && String(t.id) === String(tId));
+                if (exactById) return exactById;
+              }
             }
-            const inQ = state.queue.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-            if (inQ) return inQ;
-            if (state.currentAlbum?.tracks) {
-              const inAlb = state.currentAlbum.tracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inAlb) return inAlb;
-            }
-            if (this.currentArtistSongs) {
-              const inArt = this.currentArtistSongs.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inArt) return inArt;
-            }
-            if (this.lastSearchSongs) {
-              const inSr = this.lastSearchSongs.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inSr) return inSr;
-            }
-            if (this.homeGlobalTopTracks) {
-              const inHomeTop = this.homeGlobalTopTracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inHomeTop) return inHomeTop;
-            }
-            if (this.homeAlgoTracks) {
-              const inHomeAlgo = this.homeAlgoTracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inHomeAlgo) return inHomeAlgo;
-            }
-            if (this.profileLikedTracks) {
-              const inProf = this.profileLikedTracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inProf) return inProf;
-            }
-            if (state.user && Array.isArray(state.user.likedTracks)) {
-              const inLiked = state.user.likedTracks.find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inLiked) return inLiked;
-            }
-            for (const pl of state.playlists || []) {
-              const inPl = (pl.tracks || []).find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inPl) return inPl;
-            }
-            for (const alb of state.albums || []) {
-              const inA = (alb.tracks || []).find(t => t && (String(t.id) === String(tId) || normalizeTrackKey(t) === tKey));
-              if (inA) return inA;
+
+            // Passagem 2: Fallback por chave composta (título + artista) caso tId não esteja presente
+            if (tKey) {
+              for (const list of pools) {
+                const byKey = list.find(t => t && normalizeTrackKey(t) === tKey);
+                if (byKey) return byKey;
+              }
             }
           }
 
@@ -6483,7 +7174,12 @@ export function initMiadoClient() {
           }
 
           this.setActiveNav(view);
-          this.navigateTo(view, true);
+          const currentGlobalQ = view === "search" ? (document.getElementById("global-search-input")?.value || "").trim() : "";
+          this.navigateTo(view, true, view === "search" && currentGlobalQ ? { query: currentGlobalQ } : {});
+          if (view === "search") {
+            const gInp = document.getElementById("global-search-input");
+            if (gInp) gInp.focus();
+          }
         }
 
         setupNavigation() {
@@ -6584,12 +7280,9 @@ export function initMiadoClient() {
               e.stopPropagation();
               searchInput.value = "";
               syncGlobalClearBtn();
-              const viewInp = document.getElementById("view-search-input");
-              const viewClear = document.getElementById("btn-clear-view-search");
-              if (viewInp) viewInp.value = "";
-              if (viewClear) viewClear.classList.remove("visible");
               searchInput.focus();
               if (state.currentView === "search") {
+                this.syncBrowserUrlAndTitle("search", { query: "" }, false);
                 this.renderSearchView("");
               }
             });
@@ -6608,12 +7301,27 @@ export function initMiadoClient() {
             syncGlobalClearBtn();
             clearTimeout(debounceTimer);
             const q = searchInput.value.trim();
+            if (!q) {
+              if (state.currentView === "search") {
+                this.syncBrowserUrlAndTitle("search", { query: "" }, false);
+                this.renderSearchView("");
+              }
+              return;
+            }
             if (q.length >= 2) {
               debounceTimer = setTimeout(() => {
                 this.closeAllModals();
                 this.setActiveNav("search");
-                this.navigateTo("search", true, { query: q });
-              }, 340);
+                if (state.currentView === "search") {
+                  if (Array.isArray(this.historyStack) && this.historyStack[this.historyIndex]) {
+                    this.historyStack[this.historyIndex] = { view: "search", params: { query: q } };
+                  }
+                  this.syncBrowserUrlAndTitle("search", { query: q }, false);
+                  this.renderSearchView(q);
+                } else {
+                  this.navigateTo("search", true, { query: q });
+                }
+              }, 300);
             }
           });
           searchInput.addEventListener("keydown", (e) => {
@@ -6622,7 +7330,15 @@ export function initMiadoClient() {
               const q = searchInput.value.trim();
               this.closeAllModals();
               this.setActiveNav("search");
-              this.navigateTo("search", true, { query: q });
+              if (state.currentView === "search") {
+                if (Array.isArray(this.historyStack) && this.historyStack[this.historyIndex]) {
+                  this.historyStack[this.historyIndex] = { view: "search", params: { query: q } };
+                }
+                this.syncBrowserUrlAndTitle("search", { query: q }, false);
+                this.renderSearchView(q);
+              } else {
+                this.navigateTo("search", true, { query: q });
+              }
             }
           });
 
@@ -9255,19 +9971,130 @@ export function initMiadoClient() {
             return list;
           })();
 
-          const followingUsers = isMe
-            ? (state.friends || [])
-            : (Array.isArray(activeUser.following) ? activeUser.following : []);
+          const isFollowingProfile = !isMe && state.isProfileFollowed(activeUser.uid || activeUser.username);
 
-          const followerUsers = isMe
-            ? (state.userFollowers || [])
-            : (Array.isArray(activeUser.followers) ? activeUser.followers : []);
+          const resolveCompleteFollowLists = () => {
+            const targetUid = String(activeUser.uid || (isMe ? state.user.uid : "") || "").trim();
+            const targetHandle = String(activeUser.username || activeUser.handle || "").toLowerCase().trim();
+            const commMatch = (state.communityProfiles || []).find(
+              p =>
+                p &&
+                ((targetUid && p.uid && String(p.uid).trim() === targetUid) ||
+                  (targetHandle && String(p.username || "").toLowerCase().trim() === targetHandle))
+            );
+
+            // 1. Build Following list
+            const rawFollowing = isMe
+              ? [
+                  ...(Array.isArray(state.friends) ? state.friends : []),
+                  ...(Array.isArray(commMatch?.following) ? commMatch.following : [])
+                ]
+              : [
+                  ...(Array.isArray(activeUser.following) ? activeUser.following : []),
+                  ...(Array.isArray(commMatch?.following) ? commMatch.following : [])
+                ];
+
+            const seenFollowing = new Set();
+            const cleanFollowing = [];
+            for (const u of rawFollowing) {
+              if (!u) continue;
+              const uUid = typeof u === "object" ? String(u.uid || "").trim() : "";
+              const rawUH = typeof u === "string" ? u : String(u.username || u.handle || "");
+              const uHandle = rawUH ? (rawUH.startsWith("@") ? rawUH.toLowerCase().trim() : `@${rawUH.toLowerCase().trim()}`) : "";
+              if (!uHandle || uHandle === "@visitante" || uHandle === targetHandle) continue;
+              const liveProf = (state.communityProfiles || []).find(
+                p =>
+                  p &&
+                  ((uUid && p.uid && String(p.uid).trim() === uUid) ||
+                    String(p.username || "").toLowerCase().trim() === uHandle)
+              );
+              const effUid = String((liveProf && liveProf.uid) || uUid || "").trim();
+              const effHandle = String((liveProf && liveProf.username) || uHandle).toLowerCase().trim();
+              const key = (effUid && !effUid.startsWith("prof_") ? `uid:${effUid}` : "") || `h:${effHandle}`;
+              if (seenFollowing.has(key)) continue;
+              seenFollowing.add(key);
+              cleanFollowing.push({
+                uid: effUid,
+                name: (liveProf && liveProf.name) || (typeof u === "object" && u.name) || effHandle.slice(1),
+                username: effHandle,
+                avatarUrl: safeImgUrl((liveProf && liveProf.avatarUrl) || (typeof u === "object" && (u.avatarUrl || u.avatar)) || "/api/cat-avatar?id=cat_1"),
+                bio: (liveProf && liveProf.bio) || (typeof u === "object" && u.bio) || "",
+                online: Boolean(liveProf ? liveProf.online : (typeof u === "object" && u.online))
+              });
+            }
+
+            // 2. Build Followers list (from activeUser.followers, state.userFollowers, community graph, and current user if following)
+            const inferredFromCommunity = [];
+            for (const p of state.communityProfiles || []) {
+              if (!p || !Array.isArray(p.following)) continue;
+              const followsTarget = p.following.some(
+                f =>
+                  f &&
+                  ((targetUid && f.uid && String(f.uid).trim() === targetUid) ||
+                    (targetHandle && String(f.username || f.handle || "").toLowerCase().trim() === targetHandle))
+              );
+              if (followsTarget) {
+                inferredFromCommunity.push(p);
+              }
+            }
+
+            const rawFollowers = [
+              ...(isMe && Array.isArray(state.userFollowers) ? state.userFollowers : []),
+              ...(Array.isArray(activeUser.followers) ? activeUser.followers : []),
+              ...(Array.isArray(commMatch?.followers) ? commMatch.followers : []),
+              ...inferredFromCommunity,
+              ...(!isMe && isFollowingProfile && state.user && state.user.username && state.user.username !== "@visitante"
+                ? [
+                    {
+                      uid: state.user.uid || "",
+                      name: state.user.name,
+                      username: state.user.username,
+                      avatarUrl: state.user.avatarUrl,
+                      bio: state.user.bio || "",
+                      online: true
+                    }
+                  ]
+                : [])
+            ];
+
+            const seenFollowers = new Set();
+            const cleanFollowers = [];
+            for (const u of rawFollowers) {
+              if (!u) continue;
+              const uUid = typeof u === "object" ? String(u.uid || "").trim() : "";
+              const rawUH = typeof u === "string" ? u : String(u.username || u.handle || "");
+              const uHandle = rawUH ? (rawUH.startsWith("@") ? rawUH.toLowerCase().trim() : `@${rawUH.toLowerCase().trim()}`) : "";
+              if (!uHandle || uHandle === "@visitante" || uHandle === targetHandle) continue;
+              const liveProf = (state.communityProfiles || []).find(
+                p =>
+                  p &&
+                  ((uUid && p.uid && String(p.uid).trim() === uUid) ||
+                    String(p.username || "").toLowerCase().trim() === uHandle)
+              );
+              const effUid = String((liveProf && liveProf.uid) || uUid || "").trim();
+              const effHandle = String((liveProf && liveProf.username) || uHandle).toLowerCase().trim();
+              const key = (effUid && !effUid.startsWith("prof_") ? `uid:${effUid}` : "") || `h:${effHandle}`;
+              if (seenFollowers.has(key)) continue;
+              seenFollowers.add(key);
+              cleanFollowers.push({
+                uid: effUid,
+                name: (liveProf && liveProf.name) || (typeof u === "object" && u.name) || effHandle.slice(1),
+                username: effHandle,
+                avatarUrl: safeImgUrl((liveProf && liveProf.avatarUrl) || (typeof u === "object" && (u.avatarUrl || u.avatar)) || "/api/cat-avatar?id=cat_1"),
+                bio: (liveProf && liveProf.bio) || (typeof u === "object" && u.bio) || "",
+                online: Boolean(liveProf ? liveProf.online : (typeof u === "object" && u.online))
+              });
+            }
+
+            return { followingUsers: cleanFollowing, followerUsers: cleanFollowers };
+          };
+
+          const { followingUsers, followerUsers } = resolveCompleteFollowLists();
 
           const userPlaylists = isMe
             ? (state.playlists || [])
             : (Array.isArray(activeUser.playlists) ? activeUser.playlists : []);
 
-          const isFollowingProfile = !isMe && state.isProfileFollowed(activeUser.uid || activeUser.username);
           const activeSectionTab = this._activeProfileTab || (isMe ? "liked" : (followedArtists.length > 0 && likedTracks.length === 0 ? "artists" : "liked"));
 
           this.scrollContainer.innerHTML = `
@@ -9871,11 +10698,24 @@ export function initMiadoClient() {
                   newHandle = sanitizeCleanHandle(handleInp.value.trim(), newName);
                 }
                 const newBio = (bioInp ? bioInp.value.trim() : (state.user.bio || "")).slice(0, 100);
+                const prevHandle = state.user.username;
+
+                // Apply immediately in memory & localStorage so any concurrent sync or poll sees the updated values
+                state._lastUserMutationAt = Date.now();
+                state.user.name = newName;
+                state.user.username = newHandle;
+                state.user.handle = newHandle;
+                state.user.bio = newBio;
+                state.user._bioEditedLocally = true;
+                state.user.privacy = {
+                  presence: selectedPrivacy,
+                  activity: selectedPrivacy,
+                };
+                localStorage.setItem("miado_user_v5", JSON.stringify(state.user));
+                state.saveCurrentAccountToSwitcher();
 
                 try {
-                  const token = localStorage.getItem("miado_auth_token") || "";
-                  const headers = { "Content-Type": "application/json" };
-                  if (token) headers["Authorization"] = `Bearer ${token}`;
+                  const headers = getAuthHeaders();
                   const prefRes = await fetch("/api/user/preferences", {
                     method: "POST",
                     headers,
@@ -9898,20 +10738,15 @@ export function initMiadoClient() {
                   });
                   if (prefRes.status === 409) {
                     const errData = await prefRes.json().catch(() => ({}));
+                    state.user.username = prevHandle;
+                    state.user.handle = prevHandle;
+                    localStorage.setItem("miado_user_v5", JSON.stringify(state.user));
                     showToast(errData.error || "Este @username já está em uso por outra conta.");
-                    if (handleInp) handleInp.value = state.user.username;
+                    if (handleInp) handleInp.value = prevHandle;
                     return;
                   }
                 } catch (_e) {}
 
-                state.user.name = newName;
-                state.user.username = newHandle;
-                state.user.handle = newHandle;
-                state.user.bio = newBio;
-                state.user.privacy = {
-                  presence: selectedPrivacy,
-                  activity: selectedPrivacy,
-                };
                 if (handleInp) handleInp.value = newHandle;
                 const heroNameEl = document.getElementById("prof-hero-name");
                 if (heroNameEl) heroNameEl.textContent = newName;
@@ -9919,15 +10754,28 @@ export function initMiadoClient() {
                 if (heroHandleEl) heroHandleEl.textContent = newHandle;
                 const heroBioEl = document.getElementById("prof-hero-bio");
                 if (heroBioEl) heroBioEl.textContent = newBio;
-                state.saveUser();
-                if (window.miadoFirestore && typeof window.miadoFirestore.saveUserState === "function") {
+                await state.saveUser();
+                if (window.miadoPersistence && typeof window.miadoPersistence.updateProfile === "function") {
+                  try {
+                    await window.miadoPersistence.updateProfile({
+                      name: newName,
+                      handle: newHandle,
+                      bio: newBio,
+                      avatarUrl: state.user.avatarUrl,
+                      bannerUrl: state.user.bannerUrl,
+                      privacy: state.user.privacy
+                    });
+                  } catch (e) {
+                    console.warn("updateProfile error:", e);
+                  }
+                } else if (window.miadoFirestore && typeof window.miadoFirestore.saveUserState === "function") {
                   try {
                     await window.miadoFirestore.saveUserState(state);
                   } catch (e) {
                     console.warn("Firestore saveUserState in edit profile error:", e);
                   }
                 }
-                state.createOrUpdateCommunityProfile({
+                await state.createOrUpdateCommunityProfile({
                   name: state.user.name,
                   username: state.user.username,
                   bio: state.user.bio,
@@ -9937,7 +10785,7 @@ export function initMiadoClient() {
                 this.syncHeaderUserUI();
                 const banner = document.getElementById("prof-save-feedback-banner");
                 if (banner) banner.style.display = "flex";
-                showToast(`Perfil atualizado! Seu @ agora é ${newHandle}.`);
+                showToast(`Perfil atualizado! Sua bio e seu @ (${newHandle}) foram salvos.`);
               });
             }
           }
@@ -10181,10 +11029,13 @@ export function initMiadoClient() {
           const historyDerivedAlbums = [];
           [...(state.recentHistory || []), ...(state.user.likedTracks || [])].forEach((tr, idx) => {
             if (!tr || !tr.artist) return;
-            const albTitle = tr.albumTitle || tr.title;
+            if (String(tr.artist || "").toLowerCase().includes("arthurzinho batedeira")) return;
+            const rawAlbTitle = tr.albumTitle && tr.albumTitle !== "Single" ? tr.albumTitle : tr.title;
+            const albTitle = rawAlbTitle || tr.title;
             if (!albTitle) return;
+            const uniqueHistId = `hist_alb_${idx}_${normalizeTextKey(tr.artist)}_${normalizeTextKey(albTitle)}`;
             historyDerivedAlbums.push({
-              id: tr.albumId || `hist_alb_${idx}_${albTitle.replace(/\s+/g, "_")}`,
+              id: uniqueHistId,
               title: albTitle,
               artist: tr.artist,
               year: tr.year || 2024,
@@ -10541,6 +11392,7 @@ export function initMiadoClient() {
               <section class="showcase-section">
                 <div class="section-head">
                   <h2 class="section-title">Músicas em Alta</h2>
+                  <button class="btn-see-all" id="btn-refresh-trending-songs">Atualizar</button>
                 </div>
                 <div class="tracklist-table" id="home-songs-infinite-table">
                   ${visibleTopTracks.map((track, idx) => {
@@ -10710,6 +11562,14 @@ export function initMiadoClient() {
               this._homeAlbumsRefreshSeed = Date.now();
               await state.fetchRecommendations();
               this.renderHomeView();
+            });
+          }
+
+          const btnRefreshTrendingSongs = document.getElementById("btn-refresh-trending-songs");
+          if (btnRefreshTrendingSongs) {
+            btnRefreshTrendingSongs.addEventListener("click", async () => {
+              btnRefreshTrendingSongs.textContent = "Atualizando...";
+              await state.fetchCharts(true);
             });
           }
 
@@ -10961,10 +11821,24 @@ export function initMiadoClient() {
                   });
                   const chosenSongs = matchingAlbumSongs.length > 0
                     ? matchingAlbumSongs
-                    : (matchingArtistSongs.length > 0 ? matchingArtistSongs.slice(0, 1) : res.songs.slice(0, 1));
+                    : matchingArtistSongs.length > 0
+                    ? matchingArtistSongs.slice(0, 1)
+                    : [
+                        {
+                          id: `single_${normalizeTextKey(album.artist || "art")}_${normalizeTextKey(album.title || "track")}`,
+                          title: cleanAlbumTitleClient(album.title || "") || album.title || "Faixa",
+                          artist: album.artist || "Artista",
+                          albumTitle: album.title || "Single",
+                          duration: "3:45",
+                          durationSec: 225,
+                          coverUrl: ensureTrackCoverUrl(album.coverUrl, album.title, album.artist),
+                          previewUrl: `/api/stream?title=${encodeURIComponent(cleanAlbumTitleClient(album.title || "") || album.title || "")}&artist=${encodeURIComponent(album.artist || "")}&preferFull=1`,
+                          streamUrl: `/api/stream?title=${encodeURIComponent(cleanAlbumTitleClient(album.title || "") || album.title || "")}&artist=${encodeURIComponent(album.artist || "")}&preferFull=1`
+                        }
+                      ];
                   album.tracks = MiadoMusicResolver.filterStudioOnlyTracks(chosenSongs);
                   album._studioOrderVerified = true;
-                  if (!hasCustomAlbumCover && (!album.coverUrl || album.coverUrl.startsWith("data:"))) {
+                  if (!hasCustomAlbumCover && chosenSongs[0]?.coverUrl && (!album.coverUrl || album.coverUrl.startsWith("data:"))) {
                     album.coverUrl = chosenSongs[0].coverUrl;
                   }
                 }
@@ -11177,29 +12051,23 @@ export function initMiadoClient() {
 
         renderSearchView(initialQuery = "") {
           const cleanInitial = (initialQuery || "").trim();
+          const globalInput = document.getElementById("global-search-input");
+          const btnClearGlobal = document.getElementById("btn-clear-global-search");
+
+          if (globalInput && document.activeElement !== globalInput) {
+            globalInput.value = cleanInitial;
+          }
+          if (btnClearGlobal) {
+            const activeVal = globalInput ? globalInput.value : cleanInitial;
+            btnClearGlobal.classList.toggle("visible", activeVal.length > 0);
+          }
 
           this.scrollContainer.innerHTML = `
             <div style="max-width:960px; margin:0 auto;">
-              <h1 class="greeting-title" style="margin-bottom:14px;">Buscar</h1>
-
-              <div style="display:flex; gap:10px; margin-bottom:20px;">
-                <div style="position:relative; flex:1;">
-                  <input type="text" id="view-search-input" value="${cleanInitial.replace(/"/g, "&quot;")}" placeholder="O que você quer ouvir?" style="width:100%; height:46px; border-radius:12px; padding:0 40px 0 42px; font-size:0.96rem;" autocomplete="off" />
-                  <svg style="position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--text-muted); pointer-events:none;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                  <button type="button" class="search-clear-btn ${cleanInitial ? 'visible' : ''}" id="btn-clear-view-search" title="Limpar pesquisa" aria-label="Limpar pesquisa"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-                </div>
-                <button class="album-action-btn primary" id="btn-trigger-search" style="flex:0 0 auto; height:46px; padding:0 22px;">Buscar</button>
-              </div>
-
+              <h1 class="greeting-title" style="margin-bottom:18px;">Buscar</h1>
               <div id="search-results-container"></div>
             </div>
           `;
-
-          const input = document.getElementById("view-search-input");
-          const btnSearch = document.getElementById("btn-trigger-search");
-          const btnClearView = document.getElementById("btn-clear-view-search");
-          const globalInput = document.getElementById("global-search-input");
-          const btnClearGlobal = document.getElementById("btn-clear-global-search");
 
           const renderEmptyBrowseState = () => {
             const container = document.getElementById("search-results-container");
@@ -11222,9 +12090,11 @@ export function initMiadoClient() {
                 if (k === "yung lixo" || seenBrowse.has(k)) return;
                 seenBrowse.add(k);
                 const candidateObj = idx === 0 && parts.length === 1 ? art : { name: individualName };
+                const listeners = getArtistListenersCount(candidateObj);
                 browseArtists.push({
                   name: individualName,
-                  role: art.role || "Artista",
+                  role: formatArtistListeners(listeners),
+                  nbFan: listeners,
                   coverUrl: ensureArtistAvatarUrl(candidateObj)
                 });
               });
@@ -11243,7 +12113,7 @@ export function initMiadoClient() {
                       </div>
                       <div class="artist-bubble-info">
                         <div class="artist-bubble-name">${art.name}</div>
-                        <div class="artist-bubble-sub">Artista</div>
+                        <div class="artist-bubble-sub">${formatArtistListeners(art.nbFan || getArtistListenersCount(art))}</div>
                       </div>
                     </div>
                   `).join("")}
@@ -11261,32 +12131,6 @@ export function initMiadoClient() {
             this.setupSentinelObserver();
           };
 
-          const syncViewClearState = () => {
-            if (btnClearView && input) {
-              btnClearView.classList.toggle("visible", input.value.length > 0);
-            }
-            if (globalInput && input) {
-              globalInput.value = input.value;
-            }
-            if (btnClearGlobal && input) {
-              btnClearGlobal.classList.toggle("visible", input.value.length > 0);
-            }
-          };
-
-          if (input) {
-            input.addEventListener("input", syncViewClearState);
-          }
-          if (btnClearView) {
-            btnClearView.addEventListener("click", (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              input.value = "";
-              syncViewClearState();
-              input.focus();
-              renderEmptyBrowseState();
-            });
-          }
-
           const executeSearch = async (term) => {
             const cleanTerm = (term || "").trim();
             if (!cleanTerm) {
@@ -11297,15 +12141,73 @@ export function initMiadoClient() {
             container.innerHTML = `<div style="padding:24px; color:var(--text-secondary);">Buscando "${escapeHtml(cleanTerm)}"...</div>`;
 
             try {
-              const { artists = [], songs = [], albums = [] } = await MiadoMusicResolver.searchCatalog(cleanTerm);
+              const [{ artists = [], songs = [], albums = [] }] = await Promise.all([
+                MiadoMusicResolver.searchCatalog(cleanTerm),
+                state.fetchCommunityProfiles(cleanTerm).catch(() => [])
+              ]);
               this.lastSearchSongs = songs;
 
-              if (!songs.length && !albums.length && !artists.length) {
+              const qLower = cleanTerm.toLowerCase();
+              const qBare = qLower.replace(/^@+/, "");
+              const matchingProfiles = (state.communityProfiles || []).filter(p => {
+                if (!p || !p.username) return false;
+                const pName = String(p.name || "").toLowerCase();
+                const pUser = String(p.username || "").toLowerCase();
+                const pBare = pUser.replace(/^@+/, "");
+                const pBio = String(p.bio || "").toLowerCase();
+                return (
+                  pName.includes(qLower) ||
+                  pName.includes(qBare) ||
+                  pUser.includes(qLower) ||
+                  pBare.includes(qBare) ||
+                  (qBare.length >= 2 && pBio.includes(qBare))
+                );
+              });
+
+              if (!songs.length && !albums.length && !artists.length && !matchingProfiles.length) {
                 container.innerHTML = `<div style="padding:24px; color:var(--text-muted);">Nenhum resultado encontrado para "${escapeHtml(cleanTerm)}".</div>`;
                 return;
               }
 
               container.innerHTML = `
+                ${matchingProfiles.length > 0 ? `
+                  <div class="showcase-section">
+                    <div class="section-head">
+                      <h2 class="section-title">Perfis da Comunidade Miau (${matchingProfiles.length})</h2>
+                      <button type="button" class="btn-see-all" id="btn-search-see-all-profiles">Ver na Aba Miau</button>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap:12px;">
+                      ${matchingProfiles.slice(0, 12).map((prof, pIdx) => {
+                        const isMe = Boolean(
+                          (state.user?.uid && prof.uid && prof.uid === state.user.uid) ||
+                          String(prof.username || "").toLowerCase() === String(state.user?.username || "").toLowerCase()
+                        );
+                        const isFollowing = state.isProfileFollowed(prof.uid || prof.username);
+                        const profAv = safeImgUrl(prof.avatarUrl || prof.avatar || CAT_AVATAR_PRESETS[0].url);
+                        return `
+                          <div class="album-card" data-search-open-prof="${pIdx}" style="padding:14px; display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer;">
+                            <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
+                              <img src="${escapeHtml(profAv)}" referrerpolicy="no-referrer" alt="${escapeHtml(prof.name)}" style="width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-hover);" onerror="window.handleCatAvatarError(this)" />
+                              <div style="min-width:0; flex:1;">
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                  <div style="font-weight:800; font-size:0.9rem; color:#ffffff;" class="text-truncate">${escapeHtml(prof.name)}</div>
+                                  ${prof.online ? `<span class="friend-online-badge">ON</span>` : ""}
+                                </div>
+                                <div style="font-size:0.76rem; color:var(--accent-hover); font-weight:700;">${escapeHtml(prof.username)}</div>
+                              </div>
+                            </div>
+                            ${!isMe ? `
+                              <button type="button" class="category-pill ${isFollowing ? 'active' : ''}" data-search-follow-prof="${pIdx}" style="height:32px; padding:0 12px; font-size:0.74rem; flex-shrink:0;">
+                                ${isFollowing ? `${ICON_CHECK_SVG}Seguindo` : "+ Seguir"}
+                              </button>
+                            ` : ""}
+                          </div>
+                        `;
+                      }).join("")}
+                    </div>
+                  </div>
+                ` : ""}
+
                 ${artists.length > 0 ? `
                   <div class="showcase-section">
                     <div class="section-head">
@@ -11319,7 +12221,7 @@ export function initMiadoClient() {
                           </div>
                           <div class="artist-bubble-info">
                             <div class="artist-bubble-name">${art.name}</div>
-                            <div class="artist-bubble-sub">Artista</div>
+                            <div class="artist-bubble-sub">${formatArtistListeners(getArtistListenersCount(art))}</div>
                           </div>
                         </div>
                       `).join("")}
@@ -11349,6 +12251,7 @@ export function initMiadoClient() {
                   </div>
                 ` : ""}
 
+                ${songs.length > 0 ? `
                 <div class="showcase-section">
                   <div class="section-head">
                     <h2 class="section-title">Músicas</h2>
@@ -11387,7 +12290,36 @@ export function initMiadoClient() {
                     }).join("")}
                   </div>
                 </div>
+                ` : ""}
               `;
+
+              document.getElementById("btn-search-see-all-profiles")?.addEventListener("click", () => {
+                this.setActiveNav("social");
+                this.navigateTo("social", true);
+                setTimeout(() => this.renderSocialView(cleanTerm), 50);
+              });
+
+              container.querySelectorAll("[data-search-open-prof]").forEach(card => {
+                card.addEventListener("click", (e) => {
+                  if (e.target.closest("[data-search-follow-prof]")) return;
+                  const prof = matchingProfiles[parseInt(card.dataset.searchOpenProf)];
+                  if (!prof) return;
+                  this.setActiveNav("profile");
+                  this.navigateTo("profile", true, { targetUser: prof });
+                });
+              });
+
+              container.querySelectorAll("[data-search-follow-prof]").forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                  e.stopPropagation();
+                  const prof = matchingProfiles[parseInt(btn.dataset.searchFollowProf)];
+                  if (!prof) return;
+                  const nowFollowing = state.toggleFollowProfile(prof);
+                  btn.classList.toggle("active", nowFollowing);
+                  btn.innerHTML = nowFollowing ? `${ICON_CHECK_SVG}Seguindo` : "+ Seguir";
+                  this.renderRightSidebarBodyOnly();
+                });
+              });
 
               container.querySelectorAll("[data-search-artist-name]").forEach(card => {
                 card.addEventListener("click", () => {
@@ -11468,11 +12400,6 @@ export function initMiadoClient() {
               container.innerHTML = `<div style="padding:24px; color:var(--text-muted);">Erro ao consultar catálogo. Tente novamente.</div>`;
             }
           };
-
-          btnSearch.addEventListener("click", () => executeSearch(input.value));
-          input.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") executeSearch(input.value);
-          });
 
           if (cleanInitial) {
             executeSearch(cleanInitial);
@@ -11702,6 +12629,7 @@ export function initMiadoClient() {
             });
           }
           const qLower = (searchQuery || "").trim().toLowerCase();
+          const qBare = qLower.replace(/^@+/, "");
           const myHandle = String(state.user.username || "").toLowerCase();
           const myUid = String(
             (state.user && state.user.uid) || localStorage.getItem("miado_user_uid") || ""
@@ -11709,10 +12637,16 @@ export function initMiadoClient() {
           const communityList = (state.communityProfiles || []).filter(p => {
             if (!p || !p.username) return false;
             if (!qLower) return true;
+            const pName = String(p.name || "").toLowerCase();
+            const pUser = String(p.username || "").toLowerCase();
+            const pBare = pUser.replace(/^@+/, "");
+            const pBio = String(p.bio || "").toLowerCase();
             return (
-              String(p.name || "").toLowerCase().includes(qLower) ||
-              String(p.username || "").toLowerCase().includes(qLower) ||
-              String(p.bio || "").toLowerCase().includes(qLower)
+              pName.includes(qLower) ||
+              pName.includes(qBare) ||
+              pUser.includes(qLower) ||
+              pBare.includes(qBare) ||
+              pBio.includes(qLower)
             );
           });
 
@@ -12065,7 +12999,25 @@ export function initMiadoClient() {
           const searchInp = document.getElementById("social-profile-search-input");
           const btnSearchProf = document.getElementById("btn-social-search-profiles");
           if (btnSearchProf && searchInp) {
+            let socialSearchTimer = null;
+            searchInp.addEventListener("input", () => {
+              if (socialSearchTimer) clearTimeout(socialSearchTimer);
+              socialSearchTimer = setTimeout(async () => {
+                const q = searchInp.value.trim();
+                const caretPos = searchInp.selectionStart || q.length;
+                await state.fetchCommunityProfiles(q);
+                this.renderSocialView(q);
+                const newInp = document.getElementById("social-profile-search-input");
+                if (newInp) {
+                  newInp.focus();
+                  try {
+                    newInp.setSelectionRange(caretPos, caretPos);
+                  } catch (_e) {}
+                }
+              }, 260);
+            });
             btnSearchProf.addEventListener("click", async () => {
+              if (socialSearchTimer) clearTimeout(socialSearchTimer);
               const q = searchInp.value.trim();
               await state.fetchCommunityProfiles(q);
               this.renderSocialView(q);
@@ -12073,6 +13025,7 @@ export function initMiadoClient() {
             searchInp.addEventListener("keydown", async (e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
+                if (socialSearchTimer) clearTimeout(socialSearchTimer);
                 const q = searchInp.value.trim();
                 await state.fetchCommunityProfiles(q);
                 this.renderSocialView(q);
@@ -12756,7 +13709,7 @@ export function initMiadoClient() {
         }
 
         async renderArtistView(artistName = "Lady Gaga") {
-          const cleanArtist = extractPrimaryArtistClient((artistName || "").trim()) || "Lady Gaga";
+          let cleanArtist = extractPrimaryArtistClient((artistName || "").trim()) || "Lady Gaga";
           this.scrollContainer.innerHTML = `<div style="padding:48px; text-align:center; color:var(--text-secondary);">Carregando perfil oficial, foto 1000x1000 HD e discografia de ${cleanArtist}...</div>`;
 
           const dirEntry = POPULAR_ARTISTS_DIRECTORY.find(a => artistMatchesClient(a.name, cleanArtist));
@@ -12764,18 +13717,28 @@ export function initMiadoClient() {
           let songs = [];
           let apiAlbums = [];
           let artistPortrait = `/api/artist-image?name=${encodeURIComponent(cleanArtist)}`;
-          let fanCount = 1450000;
+          let fanCount = 0;
 
           try {
             const profileData = await MiadoMusicResolver.fetchArtistProfile(cleanArtist);
             if (profileData) {
+              if (profileData.artist?.name) {
+                cleanArtist = profileData.artist.name;
+              }
               songs = deduplicateTracks((profileData.songs || []).filter(s => artistMatchesClient(s.artist || "", cleanArtist)));
               apiAlbums = (profileData.albums || []).filter(a => albumBelongsToArtistClient(a.artist || "", cleanArtist));
-              if (profileData.artist?.pictureUrl && !profileData.artist.pictureUrl.startsWith("data:")) {
+              if (
+                profileData.artist?.pictureUrl &&
+                !profileData.artist.pictureUrl.startsWith("data:") &&
+                !profileData.artist.pictureUrl.includes("d41d8cd98f00b204e9800998ecf8427e") &&
+                !profileData.artist.pictureUrl.includes("/images/artist//")
+              ) {
                 artistPortrait = profileData.artist.pictureUrl;
+              } else {
+                artistPortrait = `/api/artist-image?name=${encodeURIComponent(cleanArtist)}`;
               }
-              if (profileData.artist?.nbFan) {
-                fanCount = profileData.artist.nbFan;
+              if (profileData.artist?.nbFan !== undefined) {
+                fanCount = Number(profileData.artist.nbFan) || 0;
               }
             }
           } catch (e) {}
@@ -12785,8 +13748,16 @@ export function initMiadoClient() {
               const res = await MiadoMusicResolver.searchCatalog(cleanArtist);
               songs = deduplicateTracks((res.songs || []).filter(s => artistMatchesClient(s.artist || "", cleanArtist)));
               apiAlbums = (res.albums || []).filter(a => albumBelongsToArtistClient(a.artist || "", cleanArtist));
-              if (res.artists?.[0]?.coverUrl && !res.artists[0].coverUrl.startsWith("data:")) {
+              if (
+                res.artists?.[0]?.coverUrl &&
+                !res.artists[0].coverUrl.startsWith("data:") &&
+                !res.artists[0].coverUrl.includes("d41d8cd98f00b204e9800998ecf8427e") &&
+                !res.artists[0].coverUrl.includes("/images/artist//")
+              ) {
                 artistPortrait = res.artists[0].coverUrl;
+              }
+              if (!fanCount && res.artists?.[0]?.nbFan) {
+                fanCount = Number(res.artists[0].nbFan) || 0;
               }
             } catch (e) {}
           }

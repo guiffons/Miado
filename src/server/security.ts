@@ -172,10 +172,49 @@ export function securityHeadersMiddleware(_req: Request, res: Response, next: Ne
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader(
     "Permissions-Policy",
-    "autoplay=(self), microphone=(), camera=(), geolocation=()"
+    "autoplay=(self), microphone=(), camera=(), geolocation=(), browsing-topics=()"
   );
+  res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://accounts.google.com https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.gstatic.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "img-src 'self' data: blob: https:",
+      "media-src 'self' data: blob: https:",
+      "connect-src 'self' ws: wss: https:",
+      "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://apis.google.com https://*.google.com",
+      "frame-ancestors 'self' https://*.google.com https://*.run.app *",
+      "object-src 'none'",
+      "base-uri 'self'"
+    ].join("; ")
+  );
   res.removeHeader("X-XSS-Protection");
+
+  const origSetHeader = res.setHeader.bind(res);
+  res.setHeader = function (name: string, value: number | string | readonly string[]) {
+    if (String(name).toLowerCase() === "set-cookie") {
+      const enforceCookieAttrs = (c: string) => {
+        let out = c;
+        if (!/;\s*samesite=/i.test(out)) out += "; SameSite=Lax";
+        if (!/;\s*secure\b/i.test(out)) out += "; Secure";
+        return out;
+      };
+      if (Array.isArray(value)) {
+        return origSetHeader(name, value.map((v) => enforceCookieAttrs(String(v))));
+      }
+      if (typeof value === "string") {
+        return origSetHeader(name, enforceCookieAttrs(value));
+      }
+    }
+    return origSetHeader(name, value);
+  };
+
   next();
 }
 

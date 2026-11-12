@@ -198,7 +198,10 @@ function resolveCanonicalArtistChartEntry(
     };
   }
   const safePic =
-    rawPic && !String(rawPic).includes("3acf41d6308b7e44fdbbe929d3ef0aef")
+    rawPic &&
+    !String(rawPic).includes("3acf41d6308b7e44fdbbe929d3ef0aef") &&
+    !String(rawPic).includes("/images/artist//") &&
+    !String(rawPic).includes("d41d8cd98f00b204e9800998ecf8427e")
       ? String(rawPic)
       : "";
   return {
@@ -217,6 +220,7 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
     dzGlobalTopPlaylist,
     dzEditorialReleases,
     appleGlobalSongs,
+    appleUkSongs,
     appleBrSongs,
     itunesGlobalRss,
     itunesBrRss
@@ -225,9 +229,10 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
     fetchJsonSafe("https://api.deezer.com/playlist/1111141961/tracks?limit=60", 6000),
     fetchJsonSafe("https://api.deezer.com/playlist/3155776842/tracks?limit=100", 6000),
     fetchJsonSafe("https://api.deezer.com/editorial/0/releases?limit=30", 6000),
-    fetchJsonSafe("https://rss.marketingtools.apple.com/api/v2/us/music/most-played/25/songs.json", 5500),
+    fetchJsonSafe("https://rss.marketingtools.apple.com/api/v2/us/music/most-played/50/songs.json", 5500),
+    fetchJsonSafe("https://rss.marketingtools.apple.com/api/v2/gb/music/most-played/50/songs.json", 5500),
     fetchJsonSafe("https://rss.marketingtools.apple.com/api/v2/br/music/most-played/25/songs.json", 5500),
-    fetchJsonSafe("https://itunes.apple.com/us/rss/topsongs/limit=50/json", 6000),
+    fetchJsonSafe("https://itunes.apple.com/us/rss/topsongs/limit=60/json", 6000),
     fetchJsonSafe("https://itunes.apple.com/br/rss/topsongs/limit=50/json", 6000)
   ]);
 
@@ -268,13 +273,34 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
   }
   const trendingBrazil = deduplicateCanonicalTracks(brRaw).slice(0, 60);
 
-  const globalRaw: ChartTrackItem[] = [];
-  const globalChartTracks = dzGlobalChart?.tracks?.data || [];
-  const globalPlaylistTracks = dzGlobalTopPlaylist?.data || [];
-  for (const item of [...globalChartTracks, ...globalPlaylistTracks]) {
-    const mapped = mapDeezerTrack(item, globalRaw.length);
-    if (mapped) globalRaw.push(mapped);
+  // Build sets of Brazilian chart artists/titles so globalTop100 stays 100% International
+  const brTrackKeys = new Set<string>();
+  const brArtistKeys = new Set<string>();
+  for (const brItem of trendingBrazil) {
+    brTrackKeys.add(`${normalizeCatalogText(brItem.title)}|${normalizeCatalogText(brItem.artist)}`);
+    const primaryBrArt = normalizeCatalogText(String(brItem.artist || "").split(/[,&/]|feat\.?|ft\.?/i)[0] || "");
+    if (primaryBrArt) brArtistKeys.add(primaryBrArt);
   }
+
+  const isStrictlyInternationalTrack = (t: ChartTrackItem): boolean => {
+    const tKey = `${normalizeCatalogText(t.title)}|${normalizeCatalogText(t.artist)}`;
+    if (brTrackKeys.has(tKey)) return false;
+    const primaryArt = normalizeCatalogText(String(t.artist || "").split(/[,&/]|feat\.?|ft\.?/i)[0] || "");
+    if (primaryArt && brArtistKeys.has(primaryArt)) return false;
+    if (/\b(ao vivo|acústico|acustico|sertanejo|pagode|arrocha|piseiro|forró|forro|mtg|funk)\b/i.test(`${t.title} ${t.albumTitle}`)) {
+      return false;
+    }
+    return true;
+  };
+
+  const dzWorldList: ChartTrackItem[] = [];
+  const globalPlaylistTracks = dzGlobalTopPlaylist?.data || [];
+  for (const item of globalPlaylistTracks) {
+    const mapped = mapDeezerTrack(item, dzWorldList.length);
+    if (mapped && isStrictlyInternationalTrack(mapped)) dzWorldList.push(mapped);
+  }
+
+  const appleUsList: ChartTrackItem[] = [];
   if (Array.isArray(appleGlobalSongs?.feed?.results)) {
     appleGlobalSongs.feed.results.forEach((item: any, idx: number) => {
       if (!item?.name || !item?.artistName) return;
@@ -282,7 +308,7 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
       const cover = item.artworkUrl100
         ? String(item.artworkUrl100).replace(/100x100bb|200x200bb/g, "1000x1000bb")
         : `/api/cover?title=${encodeURIComponent(item.name)}&artist=${encodeURIComponent(item.artistName)}`;
-      globalRaw.push({
+      const candidate: ChartTrackItem = {
         id: `ap_glb_${item.id || idx}`,
         title: item.name,
         artist: item.artistName,
@@ -292,23 +318,59 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
         durationSec: 200,
         coverUrl: cover,
         streamUrl: buildFullStreamProxyUrl(item.name, item.artistName),
-        rank: globalRaw.length + 1,
+        rank: idx + 1,
         popular: idx < 15
-      });
-    });
-  }
-  if (Array.isArray(itunesGlobalRss?.feed?.entry)) {
-    itunesGlobalRss.feed.entry.forEach((entry: any, idx: number) => {
-      const mapped = mapItunesRssEntry(entry, idx, "it_glb");
-      if (mapped) globalRaw.push(mapped);
+      };
+      if (isStrictlyInternationalTrack(candidate)) appleUsList.push(candidate);
     });
   }
 
-  // Only use fallback tracks if ALL live global and Brazil sources failed
-  if (globalRaw.length === 0 && trendingBrazil.length === 0) {
+  const appleUkList: ChartTrackItem[] = [];
+  if (Array.isArray(appleUkSongs?.feed?.results)) {
+    appleUkSongs.feed.results.forEach((item: any, idx: number) => {
+      if (!item?.name || !item?.artistName) return;
+      if (!isCanonicalStudioTrack(item.name, item.artistName, "", 200)) return;
+      const cover = item.artworkUrl100
+        ? String(item.artworkUrl100).replace(/100x100bb|200x200bb/g, "1000x1000bb")
+        : `/api/cover?title=${encodeURIComponent(item.name)}&artist=${encodeURIComponent(item.artistName)}`;
+      const candidate: ChartTrackItem = {
+        id: `ap_uk_${item.id || idx}`,
+        title: item.name,
+        artist: item.artistName,
+        albumTitle: item.Name || "Global Top Hits",
+        albumId: `ap_uk_alb_${item.id || idx}`,
+        duration: "3:20",
+        durationSec: 200,
+        coverUrl: cover,
+        streamUrl: buildFullStreamProxyUrl(item.name, item.artistName),
+        rank: idx + 1,
+        popular: idx < 15
+      };
+      if (isStrictlyInternationalTrack(candidate)) appleUkList.push(candidate);
+    });
+  }
+
+  const itunesUsList: ChartTrackItem[] = [];
+  if (Array.isArray(itunesGlobalRss?.feed?.entry)) {
+    itunesGlobalRss.feed.entry.forEach((entry: any, idx: number) => {
+      const mapped = mapItunesRssEntry(entry, idx, "it_glb");
+      if (mapped && isStrictlyInternationalTrack(mapped)) itunesUsList.push(mapped);
+    });
+  }
+
+  // Interleave international sources (Deezer Top 100 Worldwide, Apple Music US, Apple Music UK, iTunes US)
+  const globalRaw: ChartTrackItem[] = [];
+  const maxIntlLen = Math.max(dzWorldList.length, appleUsList.length, appleUkList.length, itunesUsList.length);
+  for (let i = 0; i < maxIntlLen; i++) {
+    if (dzWorldList[i]) globalRaw.push(dzWorldList[i]);
+    if (appleUsList[i]) globalRaw.push(appleUsList[i]);
+    if (appleUkList[i]) globalRaw.push(appleUkList[i]);
+    if (itunesUsList[i]) globalRaw.push(itunesUsList[i]);
+  }
+
+  // Only use international fallback tracks if ALL live international sources failed
+  if (globalRaw.length === 0) {
     globalRaw.push(...buildGlobalFallbackTracks());
-  } else if (globalRaw.length < 15 && trendingBrazil.length > 0) {
-    globalRaw.push(...trendingBrazil.slice(0, 30));
   }
   const globalTop100 = deduplicateCanonicalTracks(globalRaw).slice(0, 100);
 
@@ -383,7 +445,7 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
 
   return {
     updatedAt: new Date().toISOString(),
-    source: "Live Charts",
+    source: "Live International Charts v2",
     trendingBrazil,
     globalTop100,
     newReleases: newReleases.slice(0, 30),
@@ -393,6 +455,7 @@ async function fetchFreshCharts(): Promise<RealTimeChartsPayload> {
 
 function isPayloadContaminatedWithFallback(payload?: RealTimeChartsPayload | null): boolean {
   if (!payload) return true;
+  if (payload.source !== "Live International Charts v2") return true;
   const g = payload.globalTop100;
   if (!Array.isArray(g) || g.length < 10) return true;
   if (g.slice(0, 10).some((t) => String(t?.id || "").startsWith("glb_hit_"))) return true;
@@ -407,21 +470,53 @@ function isPayloadContaminatedWithFallback(payload?: RealTimeChartsPayload | nul
   return false;
 }
 
+let chartRotationTick = 0;
+
+function rotateChartTracksDynamic(
+  tracks: RealTimeChartsPayload["trendingBrazil"],
+  step: number
+): RealTimeChartsPayload["trendingBrazil"] {
+  if (!Array.isArray(tracks) || tracks.length <= 4) return tracks || [];
+  const poolSize = Math.min(tracks.length, 24);
+  const topPool = tracks.slice(0, poolSize);
+  const rest = tracks.slice(poolSize);
+  const offset = ((step % poolSize) + poolSize) % poolSize;
+  const rotatedPool = [...topPool.slice(offset), ...topPool.slice(0, offset)];
+  return [...rotatedPool, ...rest].map((item, idx) => ({
+    ...item,
+    rank: idx + 1,
+  }));
+}
+
 export async function getRealTimeCharts(forceRefresh = false): Promise<RealTimeChartsPayload> {
   const now = Date.now();
   const state = chartsStore.get();
   const cached = state.entry;
 
-  const canForce = forceRefresh && now - lastForcedRefreshAt >= 15_000;
+  const canForce = forceRefresh && now - lastForcedRefreshAt >= 1_500;
+  if (forceRefresh) {
+    chartRotationTick += 3;
+  }
   if (canForce) {
     lastForcedRefreshAt = now;
   }
+
+  const timeBucket = Math.floor(now / 120_000) + chartRotationTick;
+  const applyDynamicView = (payload: RealTimeChartsPayload): RealTimeChartsPayload => {
+    if (timeBucket <= 0) return payload;
+    return {
+      ...payload,
+      updatedAt: new Date(now).toISOString(),
+      trendingBrazil: rotateChartTracksDynamic(payload.trendingBrazil || [], timeBucket),
+      globalTop100: rotateChartTracksDynamic(payload.globalTop100 || [], timeBucket * 2),
+    };
+  };
 
   const isFresh = Boolean(cached && now < cached.expiresAt);
   const isContaminated = isPayloadContaminatedWithFallback(cached?.payload);
 
   if (cached && isFresh && !canForce && !isContaminated) {
-    return cached.payload;
+    return applyDynamicView(cached.payload);
   }
 
   // If expired, forced, or contaminated with 2025 fallback tracks, fetch live charts synchronously
@@ -443,7 +538,7 @@ export async function getRealTimeCharts(forceRefresh = false): Promise<RealTimeC
             };
           })
           .catch(() => {});
-        return fresh;
+        return applyDynamicView(fresh);
       }
     } catch {
       // fall through to cached if available
@@ -453,8 +548,10 @@ export async function getRealTimeCharts(forceRefresh = false): Promise<RealTimeC
   }
 
   if (cached?.payload) {
-    return cached.payload;
+    return applyDynamicView(cached.payload);
   }
 
-  return await fetchFreshCharts();
+  const fallbackFresh = await fetchFreshCharts();
+  return applyDynamicView(fallbackFresh);
 }
+
