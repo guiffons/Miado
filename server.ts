@@ -555,9 +555,9 @@ function decodeHtmlEntities(s: string): string {
 function normalizeSongTitleKey(title: string): string {
   const cleaned = decodeHtmlEntities(String(title || ""))
     .replace(/['’‘`´]/g, "'")
-    .replace(/\([^)]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with|ao\s*vivo|ac[uú]stico|acoustic|live)\b[^)]*\)/gi, "")
-    .replace(/\[[^\]]*\b(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with|ao\s*vivo|ac[uú]stico|acoustic|live)\b[^\]]*\]/gi, "")
-    .replace(/\s*-\s*(?:\d{4}\s+)?(?:deluxe|remastered|remaster|explicit|clean|version|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|ao\s*vivo|ac[uú]stico|live).*$/gi, "");
+    .replace(/\([^)]*\b(?:deluxe|remastered|remaster|explicit|clean|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with)\b[^)]*\)/gi, "")
+    .replace(/\[[^\]]*\b(?:deluxe|remastered|remaster|explicit|clean|radio\s*edit|bonus\s*track|single|ep|anniversary|edition|feat|ft|with)\b[^\]]*\]/gi, "")
+    .replace(/\s*-\s*(?:\d{4}\s+)?(?:deluxe|remastered|remaster|explicit|clean|radio\s*edit|bonus\s*track|single|ep|anniversary|edition).*$/gi, "");
   return normalizeStr(cleaned) || normalizeStr(title);
 }
 
@@ -656,6 +656,7 @@ const KNOWN_ARTIST_LISTENERS: Record<string, number> = {
   "asap rocky": 34200000,
   "a ap rocky": 34200000,
   "blackpink": 34200000,
+  "joji": 31800000,
   "cigarettes after sex": 31200000,
   "tame impala": 29800000,
   "lisa": 29800000,
@@ -1009,15 +1010,21 @@ function upsertMergedAlbum(albumMap: Map<string, any>, candidate: any): void {
  * Preserva lançamentos oficiais de estúdio e gravações oficiais ao vivo/acústicas (essenciais para Bom Gosto, Rita Lee, Pitty, Pagode, Samba, MPB e Sertanejo),
  * dando preferência de pontuação às versões de estúdio quando ambas existirem.
  */
-const NON_ORIGINAL_PATTERNS = [
+const NON_ORIGINAL_PATTERNS_LIVE_CATALOG = [
   /\bsuperturn[eê]\b/i,
-  /\((?:[^)]*\b(?:remix|remixes|remixed|dub|dub mix|rac mix|rob orton mix|karaoke|karaokê|instrumental|sped up|speed up|slowed|reverb|nightcore|club mix|extended mix|vip mix|piano version|orchestral version|gershwin version|artifact version|lofi|demo|superturne|8-bit|lullaby)\b[^)]*)\)/i,
-  /\[(?:[^\]]*\b(?:remix|remixes|remixed|dub|dub mix|rac mix|rob orton mix|karaoke|karaokê|instrumental|sped up|speed up|slowed|reverb|nightcore|club mix|extended mix|vip mix|piano version|orchestral version|gershwin version|artifact version|lofi|demo|superturne|8-bit|lullaby)\b[^\]]*)\]/i,
-  /\s-\s(?:[^-]*\b(?:remix|remixes|remixed|dub|dub mix|rac mix|rob orton mix|karaoke|karaokê|instrumental|sped up|speed up|slowed|reverb|nightcore|superturne|8-bit|lullaby)\b)/i,
-  /\b(?:remix|remixes|remixed|rework|bootleg|mashup|karaok[eê]|tribute\s+to|originally\s+performed|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|rock\s+your\s+babies|brazilian\s+hitmakers|portal\s+dos\s+playbacks|sped\s*up|speed\s*up|slowed|nightcore|8d\s+audio|acapella|ringtone|par[oó]dia)\b/i
+  /\((?:[^)]*\b(?:remix|remixes|remixed|dub|dub mix|rac mix|rob orton mix|karaoke|karaokê|instrumental|sped up|speed up|slowed|reverb|nightcore|club mix|extended mix|vip mix|piano version|violin version|guitar version|orchestral version|gershwin version|artifact version|corrido|tumbado|pluggnb|hoodtrap|breakcore|lofi|demo|superturne|8-bit|lullaby|cover|covers)\b[^)]*)\)/i,
+  /\[(?:[^\]]*\b(?:remix|remixes|remixed|dub|dub mix|rac mix|rob orton mix|karaoke|karaokê|instrumental|sped up|speed up|slowed|reverb|nightcore|club mix|extended mix|vip mix|piano version|violin version|guitar version|orchestral version|gershwin version|artifact version|corrido|tumbado|pluggnb|hoodtrap|breakcore|lofi|demo|superturne|8-bit|lullaby|cover|covers)\b[^\]]*)\]/i,
+  /\s-\s(?:[^-]*\b(?:remix|remixes|remixed|dub|dub mix|rac mix|rob orton mix|karaoke|karaokê|instrumental|sped up|speed up|slowed|reverb|nightcore|corrido|tumbado|pluggnb|hoodtrap|breakcore|superturne|8-bit|lullaby|cover|covers)\b)/i,
+  /\b(?:remix|remixes|remixed|rework|bootleg|mashup|karaok[eê]|tribute\s+to|originally\s+performed|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|rock\s+your\s+babies|brazilian\s+hitmakers|portal\s+dos\s+playbacks|sped\s*up|speed\s*up|slowed|nightcore|8d\s+audio|acapella|ringtone|par[oó]dia|corrido\s+tumbado|pluggnb|hoodtrap|breakcore|her\s+perspective|female\s+key|lower\s+key)\b/i
 ];
 
-const NON_ORIGINAL_PATTERNS_LIVE_CATALOG = NON_ORIGINAL_PATTERNS;
+const NON_ORIGINAL_PATTERNS = [
+  ...NON_ORIGINAL_PATTERNS_LIVE_CATALOG,
+  /\((?:[^)]*\b(?:ao\s*vivo|en\s*vivo|in\s*concert|live|ac[uú]stico|ac[uú]stica|acoustic|unplugged|voz\s*e\s*viol[aã]o|viol[aã]o|guitar|piano|violin|ukulele|sax|vers[aã]o|versi[oó]n)\b[^)]*)\)/i,
+  /\[(?:[^\]]*\b(?:ao\s*vivo|en\s*vivo|in\s*concert|live|ac[uú]stico|ac[uú]stica|acoustic|unplugged|voz\s*e\s*viol[aã]o|viol[aã]o|guitar|piano|violin|ukulele|sax|vers[aã]o|versi[oó]n)\b[^\]]*)\]/i,
+  /\s-\s(?:[^-]*\b(?:ao\s*vivo|en\s*vivo|in\s*concert|live|ac[uú]stico|ac[uú]stica|acoustic|unplugged|voz\s*e\s*viol[aã]o|viol[aã]o|guitar\s+cover|piano\s+cover|violin\s+cover|vers[aã]o|versi[oó]n)\b)/i,
+  /\b(?:ac[uú]stico|ac[uú]stica|acoustic\s+version|acoustic\s+cover|guitar\s+cover|guitar\s+version|piano\s+cover|piano\s+version|violin\s+cover|violin\s+version|voz\s+e\s+viol[aã]o|unplugged|live\s+at|live\s+from|live\s+version|ao\s+vivo)\b/i
+];
 
 export function parseDurationToSeconds(dur: unknown): number {
   if (typeof dur === "number" && isFinite(dur)) {
@@ -1455,7 +1462,9 @@ const CANONICAL_ARTIST_IDS: Record<string, CanonicalArtistIdentity> = {
   "gost": { canonicalName: "Ghost", deezerId: 8506054, itunesId: 600730426 },
   "banda ghost": { canonicalName: "Ghost", deezerId: 8506054, itunesId: 600730426 },
   "banda gost": { canonicalName: "Ghost", deezerId: 8506054, itunesId: 600730426 },
-  "ghost bc": { canonicalName: "Ghost", deezerId: 8506054, itunesId: 600730426 }
+  "ghost bc": { canonicalName: "Ghost", deezerId: 8506054, itunesId: 600730426 },
+  "kali uchis": { canonicalName: "Kali Uchis", deezerId: 6043160, itunesId: 894731301 },
+  "joji": { canonicalName: "Joji", deezerId: 5078097, itunesId: 1258279972 }
 };
 
 function getCanonicalArtistIdentity(rawName: string): CanonicalArtistIdentity | null {
@@ -1609,6 +1618,55 @@ function scoreStudioCandidateServer(s: any, canonicalSec = 0): number {
   return score;
 }
 
+function resolveServerArtistProviderId(song: any): string {
+  if (!song || typeof song !== "object") return "art_unknown";
+  const rawArtist = String(song.artist || song.artistName || "").trim();
+  const primaryArtist = extractPrimaryArtistName(rawArtist) || rawArtist;
+  const canonical = getCanonicalArtistIdentity(primaryArtist);
+  if (canonical?.deezerId) {
+    return `dz_art_${canonical.deezerId}`;
+  }
+  if (canonical?.itunesId) {
+    return `it_art_${canonical.itunesId}`;
+  }
+  const explicitId = String(
+    song.artistId || song.dzArtistId || song.itunesArtistId || ""
+  ).trim();
+  if (explicitId) {
+    if (/^(dz_art_|it_art_|saavn_art_|sc_art_|art_)/.test(explicitId)) {
+      return explicitId;
+    }
+    const prov = String(song.provider || "").toLowerCase();
+    if (prov === "deezer" || String(song.id || "").startsWith("dz_")) {
+      return `dz_art_${explicitId}`;
+    }
+    if (prov === "itunes" || String(song.id || "").startsWith("it_")) {
+      return `it_art_${explicitId}`;
+    }
+    if (prov === "saavn" || String(song.id || "").startsWith("saavn_")) {
+      return `saavn_art_${explicitId}`;
+    }
+    return `art_${explicitId}`;
+  }
+  const norm = normalizeStr(primaryArtist);
+  return norm ? `art_${norm.replace(/\s+/g, "_")}` : "art_unknown";
+}
+
+function verifyServerTrackMetadataIntegrity(song: any): boolean {
+  if (!song || typeof song !== "object") return false;
+  const title = decodeHtmlEntities(String(song.title || song.trackName || "")).trim();
+  const artist = decodeHtmlEntities(String(song.artist || song.artistName || "")).trim();
+  if (!title || !artist) return false;
+  if (/^(unknown|desconhecido|undefined|null|n\/a)$/i.test(title) || /^(unknown|desconhecido|undefined|null|n\/a)$/i.test(artist)) {
+    return false;
+  }
+  const durCheck = song.durationSec ?? song.duration ?? song.trackTimeMillis;
+  if (!isOriginalStudioTrack(title, artist, song.albumTitle || "", durCheck)) {
+    return false;
+  }
+  return true;
+}
+
 function ensureUniqueServerTrackId(song: any, dedupKey: string): any {
   if (!song || typeof song !== "object") return song;
   const rawId = String(song.id || song.trackId || "").trim();
@@ -1638,23 +1696,31 @@ function ensureUniqueServerTrackId(song: any, dedupKey: string): any {
     Number(song.durationSec) ||
     parseDurationSecServer(song.duration ?? song.trackTimeMillis) ||
     210;
-  const trackUid = `${provider}:${normalizedId}:${dedupKey}`;
+  const artistId = resolveServerArtistProviderId({
+    ...song,
+    id: normalizedId,
+    provider
+  });
+  const trackUid = `${provider}:${normalizedId}:${artistId}:${dedupKey}`;
   const streamUrl = buildFullStreamProxyUrl(
     String(song.title || ""),
     String(song.artist || ""),
     normalizedId,
     durSec,
-    provider
+    provider,
+    artistId
   );
 
   return {
     ...song,
     id: normalizedId,
+    artistId,
     trackUid,
     provider,
     durationSec: durSec,
     previewUrl: streamUrl,
-    streamUrl
+    streamUrl,
+    integrityVerified: true
   };
 }
 
@@ -1663,9 +1729,7 @@ function deduplicateSongsList(songs: any[]): any[] {
   const orderKeys: string[] = [];
 
   for (const s of songs) {
-    if (!s || !s.title) continue;
-    const durCheck = s.durationSec ?? s.duration ?? s.trackTimeMillis;
-    if (!isOriginalStudioTrack(s.title, s.artist, s.albumTitle, durCheck)) continue;
+    if (!verifyServerTrackMetadataIntegrity(s)) continue;
     const key = buildCanonicalDedupKey({
       isrc: s.isrc,
       title: s.title,
@@ -1789,11 +1853,13 @@ function buildFullStreamProxyUrl(
   artist: string,
   trackId = "",
   durationSec = 0,
-  provider = ""
+  provider = "",
+  artistId = ""
 ): string {
   const params = new URLSearchParams();
   params.set("title", title || "");
   params.set("artist", artist || "");
+  if (artistId) params.set("artistId", String(artistId));
   params.set("preferFull", "1");
   if (trackId) params.set("trackId", String(trackId));
   if (provider) params.set("provider", String(provider));
@@ -1881,7 +1947,10 @@ const HARD_REJECT_WORDS = [
   "8d audio", "hardstyle", "bootleg", "mashup", "parodia", "paródia", "tribute", "ringtone", "preview",
   "type beat", "acapella", "acapela", "piano karaoke", "soul version", "1950s", "techno",
   "tribute version", "instrumental karaoke", "melody karaoke", "cover version", "orchestral cover",
-  "artifact version", "orchestral version", "gershwin version"
+  "artifact version", "orchestral version", "gershwin version",
+  "corrido tumbado", "corrido", "pluggnb", "hoodtrap", "breakcore",
+  "violin version", "piano version", "guitar version", "guitar cover", "piano cover", "violin cover",
+  "violão", "violao", "her perspective", "female key", "lower key", "male version", "female version"
 ];
 
 /**
@@ -2768,17 +2837,22 @@ async function resolveFullLengthTrackUrl(
     : HARD_REJECT_WORDS;
   const cacheKey = `${tNorm}|${aNorm}`;
 
-  if (!skipVerifiedCatalog && scBufferCache.has(cacheKey)) {
-    const bufHit = scBufferCache.get(cacheKey)!;
-    if (bufHit && bufHit.buffer && bufHit.buffer.byteLength > 350_000) {
-      return {
-        url: `sc-buffer:${cacheKey}`,
-        source: "Miado Full Lossless Stream",
-        durationSec: bufHit.durationSec
-      };
+  // Verificação estrita por chave completa (título + artista) no Catálogo Verificado de Estúdio HD (prioridade máxima)
+  if (!skipVerifiedCatalog) {
+    if (VERIFIED_STUDIO_CATALOG[cacheKey]) {
+      const hit = VERIFIED_STUDIO_CATALOG[cacheKey];
+      fullStreamCache.set(cacheKey, hit);
+      return hit;
+    }
+    const cleanKey = `${normalizeSongTitleKey(cleanTitle)}|${aNorm}`;
+    if (VERIFIED_STUDIO_CATALOG[cleanKey]) {
+      const hit = VERIFIED_STUDIO_CATALOG[cleanKey];
+      fullStreamCache.set(cacheKey, hit);
+      return hit;
     }
   }
 
+  // Prioriza o cache de mestres de estúdio (JioSaavn 320kbps / Archive) ANTES de qualquer buffer do SoundCloud
   if (!skipVerifiedCatalog && fullStreamCache.has(cacheKey)) {
     const cached = fullStreamCache.get(cacheKey)!;
     const isSnippetOrCover =
@@ -2791,21 +2865,23 @@ async function resolveFullLengthTrackUrl(
     if (cached && cached.url && !cached.url.startsWith("sc-buffer:") && !isSnippetOrCover) {
       return cached;
     }
+    if (cached && cached.url && cached.url.startsWith("sc-buffer:") && scBufferCache.has(cacheKey)) {
+      const bufHit = scBufferCache.get(cacheKey)!;
+      if (bufHit && bufHit.buffer && bufHit.buffer.byteLength > 350_000) {
+        return cached;
+      }
+    }
     fullStreamCache.delete(cacheKey);
   }
 
-  // Verificação estrita por chave completa (título + artista) no Catálogo Verificado de Estúdio HD
-  if (!skipVerifiedCatalog) {
-    if (VERIFIED_STUDIO_CATALOG[cacheKey]) {
-      const hit = VERIFIED_STUDIO_CATALOG[cacheKey];
-      fullStreamCache.set(cacheKey, hit);
-      return hit;
-    }
-    const cleanKey = `${normalizeSongTitleKey(cleanTitle)}|${aNorm}`;
-    if (VERIFIED_STUDIO_CATALOG[cleanKey]) {
-      const hit = VERIFIED_STUDIO_CATALOG[cleanKey];
-      fullStreamCache.set(cacheKey, hit);
-      return hit;
+  if (!skipVerifiedCatalog && scBufferCache.has(cacheKey)) {
+    const bufHit = scBufferCache.get(cacheKey)!;
+    if (bufHit && bufHit.buffer && bufHit.buffer.byteLength > 350_000) {
+      return {
+        url: `sc-buffer:${cacheKey}`,
+        source: "Miado Full Lossless Stream",
+        durationSec: bufHit.durationSec
+      };
     }
   }
 
@@ -2872,7 +2948,7 @@ async function resolveFullLengthTrackUrl(
     }
 
     if (validExpectedSecs.length > 0) {
-      const fullLengthSecs = validExpectedSecs.filter(s => s >= 150);
+      const fullLengthSecs = validExpectedSecs.filter(s => s >= 120);
       expectedSec = fullLengthSecs.length > 0 ? fullLengthSecs[0] : validExpectedSecs[0];
       hasExactStudioDuration = true;
     }
@@ -2917,27 +2993,45 @@ async function resolveFullLengthTrackUrl(
 
       const requestedHasFeat = /\b(feat\.?|ft\.?|with)\b/i.test(`${title} ${artist}`);
       const requestedHasSlash = title.includes("/");
+      const requestedIsInstrumental = /\binstrumental\b/i.test(title);
+      const saavnTolerance = hasExactStudioDuration ? (allowLiveAcoustic ? 40 : 22) : 65;
 
-      for (const qStr of queriesToTry) {
-        if (!qStr) continue;
-        const apiUrl = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=25&p=1&q=${encodeURIComponent(qStr)}`;
-        const r = await fetchWithTimeout(apiUrl, { headers: SAAVN_GLOBAL_HEADERS }, 3400);
-        if (!r.ok) continue;
-        const data = (await r.json()) as any;
-        const results: any[] = data?.results || [];
-        if (!results.length) continue;
+      // Consulta as principais queries em paralelo para reunir todas as candidatas e escolher a versão de estúdio exata
+      const primaryBatch = queriesToTry.slice(0, 4);
+      const fallbackBatch = queriesToTry.slice(4);
 
+      const evaluateResults = (resultsList: any[]): { url: string; source: string; durationSec: number } | null => {
         const scoredMatches: Array<{ item: any; durSec: number; score: number }> = [];
+        const seenIds = new Set<string>();
 
-        for (const item of results) {
+        for (const item of resultsList) {
+          if (!item) continue;
+          const itemId = String(item.id || item?.more_info?.encrypted_media_url || "");
+          if (itemId && seenIds.has(itemId)) continue;
+          if (itemId) seenIds.add(itemId);
+
           const durSec = Number(item?.more_info?.duration || 0);
           if (!item?.more_info?.encrypted_media_url || durSec < 60 || durSec > 720) continue;
-          if (!isDurationCompatible(durSec, 65)) continue;
+          if (!isDurationCompatible(durSec, saavnTolerance)) continue;
+
+          const itemLang = String(item.language || "").toLowerCase();
+          if (itemLang === "instrumental" && !requestedIsInstrumental) continue;
 
           const itemTitle = decodeHtmlEntities(String(item.title || ""));
           const itemAlbum = decodeHtmlEntities(String(item.more_info?.album || ""));
           const itemSub = decodeHtmlEntities(String(item.subtitle || ""));
-          if (!isOriginalStudioTrack(itemTitle, itemSub, itemAlbum, durSec)) continue;
+          if (!isOriginalStudioTrack(itemTitle, effectiveArtist, itemAlbum, durSec)) continue;
+
+          // Para artistas de estúdio, rejeita títulos com qualificadores acústicos/versões alternativas entre parênteses
+          if (
+            !allowLiveAcoustic &&
+            /\b(acoustic|ac[uú]stico|ac[uú]stica|unplugged|ao\s*vivo|en\s*vivo|live|piano|guitar|viol[aã]o|violin|corrido|tumbado|cover|sped|slowed|reverb|lofi)\b/i.test(
+              `${itemTitle} ${itemAlbum}`
+            ) &&
+            !/\b(acoustic|ac[uú]stico|live|ao\s*vivo|piano|guitar)\b/i.test(title)
+          ) {
+            continue;
+          }
 
           const rawTitleLow = `${itemTitle} ${itemAlbum} ${itemSub}`.toLowerCase();
           if (activeRejectWords.some(w => rawTitleLow.includes(w) && !tNorm.includes(w))) continue;
@@ -2947,7 +3041,7 @@ async function resolveFullLengthTrackUrl(
           const isExactTitle =
             itemTitleNorm === tNorm ||
             itemTitleNorm === baseTNorm ||
-            (itemBaseNorm.length >= 3 && (itemBaseNorm === tNorm || itemBaseNorm === baseTNorm)) ||
+            (itemBaseNorm.length >= 3 && (itemBaseNorm === tNorm || itemBaseNorm === baseTNorm) && !/\b(acoustic|ac[uú]stico|live|ao\s*vivo|version|vers[aã]o|versi[oó]n|cover|remix)\b/i.test(itemTitle)) ||
             (allowLiveAcoustic && baseTNorm === "agora" && itemTitleNorm === "agora vai");
           const isPartialTitle =
             !isExactTitle &&
@@ -2965,7 +3059,7 @@ async function resolveFullLengthTrackUrl(
           const primaryArtists = primList.length > 0 ? primList : [itemSub];
 
           const hasTributeArtist = [...primaryArtists, ...featList].some(aName =>
-            /\b(rock your babies|brazilian hitmakers|party tyme|portal dos playbacks|karaoke|tribute|lullaby|8-bit)\b/i.test(aName)
+            /\b(rock your babies|brazilian hitmakers|party tyme|portal dos playbacks|karaoke|tribute|lullaby|8-bit|vitamin string quartet|piano guys|guitar tribute|acoustic tribute)\b/i.test(aName)
           );
           if (hasTributeArtist) continue;
 
@@ -2974,31 +3068,39 @@ async function resolveFullLengthTrackUrl(
           );
           if (!hasStrictArtist) continue;
 
-          let sc = isExactTitle ? 210 : 120;
-          sc -= minDurationDiff(durSec);
+          const durDiff = minDurationDiff(durSec);
+          let sc = isExactTitle ? 220 : 120;
+          sc -= durDiff * 2;
+          if (hasExactStudioDuration && durDiff <= 3) {
+            sc += 65;
+          } else if (hasExactStudioDuration && durDiff <= 7) {
+            sc += 30;
+          }
 
           // Heavily penalize medley/slash tracks (e.g. "Camisa 10 / Curtindo a Vida") when user requested a standalone song
           if (!requestedHasSlash && itemTitle.includes("/")) {
             sc -= 140;
           }
 
-          // Prefer studio version over live/acoustic when both exist, while allowing live/acoustic when it is the main release
+          // Prefer studio version over live/acoustic when both exist
           const isItemLiveOrAcoustic = /\b(ao\s*vivo|live|ac[uú]stico|acoustic)\b/i.test(`${itemTitle} ${itemAlbum}`);
           if (!isItemLiveOrAcoustic) {
-            sc += 40;
+            sc += 45;
+          } else if (!allowLiveAcoustic) {
+            sc -= 200;
           }
 
-          // Penalize unrequested featured artists or multi-artist medleys when solo track was requested
-          const subHasUnrequestedFeat = !requestedHasFeat && /\b(ft\.?|feat\.?|featuring)\b/i.test(itemSub);
-          if ((!requestedHasFeat && featList.length > 0) || subHasUnrequestedFeat) {
-            sc -= 180;
+          const firstPrimaryMatches = artistMatchesTarget(primList[0] || itemSub, effectiveArtist);
+          if (firstPrimaryMatches) {
+            sc += 45;
           }
-          if (!requestedHasFeat && primList.length > 1) {
-            const allMatchTarget = primList.every(aName => artistMatchesTarget(aName, effectiveArtist));
-            if (!allMatchTarget) sc -= 120;
-          }
-          if (artistMatchesTarget(primList[0] || itemSub, effectiveArtist)) {
-            sc += 40;
+
+          // Quando a faixa solo foi pedida, dá um bônus leve para faixa solo (+25), mas NUNCA penaliza colaborações oficiais de estúdio (ex: "After The Storm" Kali Uchis feat. Tyler, The Creator ou "fue mejor" Kali Uchis & SZA) cujo artista principal é o artista pedido!
+          const isSoloTrack = featList.length === 0 && primList.length <= 1;
+          if (!requestedHasFeat && isSoloTrack) {
+            sc += 25;
+          } else if (!requestedHasFeat && !firstPrimaryMatches) {
+            sc -= 90;
           }
 
           scoredMatches.push({ item, durSec, score: sc });
@@ -3016,12 +3118,48 @@ async function resolveFullLengthTrackUrl(
             };
           }
         }
+        return null;
+      };
+
+      const fetchSaavnQuery = async (qStr: string): Promise<any[]> => {
+        if (!qStr) return [];
+        const apiUrl = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&n=25&p=1&q=${encodeURIComponent(qStr)}`;
+        const r = await fetchWithTimeout(apiUrl, { headers: SAAVN_GLOBAL_HEADERS }, 3400).catch(() => null);
+        if (!r || !r.ok) return [];
+        const data = (await r.json()) as any;
+        return Array.isArray(data?.results) ? data.results : [];
+      };
+
+      const batch1Settled = await Promise.allSettled(primaryBatch.map(qStr => fetchSaavnQuery(qStr)));
+      const pooledBatch1: any[] = [];
+      for (const s of batch1Settled) {
+        if (s.status === "fulfilled" && s.value.length > 0) {
+          pooledBatch1.push(...s.value);
+        }
+      }
+      if (pooledBatch1.length > 0) {
+        const hit1 = evaluateResults(pooledBatch1);
+        if (hit1) return hit1;
+      }
+
+      if (fallbackBatch.length > 0) {
+        const batch2Settled = await Promise.allSettled(fallbackBatch.map(qStr => fetchSaavnQuery(qStr)));
+        const pooledBatch2: any[] = [];
+        for (const s of batch2Settled) {
+          if (s.status === "fulfilled" && s.value.length > 0) {
+            pooledBatch2.push(...s.value);
+          }
+        }
+        if (pooledBatch2.length > 0) {
+          const hit2 = evaluateResults(pooledBatch2);
+          if (hit2) return hit2;
+        }
       }
     } catch (_e) {}
     return null;
   };
 
-  // 2. Motor SoundCloud Full Track (rejeita 100% SNIP/30s e covers amadores, aceita progressive MP3 ou HLS MP3/MP4 completo)
+  // 2. Motor SoundCloud Full Track (usado SOMENTE como contingência quando JioSaavn e Archive não possuem a faixa; rejeita 100% covers, versões de violão/corrido e durações divergentes)
   const trySoundCloud = async (): Promise<{ url: string; source: string; durationSec: number } | null> => {
     try {
       const cid = await getSoundCloudClientId();
@@ -3053,6 +3191,7 @@ async function resolveFullLengthTrackUrl(
       }
 
       const targetAliases = ARTIST_ALIASES[aNorm] || [aNorm];
+      const scTolerance = hasExactStudioDuration ? (allowLiveAcoustic ? 25 : 12) : 45;
 
       // Score and sort SoundCloud candidates
       const candidates: Array<{ t: any; durSec: number; score: number }> = [];
@@ -3065,16 +3204,23 @@ async function resolveFullLengthTrackUrl(
 
         const durSec = Math.round(durMs / 1000);
         if (durSec < 60 || durSec > 720) continue;
-        if (!isDurationCompatible(durSec, 65)) continue;
+        if (!isDurationCompatible(durSec, scTolerance)) continue;
 
         const rawTitle = String(t.title || "");
         const uploader = String(t.user?.username || "");
         const pubArtist = String(t.publisher_metadata?.artist || "");
         if (!isOriginalStudioTrack(rawTitle, effectiveArtist, t.publisher_metadata?.album_title || "", durSec)) continue;
 
-        const rawLower = `${rawTitle} ${uploader} ${t.tag_list || ""}`.toLowerCase();
+        const rawLower = `${rawTitle} ${uploader} ${t.tag_list || ""} ${t.genre || ""}`.toLowerCase();
         if (activeRejectWords.some(w => rawLower.includes(w) && !tNorm.includes(w))) continue;
-        if (/\b(flip|edit|bootleg|mashup|zouk|forro|brega|mtk|dj\s|club\s+mix|extended\s+mix|type\s+beat|vaporwave|cover|karaoke|playback|violao e voz)\b/i.test(rawLower)) continue;
+        if (
+          /\b(flip|edit|bootleg|mashup|zouk|forro|brega|mtk|dj\s|club\s+mix|extended\s+mix|type\s+beat|vaporwave|cover|covers|karaoke|playback|violao|violão|guitar|piano|violin|ukulele|corrido|tumbado|pluggnb|hoodtrap|breakcore|versao|versão|version|versión|acustico|acústico|acoustic|unplugged|slowed|sped\s*up|reverb|nightcore|lofi)\b/i.test(
+            rawLower
+          ) &&
+          !/\b(acoustic|ac[uú]stico|live|ao\s*vivo|version)\b/i.test(title)
+        ) {
+          continue;
+        }
         if (/\bby\s+[a-z0-9]/i.test(rawTitle) && !tNorm.includes("by ")) continue;
 
         const rawTitleKey = normalizeSongTitleKey(rawTitle);
@@ -3086,14 +3232,12 @@ async function resolveFullLengthTrackUrl(
           (tNorm.includes(rawTitleKey) && rawTitleKey.length >= 4);
         if (!titleMatches) continue;
 
-        const normRawTitle = normalizeStr(rawTitle);
-        const titleHasArtist = targetAliases.some(al => al && matchesWordBoundarySubstring(normRawTitle, al));
-        const isKnownLabelUploader = /\b(deckdisc|som livre|universal music|warner music|sony music|biscoito fino|trama|team pitty|grupo bom gosto)\b/i.test(uploader);
+        const isKnownLabelUploader = /\b(deckdisc|som livre|universal music|warner music|sony music|biscoito fino|trama|team pitty|grupo bom gosto|interscope|capitol records|88rising|atlantic records|columbia records|republic records)\b/i.test(uploader);
+        // Exige que o uploader ou publisher_metadata seja comprovadamente o artista oficial ou gravadora (nunca aceita uploaders amadores de covers só porque escreveram o nome do artista no título)
         const artistMatches =
           artistMatchesTarget(uploader, effectiveArtist) ||
           artistMatchesTarget(pubArtist, effectiveArtist) ||
-          isKnownLabelUploader ||
-          titleHasArtist;
+          isKnownLabelUploader;
         if (!artistMatches) continue;
 
         const transcodings: any[] = Array.isArray(t.media?.transcodings) ? t.media.transcodings : [];
@@ -3111,9 +3255,9 @@ async function resolveFullLengthTrackUrl(
         strippedTitleForKey = strippedTitleForKey.replace(/\bprod\.?\s+.*$/i, " ").trim();
         const strippedTitleKey = normalizeSongTitleKey(strippedTitleForKey);
 
-        let sc = 100 - minDurationDiff(durSec);
-        if (t.user?.verified) sc += 40;
-        if (t.publisher_metadata?.isrc) sc += 45;
+        let sc = 100 - minDurationDiff(durSec) * 2;
+        if (t.user?.verified) sc += 55;
+        if (t.publisher_metadata?.isrc) sc += 55;
         if (isKnownLabelUploader) sc += 35;
         if (rawTitleKey === tNorm || rawTitleKey === baseTNorm || strippedTitleKey === tNorm || strippedTitleKey === baseTNorm) sc += 25;
         if (artistMatchesTarget(uploader, effectiveArtist) || artistMatchesTarget(pubArtist, effectiveArtist)) sc += 35;
@@ -3152,7 +3296,7 @@ async function resolveFullLengthTrackUrl(
           }
         }
 
-        // Fallback to unencrypted HLS: iterate over all valid HLS transcodings (skipping deprecated audio/mpegurl which returns 404 on SoundCloud)
+        // Fallback to unencrypted HLS
         const hlsCandidates = [
           ...transcodings.filter(
             x =>
@@ -3264,7 +3408,7 @@ async function resolveFullLengthTrackUrl(
             if (!isOriginalStudioTrack(name, effectiveArtist)) return false;
             const fnNorm = normalizeStr(name.replace(/\.(mp3|m4a)$/i, ""));
             const lenSec = parseDurationToSeconds(f.length) || expectedSec;
-            return (fnNorm.includes(tNorm) || (baseTNorm.length >= 4 && fnNorm.includes(baseTNorm))) && lenSec >= 60 && lenSec <= 720 && isDurationCompatible(lenSec, 45);
+            return (fnNorm.includes(tNorm) || (baseTNorm.length >= 4 && fnNorm.includes(baseTNorm))) && lenSec >= 60 && lenSec <= 720 && isDurationCompatible(lenSec, 25);
           });
           if (audioFile) {
             const lenSec = parseDurationToSeconds(audioFile.length) || expectedSec;
@@ -3298,15 +3442,22 @@ async function resolveFullLengthTrackUrl(
     return null;
   };
 
-  // Executa os resolvedores de estúdio em paralelo (prioridade estrita: JioSaavn 320kbps Master -> SoundCloud Master -> Archive Studio -> Piped)
-  const [saavnRes, scRes, archRes, pipedRes] = await Promise.allSettled([
-    trySaavn(),
+  // Fase 1: Prioridade máxima para JioSaavn 320kbps Studio Master (NUNCA executa SoundCloud em paralelo antes de JioSaavn terminar, evitando que scBufferCache sobrescreva o master de estúdio!)
+  const saavnHit = await trySaavn();
+  if (saavnHit && saavnHit.url && !isForbidden30sPreviewUrl(saavnHit.url) && (saavnHit.durationSec || expectedSec) >= 60) {
+    scBufferCache.delete(cacheKey);
+    persistFullStreamCacheEntry(cacheKey, saavnHit);
+    return saavnHit;
+  }
+
+  // Fase 2: Se a música não existir no JioSaavn (ex: indie underground BR como Enzo Yuki), tenta SoundCloud Verificado, Archive e Piped
+  const [scRes, archRes, pipedRes] = await Promise.allSettled([
     trySoundCloud(),
     tryInternetArchive(),
     tryAllPiped()
   ]);
 
-  for (const resCandidate of [saavnRes, scRes, archRes, pipedRes]) {
+  for (const resCandidate of [scRes, archRes, pipedRes]) {
     if (
       resCandidate.status === "fulfilled" &&
       resCandidate.value?.url &&
@@ -7131,6 +7282,9 @@ export async function createMiadoApp() {
         .filter(d => Number(d.duration || 210) >= 60 && isOriginalStudioTrack(d.title || "", d.artist?.name || targetArtDisplayName, "", d.duration))
         .forEach((item, idx) => {
           const artistName = item.artist?.name || targetArtDisplayName;
+          const artistId = item.artist?.id ? `dz_art_${item.artist.id}` : (canonicalQ?.deezerId ? `dz_art_${canonicalQ.deezerId}` : "");
+          const trackId = `dz_${item.id}`;
+          const durSec = Number(item.duration || 210);
           const albumTitle =
             cleanAlbumDisplayTitle(
               String(item.album?.title || "Single")
@@ -7139,15 +7293,17 @@ export async function createMiadoApp() {
             ) || "Single";
           const rawArt = item.album?.cover_xl || item.album?.cover_big || item.album?.cover_medium || "";
           const cover = toCoverProxyUrl(rawArt, item.title || "", artistName);
-          const proxyUrl = buildFullStreamProxyUrl(item.title || "", artistName);
+          const proxyUrl = buildFullStreamProxyUrl(item.title || "", artistName, trackId, durSec, "deezer", artistId);
 
           rawSongs.push({
-            id: `dz_${item.id}`,
+            id: trackId,
+            provider: "deezer",
+            artistId: artistId || undefined,
             title: item.title,
             artist: artistName,
             albumTitle,
-            duration: formatDurationSec(item.duration || 210),
-            durationSec: Number(item.duration || 210),
+            duration: formatDurationSec(durSec),
+            durationSec: durSec,
             genre: "Lossless Master",
             year: 2024,
             coverUrl: cover,
@@ -7195,14 +7351,16 @@ export async function createMiadoApp() {
       .forEach((item, idx) => {
         const durSec = Math.round(Number(item.trackTimeMillis || 0) / 1000);
         const trackId = `it_${item.trackId}`;
+        const artistId = `it_art_${item.artistId || idx}`;
         const cover = toCoverProxyUrl(item.artworkUrl100, item.trackName || "", item.artistName || q);
-        const proxyUrl = buildFullStreamProxyUrl(item.trackName || "", item.artistName || q, trackId, durSec, "itunes");
+        const proxyUrl = buildFullStreamProxyUrl(item.trackName || "", item.artistName || q, trackId, durSec, "itunes", artistId);
 
-        registerIndividualArtists(item.artistName || "", "Artista", "", `it_art_${item.artistId || idx}`);
+        registerIndividualArtists(item.artistName || "", "Artista", "", artistId);
 
         rawSongs.push({
           id: trackId,
           provider: "itunes",
+          artistId,
           title: item.trackName,
           artist: item.artistName,
           albumTitle: cleanAlbumDisplayTitle(item.collectionName || "Single"),
@@ -7246,21 +7404,26 @@ export async function createMiadoApp() {
       .filter(d => Number(d.duration || 210) >= 60 && isOriginalStudioTrack(d.title || "", d.artist?.name || q, d.album?.title || "", d.duration))
       .forEach((item, idx) => {
         const artistName = item.artist?.name || q;
+        const trackId = `dz_${item.id}`;
+        const artistId = `dz_art_${item.artist?.id || idx}`;
+        const durSec = Number(item.duration || 210);
         const albumTitle = cleanAlbumDisplayTitle(item.album?.title || "Single");
         const rawArt = item.album?.cover_xl || item.album?.cover_big || item.album?.cover_medium || "";
         const cover = toCoverProxyUrl(rawArt, item.title || "", artistName);
-        const proxyUrl = buildFullStreamProxyUrl(item.title || "", artistName);
+        const proxyUrl = buildFullStreamProxyUrl(item.title || "", artistName, trackId, durSec, "deezer", artistId);
 
         const rawArtistPic = item.artist?.picture_xl || item.artist?.picture_big || item.artist?.picture_medium || "";
-        registerIndividualArtists(artistName, "Artista", rawArtistPic, `dz_art_${item.artist?.id || idx}`);
+        registerIndividualArtists(artistName, "Artista", rawArtistPic, artistId);
 
         rawSongs.push({
-          id: `dz_${item.id}`,
+          id: trackId,
+          provider: "deezer",
+          artistId,
           title: item.title,
           artist: artistName,
           albumTitle,
-          duration: formatDurationSec(item.duration || 210),
-          durationSec: Number(item.duration || 210),
+          duration: formatDurationSec(durSec),
+          durationSec: durSec,
           genre: "Pop / Lossless",
           year: 2024,
           coverUrl: cover,
@@ -7299,18 +7462,21 @@ export async function createMiadoApp() {
       if (durSec < 60 || durSec > 600) return;
       const itemTitle = String(item.title || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#039;/g, "'");
       const itemAlbum = String(item.more_info?.album || "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
-      const primaryArtists: string[] = [
-        ...(item.more_info?.artistMap?.primary_artists || [])
-      ].map((a: any) => String(a?.name || "")).filter(Boolean);
+      const primaryArtistObjs: any[] = item.more_info?.artistMap?.primary_artists || [];
+      const primaryArtists: string[] = primaryArtistObjs.map((a: any) => String(a?.name || "")).filter(Boolean);
       const artistName = primaryArtists[0] || q;
       if (!isOriginalStudioTrack(itemTitle, artistName, itemAlbum, durSec)) return;
 
+      const trackId = `saavn_${item.id || idx}`;
+      const primaryArtId = primaryArtistObjs[0]?.id ? `saavn_art_${primaryArtistObjs[0].id}` : "";
       const rawArt = upgradeArtwork(item.image || "");
       const cover = toCoverProxyUrl(rawArt, itemTitle, artistName);
-      const proxyUrl = buildFullStreamProxyUrl(itemTitle, artistName);
+      const proxyUrl = buildFullStreamProxyUrl(itemTitle, artistName, trackId, durSec, "saavn", primaryArtId);
 
       rawSongs.push({
-        id: `saavn_${item.id || idx}`,
+        id: trackId,
+        provider: "saavn",
+        artistId: primaryArtId || undefined,
         title: itemTitle,
         artist: artistName,
         albumTitle: cleanAlbumDisplayTitle(itemAlbum || "Single"),
@@ -8254,6 +8420,7 @@ export async function createMiadoApp() {
 
     if (freshParam) {
       fullStreamCache.delete(cacheKey);
+      scBufferCache.delete(cacheKey);
     }
 
     if (instanceIdxParam >= 0 && instanceIdxParam < PIPED_INVIDIOUS_INSTANCES.length) {
@@ -8319,6 +8486,7 @@ export async function createMiadoApp() {
     const allowedQueryKeys = new Set([
       "title",
       "artist",
+      "artistId",
       "full",
       "preferFull",
       "studioOnly",
@@ -8355,11 +8523,20 @@ export async function createMiadoApp() {
 
     const title = String(req.query.title || "").trim().slice(0, 200);
     const artist = String(req.query.artist || "").trim().slice(0, 200);
+    const artistIdParam = String(req.query.artistId || "").trim().slice(0, 100);
     const trackIdParam = String(req.query.trackId || "").trim().slice(0, 100);
+    const providerParam = String(req.query.provider || "").trim().slice(0, 40);
     if (!title && !artist) {
       res.status(400).json({ error: "missing_track_parameters", requestId: req.requestId });
       return;
     }
+
+    const resolvedArtistId =
+      artistIdParam ||
+      resolveServerArtistProviderId({ artist, id: trackIdParam, provider: providerParam });
+    res.setHeader("X-Miado-Artist-Id", resolvedArtistId);
+    if (trackIdParam) res.setHeader("X-Miado-Track-Id", trackIdParam);
+    if (providerParam) res.setHeader("X-Miado-Provider", providerParam);
 
     const rangeHeader = req.headers.range;
     if (rangeHeader && !/^bytes=\d{0,12}-\d{0,12}$/.test(String(rangeHeader))) {
@@ -8398,18 +8575,15 @@ export async function createMiadoApp() {
     const baseCacheKey = `${normTitle}|${normArtist}`;
     const cacheKey = trackIdParam ? `${baseCacheKey}|${trackIdParam}` : baseCacheKey;
 
-    // Se a faixa completa já estiver montada em memória (scBufferCache), serve imediatamente com suporte a Range 206
-    if (scBufferCache.has(cacheKey)) {
-      sendBufferedAudioWithRange(scBufferCache.get(cacheKey)!);
-      return;
-    }
-    if (scBufferCache.has(baseCacheKey)) {
-      sendBufferedAudioWithRange(scBufferCache.get(baseCacheKey)!);
-      return;
-    }
-
     const verifiedStudioHit = VERIFIED_STUDIO_CATALOG[baseCacheKey];
     let targetUrl = "";
+
+    if (req.query.retry === "1") {
+      fullStreamCache.delete(cacheKey);
+      fullStreamCache.delete(baseCacheKey);
+      scBufferCache.delete(cacheKey);
+      scBufferCache.delete(baseCacheKey);
+    }
 
     if (verifiedStudioHit) {
       targetUrl = verifiedStudioHit.url;
@@ -8426,6 +8600,12 @@ export async function createMiadoApp() {
         !cached.url.includes("discoveryprovider.audius.co")
       ) {
         targetUrl = cached.url;
+      } else if (scBufferCache.has(cacheKey)) {
+        sendBufferedAudioWithRange(scBufferCache.get(cacheKey)!);
+        return;
+      } else if (scBufferCache.has(baseCacheKey)) {
+        sendBufferedAudioWithRange(scBufferCache.get(baseCacheKey)!);
+        return;
       } else if (title) {
         fullStreamCache.delete(cacheKey);
         fullStreamCache.delete(baseCacheKey);
@@ -8437,6 +8617,12 @@ export async function createMiadoApp() {
           }
         } catch (_e) {}
       }
+    }
+
+    if (!rangeHeader || rangeHeader.startsWith("bytes=0-")) {
+      console.info(
+        `[MiadoStreamMonitor] ArtistID=${resolvedArtistId} (${artist}) | TrackID=${trackIdParam || "auto"} [${providerParam || "catalog"}] | Title="${title}" | TargetStream=${targetUrl || "fallback"}`
+      );
     }
 
     // Se a faixa completa foi montada em scBufferCache, serve o Buffer direto da memória com suporte a HTTP Range (206)

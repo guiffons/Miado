@@ -194,7 +194,15 @@ function resolveCanonicalArtistChartEntry(
     return {
       id: "dz_art_126335112",
       name: "ROSÉ",
-      coverUrl: `/api/artist-image?name=${encodeURIComponent("ROSÉ")}&url=${encodeURIComponent(roseKrPic)}`
+      coverUrl: `/api/artist-image?name=${encodeURIComponent("ROSÉ")}&url=${encodeURIComponent(roseKrPic)}&v=3`
+    };
+  }
+  if (lower === "ghost" || lower === "gost" || String(rawId || "") === "8506054") {
+    const ghostPic = "https://cdn-images.dzcdn.net/images/artist/da23d5c8a0b40adefa6424ec4b357fd1/1000x1000-000000-80-0-0.jpg";
+    return {
+      id: "dz_art_8506054",
+      name: "Ghost",
+      coverUrl: `/api/artist-image?name=${encodeURIComponent("Ghost")}&url=${encodeURIComponent(ghostPic)}&v=3`
     };
   }
   const safePic =
@@ -208,8 +216,8 @@ function resolveCanonicalArtistChartEntry(
     id: rawId ? `dz_art_${rawId}` : `art_${normalizeArtistDistinctKey(nfc).replace(/\s+/g, "_")}`,
     name: nfc,
     coverUrl: safePic
-      ? `/api/artist-image?name=${encodeURIComponent(nfc)}&url=${encodeURIComponent(safePic)}`
-      : `/api/artist-image?name=${encodeURIComponent(nfc)}`
+      ? `/api/artist-image?name=${encodeURIComponent(nfc)}&url=${encodeURIComponent(safePic)}&v=3`
+      : `/api/artist-image?name=${encodeURIComponent(nfc)}&v=3`
   };
 }
 

@@ -1,397 +1,109 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "entries": {
-    "lovers rock|tv girl": {
-      "url": "https://archive.org/download/lovers-rock_202506/Lovers%20Rock.mp3",
-      "source": "Miado Archive Studio HD",
-      "durationSec": 214,
-      "host": "archive.org",
-      "resolvedAt": 1794400134554,
-      "expiresAt": 1794486534555
+    "telepatia|kali uchis": {
+      "url": "https://aac.saavncdn.com/790/ffbfd754dc9008b7bc20d7ebafceeb42_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 160,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794502695730,
+      "expiresAt": 1794524295730
     },
-    "cigarettes out the window|tv girl": {
-      "url": "https://archive.org/download/gs_tv-girl-who-really-cares/03%20Cigarettes%20Out%20the%20Window.mp3",
-      "source": "Miado Studio Master (TV Girl - Who Really Cares)",
+    "moonlight|kali uchis": {
+      "url": "https://aac.saavncdn.com/910/7b4e33a70b9029222c35b2ec010ca1bc_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 191,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794502696433,
+      "expiresAt": 1794524296433
+    },
+    "igual que un angel|kali uchis": {
+      "url": "https://aac.saavncdn.com/533/6a5b44a29b956b1e9b7a85dca379b638_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 260,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794502697055,
+      "expiresAt": 1794524297055
+    },
+    "after the storm|kali uchis": {
+      "url": "https://aac.saavncdn.com/010/83e744514a26a275c33f31533a8c62bb_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 207,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794502697922,
+      "expiresAt": 1794524297922
+    },
+    "fue mejor|kali uchis": {
+      "url": "https://aac.saavncdn.com/120/975b047daeabf427188859534c8b0368_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
+      "durationSec": 230,
+      "host": "aac.saavncdn.com",
+      "resolvedAt": 1794502698720,
+      "expiresAt": 1794524298720
+    },
+    "dead to me|kali uchis": {
+      "url": "https://aac.saavncdn.com/487/5e86242ad6b694fbf0eb0e15329104c0_320.mp4",
+      "source": "Miado Full 320kbps Studio Master",
       "durationSec": 199,
-      "host": "archive.org",
-      "resolvedAt": 1794402078787,
-      "expiresAt": 1794488478787
-    },
-    "not allowed|tv girl": {
-      "url": "https://archive.org/download/gs_tv-girl-who-really-cares/05%20Not%20Allowed.mp3",
-      "source": "Miado Studio Master (TV Girl - Who Really Cares)",
-      "durationSec": 168,
-      "host": "archive.org",
-      "resolvedAt": 1794402078802,
-      "expiresAt": 1794488478802
-    },
-    "blue hair|tv girl": {
-      "url": "https://archive.org/download/tv_girl_death-of-a-party-girl/TV%20Girl%20-%20Death%20of%20a%20Party%20Girl/TV%20Girl%20-%20Death%20of%20a%20Party%20Girl%20-%2003%20Blue%20Hair.mp3",
-      "source": "Miado Studio Master (TV Girl - Death of a Party Girl)",
-      "durationSec": 217,
-      "host": "archive.org",
-      "resolvedAt": 1794402078809,
-      "expiresAt": 1794488478809
-    },
-    "taking whats not yours|tv girl": {
-      "url": "https://archive.org/download/gs_tv-girl-who-really-cares/01%20Taking%20What%E2%80%99s%20Not%20Yours.mp3",
-      "source": "Miado Studio Master (TV Girl - Who Really Cares)",
-      "durationSec": 206,
-      "host": "archive.org",
-      "resolvedAt": 1794402078816,
-      "expiresAt": 1794488478816
-    },
-    "birds dont sing|tv girl": {
-      "url": "https://archive.org/download/tv-girl-french-exit_202611/TV%20Girl%20-%20French%20Exit%20-%2002%20Birds%20Dont%20Sing.mp3",
-      "source": "Miado Studio Master (TV Girl - French Exit)",
-      "durationSec": 209,
-      "host": "archive.org",
-      "resolvedAt": 1794402078822,
-      "expiresAt": 1794488478822
-    },
-    "friends|marshmello": {
-      "url": "https://aac.saavncdn.com/197/27b24ca18b14ce38003921a35d483108_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 201,
       "host": "aac.saavncdn.com",
-      "resolvedAt": 1794404574984,
-      "expiresAt": 1794426174984
+      "resolvedAt": 1794502699510,
+      "expiresAt": 1794524299510
     },
-    "believer|imagine dragons": {
-      "url": "https://aac.saavncdn.com/248/46944eb7b4b31f5b0abf5eb2e1be2d2a_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 204,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794404807953,
-      "expiresAt": 1794426407953
-    },
-    "demons|imagine dragons": {
-      "url": "https://aac.saavncdn.com/210/6878daf1737dcbd57b99677f085952d1_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 175,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794404975536,
-      "expiresAt": 1794426575536
-    },
-    "lanca perfume|rita lee": {
-      "url": "https://aac.saavncdn.com/838/3c19a6b0dc04afde111e006ffa3d0b78_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 309,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405012140,
-      "expiresAt": 1794426612140
-    },
-    "amor e sexo|rita lee": {
-      "url": "https://aac.saavncdn.com/704/7bebea7b98190fd54949c87de271d1a4_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 219,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405270491,
-      "expiresAt": 1794426870491
-    },
-    "hate that i made you love me|ariana grande": {
-      "url": "https://aac.saavncdn.com/741/08e06539a2706f5da2ed8813ffe68c84_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 198,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405385975,
-      "expiresAt": 1794426985976
-    },
-    "housewife|tate mcrae": {
-      "url": "https://aac.saavncdn.com/146/d5452a383eb353208917f0c12a27f994_320.mp4",
+    "melting|kali uchis": {
+      "url": "https://aac.saavncdn.com/036/7d060c6e85b477d02e4d511b4abbe537_320.mp4",
       "source": "Miado Full 320kbps Studio Master",
       "durationSec": 208,
       "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405714036,
-      "expiresAt": 1794427314036
+      "resolvedAt": 1794502700927,
+      "expiresAt": 1794524300927
     },
-    "bad liar|imagine dragons": {
-      "url": "https://aac.saavncdn.com/189/1319fb953182d441ffd69ff0b6e21f4d_320.mp4",
+    "glimpse of us|joji": {
+      "url": "https://aac.saavncdn.com/016/d09c42a7bbc0a4bbd108805e6a5e9262_320.mp4",
       "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 260,
+      "durationSec": 233,
       "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405805887,
-      "expiresAt": 1794427405887
+      "resolvedAt": 1794502701727,
+      "expiresAt": 1794524301727
     },
-    "bad liar|imagine dragons|rec_dz_579893072": {
-      "url": "https://aac.saavncdn.com/189/1319fb953182d441ffd69ff0b6e21f4d_320.mp4",
+    "slow dancing in the dark|joji": {
+      "url": "https://aac.saavncdn.com/323/4f8f6f0bf7a37b247e8e6e5140795910_320.mp4",
       "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 260,
+      "durationSec": 209,
       "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405805887,
-      "expiresAt": 1794427405887
+      "resolvedAt": 1794502702541,
+      "expiresAt": 1794524302541
     },
-    "porta aberta|enzo yuki": {
-      "url": "https://aac.saavncdn.com/748/4528e3a1095df779303f061dc0c3fa38_320.mp4",
+    "like you do|joji": {
+      "url": "https://aac.saavncdn.com/307/82e6a8656958c45aaf2b3de929a62937_320.mp4",
       "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 237,
+      "durationSec": 240,
       "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405840656,
-      "expiresAt": 1794427440656
+      "resolvedAt": 1794502703393,
+      "expiresAt": 1794524303393
     },
-    "porta aberta|enzo yuki|it_1672537280": {
-      "url": "https://aac.saavncdn.com/748/4528e3a1095df779303f061dc0c3fa38_320.mp4",
+    "die for you|joji": {
+      "url": "https://aac.saavncdn.com/455/b91c82709a5ad4991acb917752c384e2_320.mp4",
       "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 237,
+      "durationSec": 211,
       "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405840656,
-      "expiresAt": 1794427440656
+      "resolvedAt": 1794502704452,
+      "expiresAt": 1794524304452
     },
-    "bobo meu tempo com voce|enzo yuki": {
-      "url": "https://aac.saavncdn.com/748/8d92109f6eaf69ebdace9ffe9f63e890_320.mp4",
+    "sanctuary|joji": {
+      "url": "https://aac.saavncdn.com/307/5cdfcd67f8694f9be4691fa0d2bdfce7_320.mp4",
       "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 220,
+      "durationSec": 180,
       "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405846269,
-      "expiresAt": 1794427446269
+      "resolvedAt": 1794502705043,
+      "expiresAt": 1794524305043
     },
-    "bobo meu tempo com voce|enzo yuki|it_1672537281": {
-      "url": "https://aac.saavncdn.com/748/8d92109f6eaf69ebdace9ffe9f63e890_320.mp4",
+    "run|joji": {
+      "url": "https://aac.saavncdn.com/307/b7c96bb08206d13c2d6c4dcfee87f559_320.mp4",
       "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 220,
+      "durationSec": 195,
       "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405846269,
-      "expiresAt": 1794427446269
-    },
-    "pele|enzo yuki": {
-      "url": "https://aac.saavncdn.com/748/f47d6ba4c712cdf0dfd0accea7baa822_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 253,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405857741,
-      "expiresAt": 1794427457741
-    },
-    "pele|enzo yuki|it_1672537283": {
-      "url": "https://aac.saavncdn.com/748/f47d6ba4c712cdf0dfd0accea7baa822_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 253,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405857741,
-      "expiresAt": 1794427457741
-    },
-    "te levar|enzo yuki": {
-      "url": "https://aac.saavncdn.com/387/8395af597119bffc61af0e83b027daf9_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 205,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405867644,
-      "expiresAt": 1794427467644
-    },
-    "te levar|enzo yuki|it_1699418556": {
-      "url": "https://aac.saavncdn.com/387/8395af597119bffc61af0e83b027daf9_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 205,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405867645,
-      "expiresAt": 1794427467645
-    },
-    "pra te deixar partir|enzo yuki": {
-      "url": "https://aac.saavncdn.com/748/af0de4df00c015325113032cca428e75_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 237,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405871348,
-      "expiresAt": 1794427471348
-    },
-    "pra te deixar partir|enzo yuki|it_1672537282": {
-      "url": "https://aac.saavncdn.com/748/af0de4df00c015325113032cca428e75_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 237,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405871349,
-      "expiresAt": 1794427471349
-    },
-    "maior que ontem|enzo yuki": {
-      "url": "https://aac.saavncdn.com/748/5cfd9fb1385de2267e409c7fa22d7b33_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 216,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405877738,
-      "expiresAt": 1794427477738
-    },
-    "maior que ontem|enzo yuki|it_1672537284": {
-      "url": "https://aac.saavncdn.com/748/5cfd9fb1385de2267e409c7fa22d7b33_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 216,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405877739,
-      "expiresAt": 1794427477739
-    },
-    "nem disse adeus|enzo yuki": {
-      "url": "https://aac.saavncdn.com/881/5f76a4500222db9eacedc32905676f95_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 139,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405887293,
-      "expiresAt": 1794427487293
-    },
-    "nem disse adeus|enzo yuki|it_1789858337": {
-      "url": "https://aac.saavncdn.com/881/5f76a4500222db9eacedc32905676f95_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 139,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405887293,
-      "expiresAt": 1794427487293
-    },
-    "mil universos|enzo yuki": {
-      "url": "https://aac.saavncdn.com/192/cd14e7c2fc53917d2498bb55724f4f13_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 255,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405891770,
-      "expiresAt": 1794427491770
-    },
-    "mil universos|enzo yuki|it_1887857106": {
-      "url": "https://aac.saavncdn.com/192/cd14e7c2fc53917d2498bb55724f4f13_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 255,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405891771,
-      "expiresAt": 1794427491771
-    },
-    "bobo|enzo yuki": {
-      "url": "https://aac.saavncdn.com/748/8d92109f6eaf69ebdace9ffe9f63e890_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 220,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405895380,
-      "expiresAt": 1794427495380
-    },
-    "bobo|enzo yuki|it_6773854806": {
-      "url": "https://aac.saavncdn.com/748/8d92109f6eaf69ebdace9ffe9f63e890_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 220,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405895380,
-      "expiresAt": 1794427495380
-    },
-    "nobody new|the marias": {
-      "url": "https://aac.saavncdn.com/336/49f9471bfb5e3d8f78d8f170febced3e_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 215,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405996045,
-      "expiresAt": 1794427596045
-    },
-    "nobody new|the marias|rec_dz_3285792921": {
-      "url": "https://aac.saavncdn.com/336/49f9471bfb5e3d8f78d8f170febced3e_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 215,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794405996046,
-      "expiresAt": 1794427596046
-    },
-    "amor e sexo|rita lee roberto de carvalho|rec_1695204372": {
-      "url": "https://aac.saavncdn.com/704/7bebea7b98190fd54949c87de271d1a4_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 219,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794406211760,
-      "expiresAt": 1794426870491
-    },
-    "ovelha negra|rita lee tutti frutti": {
-      "url": "https://aac.saavncdn.com/917/fbf6cada6cf328326c07589fe86b1045_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 338,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794406433934,
-      "expiresAt": 1794428033934
-    },
-    "ovelha negra|rita lee tutti frutti|rec_713542341": {
-      "url": "https://aac.saavncdn.com/917/fbf6cada6cf328326c07589fe86b1045_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 338,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794406433934,
-      "expiresAt": 1794428033934
-    },
-    "sienna|the marias": {
-      "url": "https://aac.saavncdn.com/644/0fb18dfcdeff64851643acfd69a9f7fe_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 224,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794406712655,
-      "expiresAt": 1794428312655
-    },
-    "sienna|the marias|rec_1733731168": {
-      "url": "https://aac.saavncdn.com/644/0fb18dfcdeff64851643acfd69a9f7fe_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 224,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794406712655,
-      "expiresAt": 1794428312655
-    },
-    "mania de voce|rita lee": {
-      "url": "https://aac.saavncdn.com/758/492a5d126f89dd641f1697565e8deae9_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 295,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794406896598,
-      "expiresAt": 1794428496598
-    },
-    "summertime sadness|lana del rey": {
-      "url": "https://aac.saavncdn.com/915/7135e9887cf87cecb04303fbe041659a_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 265,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794487301475,
-      "expiresAt": 1794508901475
-    },
-    "young and beautiful|lana del rey": {
-      "url": "https://aac.saavncdn.com/571/a767a2dc534b7cd6bcb544dc3b5a2589_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 235,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794487305275,
-      "expiresAt": 1794508905275
-    },
-    "west coast|lana del rey": {
-      "url": "https://aac.saavncdn.com/513/4a9ca316e35580460f803fb11c584c4d_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 255,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794487308639,
-      "expiresAt": 1794508908639
-    },
-    "born to die|lana del rey": {
-      "url": "https://aac.saavncdn.com/730/5fd6cd651a9711a5771aaa90e6673e0e_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 286,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794487311782,
-      "expiresAt": 1794508911782
-    },
-    "video games|lana del rey": {
-      "url": "https://aac.saavncdn.com/918/056a2b39b84de429970e9b114fce0042_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 285,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794487314908,
-      "expiresAt": 1794508914908
-    },
-    "brooklyn baby|lana del rey": {
-      "url": "https://aac.saavncdn.com/068/58f8a365131f41c8d7ef36cd5e564e18_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 349,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794487318009,
-      "expiresAt": 1794508918009
-    },
-    "cinnamon girl|lana del rey": {
-      "url": "https://aac.saavncdn.com/638/697677f5859ea5ef7e628b9cdb431c86_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 300,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794487321272,
-      "expiresAt": 1794508921272
-    },
-    "radio|lana del rey": {
-      "url": "https://aac.saavncdn.com/344/00f1c7194e17ca97c8f32fb507d2bb3a_320.mp4",
-      "source": "Miado Full 320kbps Studio Master",
-      "durationSec": 214,
-      "host": "aac.saavncdn.com",
-      "resolvedAt": 1794487324419,
-      "expiresAt": 1794508924419
+      "resolvedAt": 1794502705774,
+      "expiresAt": 1794524305774
     }
   }
 }

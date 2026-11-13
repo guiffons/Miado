@@ -302,18 +302,22 @@ export function buildCanonicalDedupKey(track: {
  * Rejects karaoke, tributes, covers, lullabies, sped-up, slowed, 8D, and bootlegs,
  * while preserving official studio AND official live/acoustic releases (essential for Pagode, Samba, MPB, Sertanejo, Rock).
  */
-const STRICT_NON_STUDIO_PATTERNS: RegExp[] = [
+const LIVE_CATALOG_REJECT_PATTERNS: RegExp[] = [
   /[\(\[\-]\s*(?:karaok[eê]|instrumental|acapella|a\s*cappella|playback)\b/i,
-  /\b(?:karaok[eê]|tribute\s+to|originally\s+performed\s+by|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|cover\s+version|8-bit\s+version|lullaby\s+version|rock\s+your\s+babies)\b/i,
-  /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and|\+)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed|ringtone|par[oó]dia)\b/i,
+  /\b(?:karaok[eê]|tribute\s+to|originally\s+performed\s+by|originally\s+perfomed\s+by|in\s+the\s+style\s+of|made\s+popular\s+by|no\s+estilo\s+de|cover\s+version|acoustic\s+duet|violin\s+version|piano\s+version|piano\s+cover|guitar\s+version|guitar\s+cover|fingerstyle|8-bit\s+version|lullaby\s+version|rock\s+your\s+babies)\b/i,
+  /\b(?:sped\s*up|speed\s*up|slowed(?:\s*(?:&|and|\+)\s*reverb)?|nightcore|8d\s+audio|chopped\s+and\s+screwed|ringtone|par[oó]dia|corrido\s+tumbado|pluggnb|hoodtrap|breakcore)\b/i,
   /\b(?:remix|remixes|remixed)\b/i,
-  /[\(\[\-]\s*[^\)\]]*\b(?:rework|bootleg|mashup|dub|club\s+mix|extended\s+mix|vip\s+mix|rac\s+mix|rob\s+orton\s+mix|artifact\s+version|orchestral\s+version|gershwin\s+version|early\s+mix|alternate\s+mix|alternative\s+mix)\b/i
+  /[\(\[\-]\s*[^\)\]]*\b(?:rework|bootleg|mashup|dub|club\s+mix|extended\s+mix|vip\s+mix|rac\s+mix|rob\s+orton\s+mix|artifact\s+version|orchestral\s+version|gershwin\s+version|early\s+mix|alternate\s+mix|alternative\s+mix|cover|covers|lofi|lo-fi|corrido|tumbado|her\s+perspective|his\s+perspective|female\s+key|male\s+key|lower\s+key|higher\s+key)\b/i
 ];
 
-const LIVE_CATALOG_REJECT_PATTERNS: RegExp[] = STRICT_NON_STUDIO_PATTERNS;
+const STRICT_NON_STUDIO_PATTERNS: RegExp[] = [
+  ...LIVE_CATALOG_REJECT_PATTERNS,
+  /[\(\[\-]\s*[^\)\]]*\b(?:acoustic|ac[uú]stico|unplugged|ao\s*vivo|en\s*vivo|live|viol[aã]o|guitar|piano|violin|ukulele|sax|saxophone|cello|flute|demo|vers[ií]on|vers[aã]o)\b/i,
+  /\b(?:acoustic\s+version|vers[aã]o\s+ac[uú]stica|live\s+at|live\s+from|live\s+in|live\s+version|live\s+performance|live\s+session|in\s+concert|ao\s+vivo)\b/i
+];
 
 const NON_STUDIO_ARTIST_PATTERNS: RegExp[] = [
-  /\b(?:karaoke|tribute|cover\s+band|8-bit\s+arcade|twinkle\s+twinkle\s+little\s+rock\s+star|rockabye\s+baby|rock\s+your\s+babies|brazilian\s+hitmakers|portal\s+dos\s+playbacks|piano\s+tribute|vitamin\s+string\s+quartet|kidz\s+bop|party\s+tyme|ameritz)\b/i
+  /\b(?:karaoke|karaokeysph|zzang\s+karaoke|tribute|cover\s+band|ni\/co['’]?s\s+covers|kurt\s+hugo\s+schneider|violinia|adam\s+christopher|8-bit\s+arcade|twinkle\s+twinkle\s+little\s+rock\s+star|rockabye\s+baby|rock\s+your\s+babies|brazilian\s+hitmakers|portal\s+dos\s+playbacks|piano\s+tribute|piano\s+dreamers|atlantic\s+notes|acoustic\s+vibes|lone\s+tusker|smooth\s+jazz\s+all\s+stars|backing\s+business|instrumental\s+king|vitamin\s+string\s+quartet|kidz\s+bop|party\s+tyme|ameritz|bronet\s+team|fajar\s+asia)\b/i
 ];
 
 export function isCanonicalStudioTrack(

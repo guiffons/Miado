@@ -357,13 +357,24 @@ export function initMiadoClient() {
       };
 
       function ensureArtistAvatarUrl(art) {
-        if (!art) return "/api/artist-image?name=Artista";
+        if (!art) return "/api/artist-image?name=Artista&v=3";
         const rawName = typeof art === "string" ? art : (art.name || "");
         const name = typeof extractPrimaryArtistClient === "function" ? extractPrimaryArtistClient(rawName) : rawName;
         const nfcLower = String(name || "").normalize("NFC").trim().toLowerCase();
         if (nfcLower === "rosé") {
           const roseKrUrl = "https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0e44c0/1000x1000-000000-80-0-0.jpg";
-          return `/api/artist-image?name=${encodeURIComponent("ROSÉ")}&url=${encodeURIComponent(roseKrUrl)}`;
+          return `/api/artist-image?name=${encodeURIComponent("ROSÉ")}&url=${encodeURIComponent(roseKrUrl)}&v=3`;
+        }
+        if (
+          nfcLower === "ghost" ||
+          nfcLower === "gost" ||
+          nfcLower === "banda ghost" ||
+          nfcLower === "banda gost" ||
+          nfcLower === "ghost bc" ||
+          nfcLower === "ghost b.c."
+        ) {
+          const ghostUrl = "https://cdn-images.dzcdn.net/images/artist/da23d5c8a0b40adefa6424ec4b357fd1/1000x1000-000000-80-0-0.jpg";
+          return `/api/artist-image?name=${encodeURIComponent("Ghost")}&url=${encodeURIComponent(ghostUrl)}&v=3`;
         }
         let rawCover = typeof art === "object" ? (art.coverUrl || art.pictureUrl || "") : "";
         if (
@@ -376,15 +387,15 @@ export function initMiadoClient() {
           rawCover = "https://" + rawCover.slice(7);
         }
         if (rawCover && rawCover.startsWith("/api/artist-image")) {
-          return rawCover;
+          return rawCover.includes("v=3") ? rawCover : `${rawCover}${rawCover.includes("?") ? "&" : "?"}v=3`;
         }
         if (!rawCover || rawCover.startsWith("data:") || rawCover.includes("dzcdn.net") || rawCover.includes("deezer.com")) {
           const cleanUrlParam = rawCover && !rawCover.startsWith("data:") ? rawCover : "";
           return cleanUrlParam
-            ? `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(cleanUrlParam)}`
-            : `/api/artist-image?name=${encodeURIComponent(name || "Artista")}`;
+            ? `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(cleanUrlParam)}&v=3`
+            : `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&v=3`;
         }
-        return `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(rawCover)}`;
+        return `/api/artist-image?name=${encodeURIComponent(name || "Artista")}&url=${encodeURIComponent(rawCover)}&v=3`;
       }
 
       function showToast(message) {
@@ -675,10 +686,10 @@ export function initMiadoClient() {
 
       function isOriginalStudioTrackClient(title = "", artist = "", durationStr = "") {
         const text = `${title} ${artist}`.toLowerCase();
-        if (/\b(remix|rework|bootleg|mashup|karaok[eê]|tribute|originally performed|in the style of|made popular by|8-bit|lullaby|superturn[eê]|instrumental|acapella|sped up|speed up|slowed|nightcore|8d audio|par[oó]dia|rehearsal|commentary|voice memo|rock your babies|brazilian hitmakers|portal dos playbacks|party tyme)\b/i.test(text)) {
+        if (/\b(remix|rework|bootleg|mashup|karaok[eê]|tribute|originally performed|in the style of|made popular by|8-bit|lullaby|superturn[eê]|instrumental|acapella|sped up|speed up|slowed|nightcore|8d audio|par[oó]dia|rehearsal|commentary|voice memo|rock your babies|brazilian hitmakers|portal dos playbacks|party tyme|corrido tumbado|pluggnb|hoodtrap|breakcore|guitar cover|piano cover|violin cover|piano version|guitar version|violin version|her perspective|female key|lower key)\b/i.test(text)) {
           return false;
         }
-        if (/[([]\s*[^)\]]*\b(remix|karaok[eê]|instrumental|sped up|slowed|nightcore|8d|demo)\b[^)\]]*[)\]]/i.test(String(title || ""))) {
+        if (/[([]\s*[^)\]]*\b(remix|karaok[eê]|instrumental|sped up|slowed|nightcore|8d|demo|corrido|tumbado|pluggnb|hoodtrap|breakcore|cover|covers)\b[^)\]]*[)\]]/i.test(String(title || ""))) {
           return false;
         }
         if (durationStr && typeof durationStr === "string" && durationStr.includes(":")) {
@@ -696,6 +707,7 @@ export function initMiadoClient() {
           tr.id = resolved.id;
           tr.trackUid = resolved.trackUid;
           tr.provider = resolved.provider;
+          tr.artistId = resolved.artistId || tr.artistId || `art_${normalizeTextKey(tr.artist || "unknown").replace(/\s+/g, "_")}`;
         } else {
           const rawId = String(tr.id || tr.trackId || "").trim();
           const key = normalizeTrackKey(tr.title, tr.artist) || "track";
@@ -719,7 +731,9 @@ export function initMiadoClient() {
             const hex = (h >>> 0).toString(16).padStart(8, "0");
             tr.id = rawId || `trk_${hex}_${key.slice(0, 24)}`;
           }
-          tr.trackUid = `${tr.provider}:${tr.id}:${key}`;
+          const artNorm = normalizeTextKey(extractPrimaryArtistClient(tr.artist || "") || tr.artist || "unknown").replace(/\s+/g, "_");
+          tr.artistId = tr.artistId || `art_${artNorm || "unknown"}`;
+          tr.trackUid = `${tr.provider}:${tr.id}:${tr.artistId}:${key}`;
         }
         return tr;
       }
@@ -756,7 +770,7 @@ export function initMiadoClient() {
           t.coverUrl = ensureTrackCoverUrl(t, t.title, t.artist);
           const durSec = parseDurSec(t.durationSec || t.duration);
           t.durationSec = durSec;
-          const cleanStream = toProxyStreamUrl("", t.title, t.artist, true, t.id, t.provider, durSec);
+          const cleanStream = toProxyStreamUrl("", t.title, t.artist, true, t.id, t.provider, durSec, t.artistId);
           t.streamUrl = cleanStream;
           t.previewUrl = cleanStream;
           t.versionType = "Studio Version";
@@ -1391,6 +1405,7 @@ export function initMiadoClient() {
         "asap rocky": 34200000,
         "a ap rocky": 34200000,
         "blackpink": 34200000,
+        "joji": 31800000,
         "cigarettes after sex": 31200000,
         "tame impala": 29800000,
         "lisa": 29800000,
@@ -1969,7 +1984,7 @@ export function initMiadoClient() {
         { name: "ROSÉ", genre: "Pop", role: "Artista", coverUrl: "/api/artist-image?name=ROS%C3%89&url=https%3A%2F%2Fcdn-images.dzcdn.net%2Fimages%2Fartist%2Feefd9b0fc6d1cb51405e29009c0e44c0%2F1000x1000-000000-80-0-0.jpg" },
 
         // Rock & Metal
-        { name: "Ghost", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Ghost" },
+        { name: "Ghost", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Ghost&url=https%3A%2F%2Fcdn-images.dzcdn.net%2Fimages%2Fartist%2Fda23d5c8a0b40adefa6424ec4b357fd1%2F1000x1000-000000-80-0-0.jpg&v=3" },
         { name: "Linkin Park", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Linkin%20Park" },
         { name: "Queen", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Queen" },
         { name: "Arctic Monkeys", genre: "Rock", role: "Artista", coverUrl: "/api/artist-image?name=Arctic%20Monkeys" },
@@ -2098,12 +2113,17 @@ export function initMiadoClient() {
       // ------------------------------------------------------------------------
       // 3. GERENCIAMENTO DE ESTADO LOCAL E PERSISTÊNCIA (LOCALSTORAGE)
       // ------------------------------------------------------------------------
-      function toProxyStreamUrl(rawUrl, title = "", artist = "", preferFull = true, trackId = "", provider = "", durationSec = 0) {
+      function toProxyStreamUrl(rawUrl, title = "", artist = "", preferFull = true, trackId = "", provider = "", durationSec = 0, artistId = "") {
         const cleanUrl = String(rawUrl || "").trim();
         if (title || artist) {
           const params = new URLSearchParams();
           if (title) params.set("title", String(title));
           if (artist) params.set("artist", String(artist));
+          if (artistId) {
+            params.set("artistId", String(artistId));
+          } else if (window.miadoTrackIdentity && typeof window.miadoTrackIdentity.resolveArtistProviderId === "function") {
+            params.set("artistId", window.miadoTrackIdentity.resolveArtistProviderId(artist));
+          }
           if (trackId) params.set("trackId", String(trackId));
           if (provider) params.set("provider", String(provider));
           if (durationSec && Number(durationSec) > 0) {
@@ -3111,38 +3131,55 @@ export function initMiadoClient() {
               this.user.username &&
               this.user.username !== "@visitante"
             ) {
+              const rawAvatar = String(this.user.avatarUrl || "");
+              const rawBanner = String(this.user.bannerUrl || "");
+              const avatarChanged = rawAvatar !== this._lastSentAvatarUrl;
+              const bannerChanged = rawBanner !== this._lastSentBannerUrl;
+              if (avatarChanged) this._lastSentAvatarUrl = rawAvatar;
+              if (bannerChanged) this._lastSentBannerUrl = rawBanner;
+
+              const payload = {
+                uid: uid && uid !== "usr_guest" ? uid : undefined,
+                name: this.user.name,
+                username: this.user.username,
+                bio: this.user.bio || "",
+                favoriteArtists: mergedFavs,
+                followedArtists: (this.followedArtists || []).slice(0, 60).map(a => ({
+                  name: a.name,
+                  role: a.role || "Artista",
+                  coverUrl: a.coverUrl && !String(a.coverUrl).startsWith("data:") ? a.coverUrl : ""
+                })),
+                currentTrack:
+                  isPlaying && activeTrack && activeTrack.title
+                    ? `${activeTrack.title} - ${activeTrack.artist || "Artista"}`
+                    : "Silencioso no momento",
+                trackObj:
+                  isPlaying && activeTrack && activeTrack.title
+                    ? {
+                        id: activeTrack.id,
+                        title: activeTrack.title,
+                        artist: activeTrack.artist,
+                        albumTitle: activeTrack.albumTitle || "",
+                        duration: activeTrack.duration || "3:30",
+                        durationSec: activeTrack.durationSec || 180,
+                        coverUrl: activeTrack.coverUrl && !String(activeTrack.coverUrl).startsWith("data:") ? activeTrack.coverUrl : ""
+                      }
+                    : null,
+                albumId: (this.currentAlbum && this.currentAlbum.id) || "billie_hmhas",
+                online: true,
+                isSelf: true
+              };
+              if (!rawAvatar.startsWith("data:") || avatarChanged) {
+                payload.avatarUrl = rawAvatar;
+              }
+              if (!rawBanner.startsWith("data:") || bannerChanged) {
+                payload.bannerUrl = rawBanner;
+              }
+
               fetch("/api/profiles", {
                 method: "POST",
                 headers: getAuthHeaders(),
-                body: JSON.stringify({
-                  uid: uid && uid !== "usr_guest" ? uid : undefined,
-                  name: this.user.name,
-                  username: this.user.username,
-                  bio: this.user.bio || "",
-                  avatarUrl: this.user.avatarUrl,
-                  bannerUrl: this.user.bannerUrl || "",
-                  favoriteArtists: mergedFavs,
-                  followedArtists: this.followedArtists || [],
-                  currentTrack:
-                    isPlaying && activeTrack && activeTrack.title
-                      ? `${activeTrack.title} - ${activeTrack.artist || "Artista"}`
-                      : "Silencioso no momento",
-                  trackObj:
-                    isPlaying && activeTrack && activeTrack.title
-                      ? {
-                          id: activeTrack.id,
-                          title: activeTrack.title,
-                          artist: activeTrack.artist,
-                          albumTitle: activeTrack.albumTitle || "",
-                          duration: activeTrack.duration || "3:30",
-                          durationSec: activeTrack.durationSec || 180,
-                          coverUrl: activeTrack.coverUrl || ""
-                        }
-                      : null,
-                  albumId: (this.currentAlbum && this.currentAlbum.id) || "billie_hmhas",
-                  online: true,
-                  isSelf: true
-                })
+                body: JSON.stringify(payload)
               }).catch(() => {});
             }
 
@@ -3180,7 +3217,7 @@ export function initMiadoClient() {
               this.broadcastLivePlaybackState(null, false);
             }
             this.fetchCommunityProfiles();
-          }, 12000);
+          }, 18000);
         }
 
         async fetchCommunityProfiles(searchQuery = "") {
@@ -3188,11 +3225,22 @@ export function initMiadoClient() {
             const url = searchQuery
               ? `/api/profiles?q=${encodeURIComponent(searchQuery)}`
               : `/api/profiles`;
+            const now = Date.now();
+            const shouldFetchFb =
+              Boolean(searchQuery) ||
+              !this._cachedFbProfiles ||
+              now - (this._cachedFbProfilesAt || 0) > 30000;
             const [apiSettled, fbSettled] = await Promise.allSettled([
               fetch(url).then(r => (r.ok ? r.json() : null)),
-              window.miadoFirestore && typeof window.miadoFirestore.fetchCommunityProfiles === "function"
-                ? window.miadoFirestore.fetchCommunityProfiles(100)
-                : Promise.resolve([])
+              shouldFetchFb && window.miadoFirestore && typeof window.miadoFirestore.fetchCommunityProfiles === "function"
+                ? window.miadoFirestore.fetchCommunityProfiles(80).then(res => {
+                    if (Array.isArray(res)) {
+                      this._cachedFbProfiles = res;
+                      this._cachedFbProfilesAt = Date.now();
+                    }
+                    return res;
+                  })
+                : Promise.resolve(this._cachedFbProfiles || [])
             ]);
 
             const combined = [];
@@ -5089,15 +5137,50 @@ export function initMiadoClient() {
             best.coverUrl = ensureTrackCoverUrl(best, best.title, best.artist);
             const durSec = MiadoMusicResolver.parseDurationSeconds(best.durationSec || best.duration || best.trackTimeMillis) || refDurationSec || 210;
             best.durationSec = durSec;
-            const studioStream = toProxyStreamUrl("", best.title || "", best.artist || "", true, best.id || "", best.provider || "", durSec);
+            const studioStream = toProxyStreamUrl("", best.title || "", best.artist || "", true, best.id || "", best.provider || "", durSec, best.artistId || "");
             best.previewUrl = studioStream;
             best.streamUrl = studioStream;
             best.versionType = "Studio Version";
             delete best.rawPreviewUrl;
+            MiadoMusicResolver.verifyAndEnforceTrackIntegrity(best);
             out.push(best);
           }
 
           return out;
+        }
+
+        /**
+         * Valida a integridade dos metadados e IDs dos provedores de streaming (trackId, artistId, provider),
+         * garantindo que o mapeamento entre o artista e a URL de áudio esteja 100% consistente.
+         */
+        static verifyAndEnforceTrackIntegrity(track) {
+          if (!track || typeof track !== "object") return false;
+          if (window.miadoTrackIdentity && typeof window.miadoTrackIdentity.verifyTrackMetadataIntegrity === "function") {
+            const report = window.miadoTrackIdentity.verifyTrackMetadataIntegrity(track);
+            return Boolean(report && report.valid);
+          }
+          ensureUniqueClientTrackIdentity(track);
+          const durSec = MiadoMusicResolver.parseDurationSeconds(track.durationSec || track.duration || track.trackTimeMillis) || 210;
+          track.durationSec = durSec;
+          const expectedUrl = toProxyStreamUrl("", track.title || "", track.artist || "", true, track.id || "", track.provider || "", durSec, track.artistId || "");
+          track.streamUrl = expectedUrl;
+          track.previewUrl = expectedUrl;
+          track.integrityVerified = true;
+          return Boolean(track.title && track.artist);
+        }
+
+        static verifySearchResultsIntegrity(results, query = "") {
+          if (!results || typeof results !== "object") return results;
+          if (window.miadoTrackIdentity && typeof window.miadoTrackIdentity.validateSearchCatalogIntegrity === "function") {
+            return window.miadoTrackIdentity.validateSearchCatalogIntegrity(results, query);
+          }
+          if (Array.isArray(results.songs)) {
+            results.songs = results.songs.filter(s => MiadoMusicResolver.verifyAndEnforceTrackIntegrity(s));
+          }
+          if (Array.isArray(results.tracks)) {
+            results.tracks = results.tracks.filter(t => MiadoMusicResolver.verifyAndEnforceTrackIntegrity(t));
+          }
+          return results;
         }
 
         static filterStudioOnlyTracks(tracks = []) {
@@ -5132,6 +5215,7 @@ export function initMiadoClient() {
                 if (Array.isArray(data.albums)) {
                   data.albums = MiadoMusicResolver.filterStudioOnlyAlbums(data.albums);
                 }
+                MiadoMusicResolver.verifySearchResultsIntegrity(data, artistName || "");
               }
               return data;
             }
@@ -5156,6 +5240,7 @@ export function initMiadoClient() {
               const data = await res.json();
               if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
                 data.tracks = MiadoMusicResolver.filterStudioOnlyTracks(data.tracks);
+                MiadoMusicResolver.verifySearchResultsIntegrity(data, `${album.title || ""} ${album.artist || ""}`.trim());
                 return data;
               }
             }
@@ -5286,11 +5371,11 @@ export function initMiadoClient() {
                     MiadoMusicResolver.filterStudioOnlyTracks([...(apiData.songs || []), ...localSongs])
                   );
 
-                  return {
+                  return MiadoMusicResolver.verifySearchResultsIntegrity({
                     artists: sortArtistsHidden(Array.from(artistsMap.values())).slice(0, 12),
                     songs: combinedSongs,
                     albums: mergedAlbums.slice(0, 16)
-                  };
+                  }, cleanQ);
                 }
               }
             } catch (e) {}
@@ -5318,13 +5403,19 @@ export function initMiadoClient() {
             .filter(r => MiadoMusicResolver.isStudioOnly(r.trackName, r.artistName, r.collectionName, r.trackTimeMillis))
             .forEach((item, idx) => {
               const cover = item.artworkUrl100 ? upgradeTo1000x1000(item.artworkUrl100) : createSolidAlbumSvg(item.trackName, item.artistName);
-              const proxied = toProxyStreamUrl("", item.trackName, item.artistName, true);
+              const trackId = `it_${item.trackId}`;
+              const artistId = item.artistId ? `it_art_${item.artistId}` : "";
+              const durSec = Math.round(Number(item.trackTimeMillis || 0) / 1000) || 210;
+              const proxied = toProxyStreamUrl("", item.trackName, item.artistName, true, trackId, "itunes", durSec, artistId);
               rawSongs.push({
-                id: String(item.trackId),
+                id: trackId,
+                provider: "itunes",
+                artistId: artistId || undefined,
                 title: item.trackName,
                 artist: item.artistName,
                 albumTitle: item.collectionName || "Single",
                 duration: formatDurationMs(item.trackTimeMillis),
+                durationSec: durSec,
                 genre: item.primaryGenreName || "Pop",
                 year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024,
                 coverUrl: cover,
@@ -5360,13 +5451,19 @@ export function initMiadoClient() {
               const albumTitle = (item.album && item.album.title) ? item.album.title : "Single";
               const cover = (item.album && (item.album.cover_xl || item.album.cover_big || item.album.cover_medium)) ||
                             createSolidAlbumSvg(item.title, artistName);
-              const proxied = toProxyStreamUrl("", item.title, artistName, true);
+              const trackId = `dz_${item.id}`;
+              const artistId = (item.artist && item.artist.id) ? `dz_art_${item.artist.id}` : "";
+              const durSec = Number(item.duration || 210);
+              const proxied = toProxyStreamUrl("", item.title, artistName, true, trackId, "deezer", durSec, artistId);
               rawSongs.push({
-                id: `dz_${item.id}`,
+                id: trackId,
+                provider: "deezer",
+                artistId: artistId || undefined,
                 title: item.title,
                 artist: artistName,
                 albumTitle: albumTitle,
-                duration: formatDurationMs((item.duration || 210) * 1000),
+                duration: formatDurationMs(durSec * 1000),
+                durationSec: durSec,
                 genre: "Lossless Stream",
                 year: 2024,
                 coverUrl: cover,
@@ -5398,11 +5495,11 @@ export function initMiadoClient() {
           const finalSongs = sortSongsHidden(MiadoMusicResolver.filterStudioOnlyTracks(rawSongs));
           const finalAlbums = deduplicateAlbumsGlobal(MiadoMusicResolver.filterStudioOnlyAlbums(Array.from(albumMap.values()))).slice(0, 14);
 
-          return {
+          return MiadoMusicResolver.verifySearchResultsIntegrity({
             artists: sortArtistsHidden(localArtists).slice(0, 10),
             songs: finalSongs,
             albums: finalAlbums
-          };
+          }, cleanQ);
         }
 
         /**
@@ -5850,6 +5947,15 @@ export function initMiadoClient() {
             this.audio.addEventListener("playing", onPlaying, { once: true });
 
             try {
+              if (state.currentTrack) {
+                const activeTr = state.currentTrack;
+                const activeArtId = activeTr.artistId || (window.miadoTrackIdentity && window.miadoTrackIdentity.resolveArtistProviderId ? window.miadoTrackIdentity.resolveArtistProviderId(activeTr) : "art_unknown");
+                if (window.miadoTrackMonitor && typeof window.miadoTrackMonitor.logTrackPlaybackStart === "function") {
+                  window.miadoTrackMonitor.logTrackPlaybackStart(activeTr, url, startTimeSec > 0 ? "AUDIO_STREAM_RESUME" : "AUDIO_STREAM_REQUEST");
+                } else {
+                  console.info(`[MiadoPlayer][TrackMonitor] AUDIO_STREAM_REQUEST | ArtistID: ${activeArtId} (${activeTr.artist}) | TrackID: ${activeTr.id} [${activeTr.provider || "catalog"}] | Faixa: "${activeTr.title}" | StreamURL: ${url}`);
+                }
+              }
               this.audio.src = url;
               this.audio.load();
               const playPromise = this.audio.play();
@@ -5873,6 +5979,7 @@ export function initMiadoClient() {
         async recoverStreamAtPosition(resumeTimeSec = 0) {
           if (!state.currentTrack) return false;
           const track = state.currentTrack;
+          MiadoMusicResolver.verifyAndEnforceTrackIntegrity(track);
           const targetSec = Math.max(
             0,
             Number(resumeTimeSec) || this.pausedAtTime || this.lastKnownPosition || this.audio.currentTime || 0
@@ -5891,13 +5998,14 @@ export function initMiadoClient() {
 
           const tKey = normalizeTrackKey(track);
           try {
-            sessionStorage.removeItem("miado_stream_" + tKey);
+            sessionStorage.removeItem("miado_stream_v4_" + tKey);
           } catch (_e) {}
 
           const ts = Date.now();
+          const baseStreamUrl = toProxyStreamUrl("", track.title || "", track.artist || "", true, track.id || "", track.provider || "", track.durationSec || 0, track.artistId || "");
           const candidateUrls = [
-            `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&studioOnly=1&resume=1&_=${ts}`,
-            `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&retry=1&_=${ts + 1}`
+            `${baseStreamUrl}&resume=1&_=${ts}`,
+            `${baseStreamUrl}&retry=1&_=${ts + 1}`
           ];
 
           let recovered = false;
@@ -5906,8 +6014,7 @@ export function initMiadoClient() {
             recovered = await this.attemptPlayUrl(url, currentReq, 11000, targetSec);
             if (recovered) {
               try {
-                const cleanUrl = `/api/stream?title=${encodeURIComponent(track.title || "")}&artist=${encodeURIComponent(track.artist || "")}&preferFull=1&studioOnly=1`;
-                sessionStorage.setItem("miado_stream_" + tKey, cleanUrl);
+                sessionStorage.setItem("miado_stream_v4_" + tKey, baseStreamUrl);
               } catch (_e) {}
               break;
             }
@@ -5944,6 +6051,7 @@ export function initMiadoClient() {
           this.pausedAtTime = 0;
           this.pausedAtTimestamp = 0;
 
+          MiadoMusicResolver.verifyAndEnforceTrackIntegrity(track);
           const isActualAlbum = album && !album.isPlaylist && !String(album.id || "").startsWith("pl_");
           track.coverUrl = ensureTrackCoverUrl(track, track.title, track.artist, isActualAlbum ? album.coverUrl : "");
           state.currentTrack = track;
@@ -5973,10 +6081,25 @@ export function initMiadoClient() {
             window.miadoUI.renderRightSidebarBodyOnly();
           }
 
-          ensureUniqueClientTrackIdentity(track);
           const tKey = normalizeTrackKey(track);
-          const streamCacheKey = `miado_stream_${track.id || ""}_${tKey}`;
-          const cachedStream = sessionStorage.getItem(streamCacheKey);
+          const streamCacheKey = `miado_stream_v4_${track.id || ""}_${tKey}`;
+          let cachedStream = sessionStorage.getItem(streamCacheKey);
+          if (cachedStream) {
+            try {
+              const parsedCache = new URL(cachedStream, window.location.origin);
+              const cachedTitleKey = normalizeSongTitleKey(parsedCache.searchParams.get("title") || "");
+              const expectedTitleKey = normalizeSongTitleKey(track.title || "");
+              const cachedArtistKey = normalizeTextKey(parsedCache.searchParams.get("artist") || "");
+              const expectedArtistKey = normalizeTextKey(track.artist || "");
+              if (cachedTitleKey !== expectedTitleKey || cachedArtistKey !== expectedArtistKey) {
+                sessionStorage.removeItem(streamCacheKey);
+                cachedStream = null;
+              }
+            } catch (_e) {
+              sessionStorage.removeItem(streamCacheKey);
+              cachedStream = null;
+            }
+          }
           let started = false;
 
           // 1. Tenta carregar do cache local de áudio da sessão específico do ID único da faixa (0ms de latência)
@@ -5984,7 +6107,7 @@ export function initMiadoClient() {
             started = await this.attemptPlayUrl(cachedStream, currentReq, 4500, 0);
           }
 
-          // 2. Tentativa Primária: Proxy Stream URL com ID único do provedor e duração esperada
+          // 2. Tentativa Primária: Proxy Stream URL com ID único do provedor, ID do artista e duração esperada
           if (!started && currentReq === this.playRequestId) {
             const rawCandidate = track.rawPreviewUrl || track.previewUrl || track.streamUrl || "";
             const primaryProxyStreamUrl = toProxyStreamUrl(
@@ -5994,7 +6117,8 @@ export function initMiadoClient() {
               true,
               track.id || "",
               track.provider || "",
-              track.durationSec || 0
+              track.durationSec || 0,
+              track.artistId || ""
             );
             started = await this.attemptPlayUrl(primaryProxyStreamUrl, currentReq, 11500, 0);
             if (started) {
@@ -6002,9 +6126,9 @@ export function initMiadoClient() {
             }
           }
 
-          // 3. Contingência rápida pelo servidor com ID único da faixa
+          // 3. Contingência rápida pelo servidor com ID único da faixa e do artista
           if (!started && currentReq === this.playRequestId) {
-            const contingencyUrl = `${toProxyStreamUrl("", track.title, track.artist, true, track.id || "", track.provider || "", track.durationSec || 0)}&retry=1&_=${Date.now()}`;
+            const contingencyUrl = `${toProxyStreamUrl("", track.title, track.artist, true, track.id || "", track.provider || "", track.durationSec || 0, track.artistId || "")}&retry=1&_=${Date.now()}`;
             started = await this.attemptPlayUrl(contingencyUrl, currentReq, 11500, 0);
             if (started) {
               try { sessionStorage.setItem(streamCacheKey, contingencyUrl); } catch (_e) {}
@@ -9648,7 +9772,7 @@ export function initMiadoClient() {
                   <div class="artist-bubble-card" data-open-artist="${escapeHtml(art.name)}">
                     <div class="artist-avatar-wrap">
                       <div class="artist-avatar-inner shimmer">
-                        <img class="artist-bubble-img" src="${escapeHtml(art.coverUrl)}" alt="${escapeHtml(art.name)}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                        <img class="artist-bubble-img" loading="lazy" decoding="async" src="${escapeHtml(art.coverUrl)}" alt="${escapeHtml(art.name)}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                       </div>
                       <button type="button" class="floating-artist-play" data-play-artist="${escapeHtml(art.name)}" title="Tocar ${escapeHtml(art.name)}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4.5 19 12 7 19.5 7 4.5"/></svg>
@@ -11348,7 +11472,7 @@ export function initMiadoClient() {
                     <div class="artist-bubble-card" data-open-artist="${art.name}">
                       <div class="artist-avatar-wrap">
                         <div class="artist-avatar-inner shimmer">
-                          <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                          <img class="artist-bubble-img" loading="lazy" decoding="async" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                         </div>
                         <button type="button" class="floating-artist-play" data-play-artist="${art.name}" title="Tocar ${art.name}">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4.5 19 12 7 19.5 7 4.5"/></svg>
@@ -12109,7 +12233,7 @@ export function initMiadoClient() {
                   ${browseArtists.map(art => `
                     <div class="artist-bubble-card" data-search-artist-name="${art.name}">
                       <div class="artist-avatar-wrap shimmer">
-                        <img class="artist-bubble-img" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                        <img class="artist-bubble-img" loading="lazy" decoding="async" data-artist-bubble-img="${art.name}" src="${art.coverUrl}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                       </div>
                       <div class="artist-bubble-info">
                         <div class="artist-bubble-name">${art.name}</div>
@@ -12217,7 +12341,7 @@ export function initMiadoClient() {
                       ${artists.map(art => `
                         <div class="artist-bubble-card" data-search-artist-name="${art.name}">
                           <div class="artist-avatar-wrap shimmer">
-                            <img class="artist-bubble-img" src="${ensureArtistAvatarUrl(art)}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
+                            <img class="artist-bubble-img" loading="lazy" decoding="async" src="${ensureArtistAvatarUrl(art)}" alt="${art.name}" referrerpolicy="no-referrer" onload="this.classList.add('loaded'); if(this.parentElement) this.parentElement.classList.remove('shimmer');" onerror="window.handleImgError(this, '${art.name.replace(/'/g, "")}', 'Artista')" />
                           </div>
                           <div class="artist-bubble-info">
                             <div class="artist-bubble-name">${art.name}</div>

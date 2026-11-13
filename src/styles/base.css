@@ -1975,18 +1975,18 @@
     #modal-fullscreen-player,
     div#modal-fullscreen-player {
       z-index: 1200 !important;
-      background-color: rgba(6, 5, 12, 0.76) !important;
-      -webkit-backdrop-filter: blur(60px) saturate(180%) !important;
-      backdrop-filter: blur(60px) saturate(180%) !important;
+      background-color: rgba(6, 5, 12, 0.82) !important;
+      -webkit-backdrop-filter: blur(28px) saturate(165%) !important;
+      backdrop-filter: blur(28px) saturate(165%) !important;
     }
 
     .fullscreen-player-dialog,
     div#modal-fullscreen-player .fullscreen-player-dialog {
       max-width: 960px;
       width: 95%;
-      background: rgba(14, 12, 24, 0.74) !important;
-      -webkit-backdrop-filter: blur(60px) saturate(180%) !important;
-      backdrop-filter: blur(60px) saturate(180%) !important;
+      background: rgba(14, 12, 24, 0.78) !important;
+      -webkit-backdrop-filter: blur(28px) saturate(165%) !important;
+      backdrop-filter: blur(28px) saturate(165%) !important;
       border: 1px solid rgba(255, 255, 255, 0.1) !important;
       box-shadow: var(--glass-specular) !important;
       border-radius: 26px;
@@ -2007,8 +2007,8 @@
       inset: -40px;
       background-size: cover;
       background-position: center;
-      -webkit-filter: blur(64px) saturate(195%) brightness(0.55);
-      filter: blur(64px) saturate(195%) brightness(0.55);
+      -webkit-filter: blur(36px) saturate(175%) brightness(0.55);
+      filter: blur(36px) saturate(175%) brightness(0.55);
       opacity: 0.78;
       pointer-events: none;
       z-index: 0;
@@ -3342,3 +3342,14 @@
     }
 
     .text-truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Otimização de renderização para listas grandes de artistas, álbuns e músicas */
+    .artist-bubble-card,
+    .album-card {
+      content-visibility: auto;
+      contain-intrinsic-size: 160px 210px;
+    }
+    .track-row {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 62px;
+    }
